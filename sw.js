@@ -5,7 +5,7 @@
 // RELEASING AN UPDATE: bump CACHE_VERSION (and APP_VERSION in core/version.js)
 // to the same number, and add any new files to APP_FILES.
 
-const CACHE_VERSION = '0.3.0';
+const CACHE_VERSION = '0.4.0';
 const APP_CACHE = `t7p-app-${CACHE_VERSION}`;
 const ART_CACHE = 't7p-art'; // portraits and models: kept across versions
 
@@ -33,6 +33,7 @@ const APP_FILES = [
   'core/grid-board.js',
   'core/mode-kit.js',
   'core/whats-new.js',
+  'core/card.js',
   'core/screens/loading.js',
   'core/screens/menu.js',
   'core/screens/icon-picker.js',
@@ -42,6 +43,8 @@ const APP_FILES = [
   'core/screens/records.js',
   'modes/grids.js',
   'modes/gauntlet.js',
+  'modes/tier-target.js',
+  'modes/blind-tier-list.js',
   'data/roster.json',
   'fonts/poppins-600.woff2',
   'fonts/poppins-700.woff2',

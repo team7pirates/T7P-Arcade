@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.4.0",
+      "date": "2026-11-15",
+      "title": "Wave 2: Tier Target and Blind Tier List",
+      "items": [
+        "Every character now has a Power Level, two roles, and Aura, Clutch and Chaos ratings.",
+        "Tier Target: place ten characters on S, A, B and C multiplier squares and land on the target. Hard Mode doubles points and hides the numbers.",
+        "Blind Tier List: rank ten characters from a hidden series or trait, then see how your list compares with their Power Levels.",
+        "Both new modes are in My Records."
+      ]
+    },
+    {
       "version": "0.3.0",
       "date": "2026-11-15",
       "title": "Loading screen and update notes",

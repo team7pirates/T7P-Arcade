@@ -35,12 +35,12 @@ export const MODES = [
   },
   {
     id: 'tier-target', loadingLine: 'LINING UP TIER TARGETS', name: 'Tier Target', sub: 'Multiply · Splash',
-    flagship: false, wave: 2, ready: false,
+    flagship: false, wave: 2, ready: true, load: loader('tier-target'),
     blurb: 'Hit the target score by picking characters from the right tiers.',
   },
   {
     id: 'blind-tier-list', loadingLine: 'SEALING THE BLIND TIER LIST', name: 'Blind Tier List', sub: 'Rank on instinct',
-    flagship: false, wave: 2, ready: false,
+    flagship: false, wave: 2, ready: true, load: loader('blind-tier-list'),
     blurb: 'Characters arrive one at a time. Place each one before you see the next.',
   },
 ];

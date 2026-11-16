@@ -10,8 +10,11 @@ const gauntletTier = (n) => GAUNTLET_TIERS.find(([min]) => n >= min)[1];
 export function openRecords() {
   const g = records.get('grids');
   const ga = records.get('gauntlet');
+  const tt = records.get('tier-target');
+  const bl = records.get('blind-tier-list');
   const levels = [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']];
-  const played = levels.some(([k]) => g[k]) || ga.runs;
+  const played = levels.some(([k]) => g[k]) || ga.runs || tt.normal || tt.hard || bl.lists;
+  const fmt = (n) => Math.round(n).toLocaleString();
 
   sheet({
     title: 'MY RECORDS',
@@ -50,7 +53,30 @@ export function openRecords() {
             )
             : h('p', { class: 'caption muted' }, 'No runs yet.'),
         ),
+        h('section', { class: 'rec-block' },
+          h('h3', { class: 'label-spaced set-title' }, 'TIER TARGET'),
+          tt.normal || tt.hard
+            ? h('table', { class: 'rec-table' },
+              h('thead', {}, h('tr', {}, ['', 'Best score', 'Best streak', 'Games'].map((t) => h('th', { scope: 'col' }, t)))),
+              h('tbody', {}, [['normal', 'Normal'], ['hard', 'Hard']].map(([k, label]) => {
+                const r = tt[k];
+                return h('tr', {}, h('th', { scope: 'row' }, label),
+                  h('td', {}, r ? fmt(r.bestScore) : '–'), h('td', {}, r ? String(r.bestStreak) : '–'), h('td', {}, r ? String(r.games) : '0'));
+              })))
+            : h('p', { class: 'caption muted' }, 'No games yet.'),
+        ),
+        h('section', { class: 'rec-block' },
+          h('h3', { class: 'label-spaced set-title' }, 'BLIND TIER LIST'),
+          bl.lists
+            ? h('div', { class: 'rec-row' },
+              h('span', { class: 'stat gold' }, `${bl.bestAgree}/10`),
+              h('span', {},
+                h('span', { class: 'heading' }, 'Best match with the ratings'),
+                h('span', { class: 'caption muted rec-sub' }, `${bl.lists} list${bl.lists === 1 ? '' : 's'} · average ${(bl.totalAgree / bl.lists).toFixed(1)}/10`),
+              ))
+            : h('p', { class: 'caption muted' }, 'No lists yet.'),
+        ),
       )
-      : h('p', { class: 'body-text' }, 'Play Grids or Gauntlet and your best results will show up here.'),
+      : h('p', { class: 'body-text' }, 'Play any mode and your best results will show up here.'),
   });
 }
