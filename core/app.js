@@ -1,0 +1,49 @@
+// Platform core: starts the app. Loads saves and settings, shows the loading
+// screen, then hands over to the router.
+
+import { store } from './store.js';
+import { settings } from './settings.js';
+import { profile } from './profile.js';
+import { registerScreen, startRouter, refresh } from './router.js';
+import { registerServiceWorker, install } from './install.js';
+import { h } from './ui.js';
+import { runLoading } from './screens/loading.js';
+import { renderMenu } from './screens/menu.js';
+import { renderSettings } from './screens/settings.js';
+import { renderAbout } from './screens/about.js';
+
+registerScreen('menu', renderMenu);
+registerScreen('settings', renderSettings);
+registerScreen('about', renderAbout);
+
+function drawPetals() {
+  const box = document.querySelector('.petals');
+  if (!box || box.childElementCount) return;
+  for (let i = 0; i < 14; i++) {
+    box.append(h('i', {
+      style: {
+        left: `${(i * 7.3 + (i % 3) * 11) % 100}%`,
+        animationDelay: `${-(i * 1.9) % 14}s`,
+        animationDuration: `${11 + (i % 5) * 2.2}s`,
+        transform: `scale(${0.6 + (i % 4) * 0.15})`,
+      },
+    }));
+  }
+}
+
+async function boot() {
+  const app = document.getElementById('app');
+  await store.init();
+  await Promise.all([settings.load(), profile.load()]);
+  drawPetals();
+  try {
+    await runLoading(app, { onRetry: boot });
+  } catch {
+    return; // the loading screen is showing the error and a Try again button
+  }
+  await startRouter('menu');
+  install.onChange(refresh);
+}
+
+registerServiceWorker();
+boot();
