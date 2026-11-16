@@ -1,0 +1,33 @@
+{
+  "releases": [
+    {
+      "version": "0.3.0",
+      "date": "2026-11-15",
+      "title": "Loading screen and update notes",
+      "items": [
+        "The loading screen now takes its time (about 12 seconds) so you can watch every mode load. Tap to skip.",
+        "Updates now pop up in the middle of the screen and tell you what's new before you reload.",
+        "About now lists every update."
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-11-15",
+      "title": "Wave 1: Grids and Gauntlet",
+      "items": [
+        "Grids: fill a 3×3 grid on Easy, Medium or Hard. Rarer answers score more.",
+        "Gauntlet: 5:00 on the clock, grids grow from 2×2 to 5×5, power-ups between grids.",
+        "My Records on the main menu."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "date": "2026-11-15",
+      "title": "The new T7P Arcade",
+      "items": [
+        "Loading screen, main menu, Pick Your Icon, Settings and About.",
+        "Works offline and installs to your home screen."
+      ]
+    }
+  ]
+}

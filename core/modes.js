@@ -9,37 +9,37 @@ const loader = (id) => () => import(`../modes/${id}.js`)
 
 export const MODES = [
   {
-    id: 'forbidden-fusion', name: 'Forbidden Fusion', sub: 'Forge · Ladder · Legend',
+    id: 'forbidden-fusion', loadingLine: 'FIRING UP THE FUSION LAB', name: 'Forbidden Fusion', sub: 'Forge · Ladder · Legend',
     flagship: true, wave: 3, ready: false,
     blurb: 'Fuse characters into one fighter, train it in the Gym, and climb the Tower.',
   },
   {
-    id: 'dynasty', name: 'Dynasty', sub: 'Build · Simulate · Dynasty',
+    id: 'dynasty', loadingLine: 'SETTING UP THE FRONT OFFICE', name: 'Dynasty', sub: 'Build · Simulate · Dynasty',
     flagship: true, wave: 4, ready: false,
     blurb: 'Run a franchise for up to 10 seasons: draft, trade, develop and chase the Hall of Fame.',
   },
   {
-    id: 'brawl', name: 'Brawl', sub: 'Draft · Bracket · Champion',
+    id: 'brawl', loadingLine: 'DRAWING UP THE BRACKET', name: 'Brawl', sub: 'Draft · Bracket · Champion',
     flagship: true, wave: 4, ready: false,
     blurb: 'Draft a squad and fight through a bracket to be crowned champion.',
   },
   {
-    id: 'grids', name: 'Grids', sub: 'Solo deployment',
+    id: 'grids', loadingLine: 'SHUFFLING THE GRIDS', name: 'Grids', sub: 'Solo deployment',
     flagship: false, wave: 1, ready: true, load: loader('grids'),
     blurb: 'Fill the grid with characters that match both the row and the column.',
   },
   {
-    id: 'gauntlet', name: 'Gauntlet', sub: 'Survival time attack',
+    id: 'gauntlet', loadingLine: 'WINDING THE GAUNTLET CLOCK', name: 'Gauntlet', sub: 'Survival time attack',
     flagship: false, wave: 1, ready: true, load: loader('gauntlet'),
     blurb: 'Clear grid after grid against the clock. How far can you get?',
   },
   {
-    id: 'tier-target', name: 'Tier Target', sub: 'Multiply · Splash',
+    id: 'tier-target', loadingLine: 'LINING UP TIER TARGETS', name: 'Tier Target', sub: 'Multiply · Splash',
     flagship: false, wave: 2, ready: false,
     blurb: 'Hit the target score by picking characters from the right tiers.',
   },
   {
-    id: 'blind-tier-list', name: 'Blind Tier List', sub: 'Rank on instinct',
+    id: 'blind-tier-list', loadingLine: 'SEALING THE BLIND TIER LIST', name: 'Blind Tier List', sub: 'Rank on instinct',
     flagship: false, wave: 2, ready: false,
     blurb: 'Characters arrive one at a time. Place each one before you see the next.',
   },

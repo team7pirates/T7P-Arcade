@@ -1,6 +1,7 @@
 // "Get the App": installing the PWA to the home screen, and offline updates.
 
 import { toast } from './ui.js';
+import { showUpdatePopup } from './whats-new.js';
 
 let deferredPrompt = null;
 const listeners = new Set();
@@ -38,7 +39,27 @@ window.addEventListener('appinstalled', () => {
 
 // Offline support. The service worker (sw.js) keeps a copy of every file so
 // the game opens without internet. When a new version is published it
-// downloads in the background and we offer a reload.
+// downloads in the background, and a pop-up shows what's new and offers to
+// update. The pop-up waits until the loading screen is done.
+let appReady = false;
+let waitingWorker = null;
+let popupOpen = false;
+
+function offerUpdate(worker) {
+  waitingWorker = worker;
+  if (!appReady || popupOpen) return;
+  popupOpen = true;
+  showUpdatePopup({
+    onUpdate: () => worker.postMessage('skip-waiting'),
+    onClose: () => { popupOpen = false; },
+  }).catch(() => { popupOpen = false; });
+}
+
+export function markAppReady() {
+  appReady = true;
+  if (waitingWorker) offerUpdate(waitingWorker);
+}
+
 export function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   if (location.protocol === 'file:') return;
@@ -51,12 +72,6 @@ export function registerServiceWorker() {
   });
 
   navigator.serviceWorker.register('sw.js').then((reg) => {
-    const offerUpdate = (worker) => {
-      toast('An update is ready.', {
-        action: 'Reload',
-        onAction: () => worker.postMessage('skip-waiting'),
-      });
-    };
     if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
     reg.addEventListener('updatefound', () => {
       const worker = reg.installing;

@@ -84,18 +84,18 @@ export function avatar(c, chars, size = 'md') {
 // Bottom sheet (a panel that slides up). Returns { close, body }.
 let openSheet = null;
 
-export function sheet({ title, content, onClose, wide = false }) {
+export function sheet({ title, content, onClose, wide = false, center = false }) {
   if (openSheet) openSheet.close();
   const root = document.getElementById('sheet-root');
   const previousFocus = document.activeElement;
 
   const closeBtn = h('button', { class: 'icon-btn', 'aria-label': 'Close' }, icon('close'));
   const body = h('div', { class: 'sheet-body' });
-  const panel = h('div', { class: `sheet${wide ? ' sheet-wide' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+  const panel = h('div', { class: `sheet${wide ? ' sheet-wide' : ''}${center ? ' sheet-center' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
     h('div', { class: 'sheet-head' }, h('h2', { class: 'sheet-title' }, title), closeBtn),
     body,
   );
-  const scrim = h('div', { class: 'scrim' }, panel);
+  const scrim = h('div', { class: `scrim${center ? ' scrim-center' : ''}` }, panel);
   append(body, [content]);
 
   function close() {
@@ -116,7 +116,7 @@ export function sheet({ title, content, onClose, wide = false }) {
   document.addEventListener('keydown', onKey);
   root.append(scrim);
   requestAnimationFrame(() => {
-    const first = panel.querySelector('input, button:not(.icon-btn), [tabindex="0"]') || closeBtn;
+    const first = panel.querySelector('[data-autofocus], input, button:not(.icon-btn), [tabindex="0"]') || closeBtn;
     first.focus({ preventScroll: true });
   });
 

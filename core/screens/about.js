@@ -4,8 +4,10 @@ import { h } from '../ui.js';
 import { characters } from '../characters.js';
 import { APP_VERSION } from '../version.js';
 import { pageHeader } from './settings.js';
+import { loadReleases, releaseItems } from '../whats-new.js';
 
-export function renderAbout() {
+export async function renderAbout() {
+  const releases = await loadReleases();
   return h('section', { class: 'screen page about' },
     pageHeader('ABOUT'),
 
@@ -14,6 +16,14 @@ export function renderAbout() {
       h('h2', { class: 'display-lg' }, 'T7P ARCADE'),
       h('p', { class: 'label-spaced' }, `VERSION ${APP_VERSION} · ROSTER ${characters.version ?? '-'} · ${characters.count} CHARACTERS`),
     ),
+
+    releases.length ? h('section', { class: 'panel about-block' },
+      h('h3', { class: 'label-spaced set-title' }, "WHAT'S NEW"),
+      releases.map((r) => h('div', { class: 'release' },
+        h('p', { class: 'heading' }, `${r.version} · ${r.title}`),
+        releaseItems(r),
+      )),
+    ) : null,
 
     block('Fan project',
       'T7P Arcade is a free fan game made by TEAM7PIRATES. It is not affiliated with, endorsed by or sponsored by any of the companies that own the characters in it. All characters belong to their creators and publishers.',

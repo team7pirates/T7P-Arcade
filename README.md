@@ -23,8 +23,9 @@ Anime, Marvel and DC character games by TEAM7PIRATES. An offline-first web app (
 
 1. Change the files.
 2. Bump the version to the same number in **both** `core/version.js` (`APP_VERSION`) and `sw.js` (`CACHE_VERSION`).
-3. If you added a new file, add it to the `APP_FILES` list in `sw.js`.
-4. Commit and push. Players get an "An update is ready" message with a Reload button.
+3. Add a new entry at the top of `whats-new.json` with the same version number and a list of what changed. Players see it in the update pop-up and on the About page.
+4. If you added a new file, add it to the `APP_FILES` list in `sw.js`.
+5. Commit and push. Players get a pop-up with what's new and an Update now button.
 
 ## Testing on your computer
 

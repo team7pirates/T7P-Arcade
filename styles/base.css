@@ -210,6 +210,14 @@ button { cursor: pointer; }
 }
 .sheet-title { font-family: var(--font-display); font-size: 18px; font-weight: 800; letter-spacing: .04em; margin: 0; }
 .sheet-body { padding: 0 var(--space-6) var(--space-6); overflow-y: auto; overscroll-behavior: contain; }
+.scrim-center { align-items: center; padding: var(--space-4); }
+.sheet-center {
+  border-radius: var(--radius-lg); border-bottom: 1px solid var(--border);
+  border-color: var(--brand-gold); box-shadow: var(--glow-gold), var(--card);
+  animation: pop-in .22s ease-out;
+}
+.scrim.closing .sheet-center { animation: fade-out .18s ease-in forwards; }
+@keyframes pop-in { from { transform: scale(.94); opacity: 0; } }
 .scrim.closing { animation: fade-out .18s ease-in forwards; }
 .scrim.closing .sheet { animation: slide-down .18s ease-in forwards; }
 @media (min-width: 768px) {

@@ -6,7 +6,7 @@ import { settings } from './settings.js';
 import { profile } from './profile.js';
 import { records } from './records.js';
 import { registerScreen, startRouter, refresh } from './router.js';
-import { registerServiceWorker, install } from './install.js';
+import { registerServiceWorker, install, markAppReady } from './install.js';
 import { h } from './ui.js';
 import { runLoading } from './screens/loading.js';
 import { renderMenu } from './screens/menu.js';
@@ -44,6 +44,7 @@ async function boot() {
   }
   await startRouter('menu');
   install.onChange(refresh);
+  markAppReady();
 }
 
 registerServiceWorker();

@@ -5,7 +5,7 @@
 // RELEASING AN UPDATE: bump CACHE_VERSION (and APP_VERSION in core/version.js)
 // to the same number, and add any new files to APP_FILES.
 
-const CACHE_VERSION = '0.2.0';
+const CACHE_VERSION = '0.3.0';
 const APP_CACHE = `t7p-app-${CACHE_VERSION}`;
 const ART_CACHE = 't7p-art'; // portraits and models: kept across versions
 
@@ -13,6 +13,7 @@ const APP_FILES = [
   './',
   'index.html',
   'manifest.webmanifest',
+  'whats-new.json',
   'styles/tokens.css',
   'styles/base.css',
   'styles/screens.css',
@@ -31,6 +32,7 @@ const APP_FILES = [
   'core/grid.js',
   'core/grid-board.js',
   'core/mode-kit.js',
+  'core/whats-new.js',
   'core/screens/loading.js',
   'core/screens/menu.js',
   'core/screens/icon-picker.js',
@@ -94,6 +96,16 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.match('index.html', { cacheName: APP_CACHE })
         .then((hit) => hit || fetch(req)),
+    );
+    return;
+  }
+
+  // Release notes: always try the internet first so the update pop-up can
+  // describe the new version; fall back to the saved copy offline.
+  if (url.pathname.endsWith('/whats-new.json')) {
+    event.respondWith(
+      fetch(req, { cache: 'no-store' })
+        .catch(() => caches.match('whats-new.json', { cacheName: APP_CACHE })),
     );
     return;
   }
