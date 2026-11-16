@@ -7,7 +7,7 @@ const prefersReducedMotion = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export const DEFAULT_SETTINGS = {
-  musicVolume: 60,       // 0–100. Used once the royalty-free playlist is added.
+  musicVolume: 60,       // 0–100. 0 turns the music off.
   sfxVolume: 80,         // 0–100.
   skipFightScenes: false,
   reducedMotion: null,   // null = follow the phone's own setting.

@@ -8,6 +8,7 @@ import { records } from './records.js';
 import { registerScreen, startRouter, refresh } from './router.js';
 import { registerServiceWorker, install, markAppReady } from './install.js';
 import { h } from './ui.js';
+import { music } from './music.js';
 import { runLoading } from './screens/loading.js';
 import { renderMenu } from './screens/menu.js';
 import { renderSettings } from './screens/settings.js';
@@ -39,6 +40,7 @@ async function boot() {
   await store.init();
   await Promise.all([settings.load(), profile.load(), records.load()]);
   drawPetals();
+  music.init();
   try {
     await runLoading(app, { onRetry: boot });
   } catch {

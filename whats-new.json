@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.6.0",
+      "date": "2026-11-16",
+      "title": "Music and 113 portraits",
+      "items": [
+        "Background music: 7 songs play in a shuffled loop. They start on your first tap and pause when you leave the app.",
+        "Settings: Music volume now works (0 turns it off), and there's a Next song button.",
+        "113 characters now have portraits, from Adam Warlock to Donner. More are on the way.",
+        "Songs are saved on your phone after they play once, so they work offline too."
+      ]
+    },
+    {
       "version": "0.5.0",
       "date": "2026-11-16",
       "title": "The Combat core and the Fight Lab",

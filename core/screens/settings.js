@@ -7,6 +7,7 @@ import { profile } from '../profile.js';
 import { records } from '../records.js';
 import { back, refresh } from '../router.js';
 import { APP_VERSION } from '../version.js';
+import { music } from '../music.js';
 
 export function renderSettings() {
   const s = settings.value;
@@ -17,7 +18,8 @@ export function renderSettings() {
     group('Sound',
       slider('Music volume', 'musicVolume', s.musicVolume),
       slider('Sound effects volume', 'sfxVolume', s.sfxVolume),
-      h('p', { class: 'caption muted setting-note' }, 'Music and sound effects arrive with the first modes.'),
+      h('button', { class: 'btn btn-secondary', onClick: () => { music.next(); toast('Next song.'); } }, 'Next song'),
+      h('p', { class: 'caption muted setting-note' }, 'Music starts on your first tap. Set Music volume to 0 to turn it off. Sound effects are coming soon.'),
     ),
 
     group('Fight scenes',
