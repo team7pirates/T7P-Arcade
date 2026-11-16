@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.6.2",
+      "date": "2026-11-16",
+      "title": "New soundtrack",
+      "items": [
+        "New music: 6 hip-hop and lo-fi tracks from Bensound and Uppbeat replace the old playlist. The old songs are cleared off your phone.",
+        "About lists every song and artist.",
+        "262 characters now have portraits, up to Kid Trunks."
+      ]
+    },
+    {
       "version": "0.6.1",
       "date": "2026-11-16",
       "title": "Your icon on the loading screen, and a Changelog",

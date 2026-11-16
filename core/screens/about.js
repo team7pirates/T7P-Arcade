@@ -28,7 +28,8 @@ export function renderAbout() {
     block('Credits',
       'Made by TEAM7PIRATES.',
       'Fonts: Poppins (Indian Type Foundry) and Inter (Rasmus Andersson), both under the SIL Open Font License.',
-      'Music: "Rice Crackers" by Rice Crackers, "Roll the Dice" by DG Pacino, "The Last Samurai" by Midnight Music, "BAG TALK" by feinsmecker, "Herro" by Goat Chronicles, "GET IT FAST" and "Eine Kleine Nachtmusik (ZISO Remix)" by ZISO, from Artlist.',
+      'Music: "Groovy Hip Hop" by Benjamin Tissot (www.bensound.com), license code 8VMZOBIVUXHW8BEQ.',
+      'Music from #Uppbeat: "Hood 2 Hood" by Pecan Pie (uppbeat.io/c/pecan-pie), "Low Riders" and "Lighter" by Otto.mp3 (uppbeat.io/c/ottomp3), "What\'s The Rush" by Stan Town (uppbeat.io/c/stan-town), "Low Rider" by SENSHO (uppbeat.io/c/sensho).',
     ),
   );
 }

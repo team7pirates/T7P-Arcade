@@ -1,7 +1,7 @@
 // Background music. Plays the playlist below in a shuffled loop.
 //
-// CHANGING THE MUSIC: put the new .mp3 files in the music/ folder and list
-// them in TRACKS. Keep them small (about 96 kbps); they are downloaded the
+// CHANGING THE MUSIC: put the new .mp3 files in the music/ folder, list them
+// in TRACKS here and in MUSIC_FILES in sw.js, and update the credits in About. Keep them small (about 96 kbps); they are downloaded the
 // first time each one plays and then kept on the phone for offline play.
 //
 // Browsers only allow sound after the player has tapped or pressed a key, so
@@ -13,13 +13,12 @@
 import { settings } from './settings.js';
 
 const TRACKS = [
-  'music/track-1.mp3',
-  'music/track-2.mp3',
-  'music/track-3.mp3',
-  'music/track-4.mp3',
-  'music/track-5.mp3',
-  'music/track-6.mp3',
-  'music/track-7.mp3',
+  'music/groovy-hip-hop.mp3',   // "Groovy Hip Hop" by Benjamin Tissot (Bensound)
+  'music/hood-2-hood.mp3',      // "Hood 2 Hood" by Pecan Pie (Uppbeat)
+  'music/lighter.mp3',          // "Lighter" by Otto.mp3 (Uppbeat)
+  'music/low-rider.mp3',        // "Low Rider" by SENSHO (Uppbeat)
+  'music/low-riders.mp3',       // "Low Riders" by Otto.mp3 (Uppbeat)
+  'music/whats-the-rush.mp3',   // "What's The Rush" by Stan Town (Uppbeat)
 ];
 
 const FADE_IN_S = 1.5;

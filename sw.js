@@ -5,9 +5,20 @@
 // RELEASING AN UPDATE: bump CACHE_VERSION (and APP_VERSION in core/version.js)
 // to the same number, and add any new files to APP_FILES.
 
-const CACHE_VERSION = '0.6.1';
+const CACHE_VERSION = '0.6.2';
 const APP_CACHE = `t7p-app-${CACHE_VERSION}`;
 const ART_CACHE = 't7p-art'; // portraits, models and music: kept across versions
+
+// Songs in the current playlist. Saved songs not on this list are deleted
+// when an update installs (keep it in step with TRACKS in core/music.js).
+const MUSIC_FILES = [
+  'groovy-hip-hop.mp3',
+  'hood-2-hood.mp3',
+  'lighter.mp3',
+  'low-rider.mp3',
+  'low-riders.mp3',
+  'whats-the-rush.mp3',
+];
 
 const APP_FILES = [
   './',
@@ -84,6 +95,10 @@ self.addEventListener('activate', (event) => {
       .then((keys) => Promise.all(keys
         .filter((k) => k.startsWith('t7p-app-') && k !== APP_CACHE)
         .map((k) => caches.delete(k))))
+      .then(() => caches.open(ART_CACHE))
+      .then((art) => art.keys().then((reqs) => Promise.all(reqs
+        .filter((r) => r.url.includes('/music/') && !MUSIC_FILES.some((f) => r.url.endsWith(`/music/${f}`)))
+        .map((r) => art.delete(r)))))
       .then(() => self.clients.claim()),
   );
 });
