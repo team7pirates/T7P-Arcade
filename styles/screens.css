@@ -189,3 +189,16 @@ legend.set-text + .segmented { clear: both; }
 .update-actions .btn { flex: 1; }
 .release + .release { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
 .release .whats-new-list { margin-bottom: 0; }
+
+/* ---------- Loading banner: the player's icon ---------- */
+.ld-avatar.avatar { width: 84px; height: 84px; border: 2px solid var(--brand-gold); font-size: 28px; }
+@media (min-width: 720px) { .ld-avatar.avatar { width: 112px; height: 112px; font-size: 36px; } }
+
+/* ---------- Changelog ---------- */
+.changelog-now { text-align: center; margin: 0 0 var(--space-4); }
+.release-card { padding: var(--space-4); }
+.release-card + .release-card { margin-top: var(--space-3); }
+.release-card.is-current { border-color: var(--brand-gold); }
+.release-meta { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+.release-title { margin: var(--space-1) 0 var(--space-2); }
+.release-card .whats-new-list { margin-bottom: 0; }

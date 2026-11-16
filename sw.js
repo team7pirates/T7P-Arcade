@@ -5,7 +5,7 @@
 // RELEASING AN UPDATE: bump CACHE_VERSION (and APP_VERSION in core/version.js)
 // to the same number, and add any new files to APP_FILES.
 
-const CACHE_VERSION = '0.6.0';
+const CACHE_VERSION = '0.6.1';
 const APP_CACHE = `t7p-app-${CACHE_VERSION}`;
 const ART_CACHE = 't7p-art'; // portraits, models and music: kept across versions
 
@@ -45,6 +45,7 @@ const APP_FILES = [
   'core/screens/about.js',
   'core/screens/records.js',
   'core/screens/fight-lab.js',
+  'core/screens/changelog.js',
   'modes/grids.js',
   'modes/gauntlet.js',
   'modes/tier-target.js',

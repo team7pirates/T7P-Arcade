@@ -13,11 +13,13 @@ import { runLoading } from './screens/loading.js';
 import { renderMenu } from './screens/menu.js';
 import { renderSettings } from './screens/settings.js';
 import { renderAbout } from './screens/about.js';
+import { renderChangelog } from './screens/changelog.js';
 import { renderFightLab } from './screens/fight-lab.js';
 
 registerScreen('menu', renderMenu);
 registerScreen('settings', renderSettings);
 registerScreen('about', renderAbout);
+registerScreen('changelog', renderChangelog);
 registerScreen('fight-lab', renderFightLab, { live: true });
 
 function drawPetals() {

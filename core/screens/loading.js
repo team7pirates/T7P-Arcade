@@ -8,7 +8,7 @@ const FIRST_STEP_MS = 1800;
 const STEP_MS = 1300;
 const END_HOLD_MS = 1200;
 
-import { h, icon } from '../ui.js';
+import { h, icon, avatar } from '../ui.js';
 import { characters } from '../characters.js';
 import { MODES, modeById } from '../modes.js';
 import { profile } from '../profile.js';
@@ -70,6 +70,7 @@ export async function runLoading(app, { onRetry } = {}) {
       showError(card, err, onRetry);
       throw err;
     }
+    if (i === 0) showPlayerIcon(screen, p.iconId);
     subText.textContent = steps[i].line();
     const minTime = skipping ? 0 : (i === 0 ? FIRST_STEP_MS : STEP_MS);
     const left = minTime - (performance.now() - started);
@@ -105,4 +106,17 @@ function showError(card, err, retry) {
   );
   card.closest('.loading').append(box);
   console.error(err);
+}
+
+// Once the player has picked an icon, the banner shows it instead of the logo.
+function showPlayerIcon(screen, iconId) {
+  const c = iconId != null ? characters.get(iconId) : null;
+  const logo = screen.querySelector('.ld-logo');
+  if (!c || !logo) return;
+  const pic = avatar(c, characters, 'lg');
+  pic.classList.add('ld-logo', 'ld-avatar');
+  pic.setAttribute('aria-hidden', 'false');
+  pic.setAttribute('role', 'img');
+  pic.setAttribute('aria-label', `Your icon: ${c.name}`);
+  logo.replaceWith(pic);
 }

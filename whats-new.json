@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.6.1",
+      "date": "2026-11-16",
+      "title": "Your icon on the loading screen, and a Changelog",
+      "items": [
+        "Once you've picked your icon, it shows on the loading screen instead of the logo.",
+        "New Changelog button on the main menu lists every update. About no longer has the update history.",
+        "174 characters now have portraits, up to Greed.",
+        "About now credits the music."
+      ]
+    },
+    {
       "version": "0.6.0",
       "date": "2026-11-16",
       "title": "Music and 113 portraits",
