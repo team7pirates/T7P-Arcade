@@ -10,8 +10,9 @@ Anime, Marvel and DC character games by TEAM7PIRATES. An offline-first web app (
 | `manifest.webmanifest` | Name, icons and colors used when the app is installed |
 | `sw.js` | Offline support: saves every file on the phone |
 | `core/` | The shared code every mode uses (saves, settings, characters, screens) |
-| `core/screens/` | Loading screen, main menu, Pick Your Icon, Settings, About |
-| `modes/` | One file per mode (added wave by wave) |
+| `core/screens/` | Loading screen, main menu, Pick Your Icon, Settings, About, My Records |
+| `core/grid.js`, `core/grid-board.js` | Grid core: makes solvable grids and draws the board (Grids, Gauntlet) |
+| `modes/` | One file per mode: `grids.js`, `gauntlet.js` (Wave 1); more added wave by wave |
 | `styles/` | Colors and text styles from the T7P Arcade Design System |
 | `fonts/` | Poppins and Inter, bundled for offline play (SIL Open Font License) |
 | `icons/` | App icons and logos |

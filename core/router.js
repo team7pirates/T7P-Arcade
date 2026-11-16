@@ -1,12 +1,19 @@
 // Screen switching. Each screen is a function that returns an element.
 // Screens are addressed by the part of the address after "#/" so the phone's
-// back button works: #/ is the menu, #/settings, #/about, later #/grids …
+// back button works: #/ is the menu, #/settings, #/grids …
+//
+// A screen element can set el._cleanup = () => {…}; it runs when the player
+// leaves (stop clocks, save progress). Game screens are registered with
+// { live: true } so a background refresh never restarts a game.
 
 const screens = new Map();
 let fallback = 'menu';
 let started = false;
+let showing = null;
 
-export function registerScreen(name, render) { screens.set(name, render); }
+export function registerScreen(name, render, { live = false } = {}) {
+  screens.set(name, { render, live });
+}
 
 export function go(name) {
   const target = `#/${name === fallback ? '' : name}`;
@@ -27,7 +34,13 @@ export function current() {
 async function show() {
   const app = document.getElementById('app');
   const name = current();
-  const el = await screens.get(name)();
+  const old = app.firstElementChild;
+  if (old && typeof old._cleanup === 'function') {
+    try { old._cleanup(); } catch (e) { console.error(e); }
+  }
+  showing = name;
+  const el = await screens.get(name).render();
+  if (showing !== name) return; // the player moved on while this was loading
   app.replaceChildren(el);
   app.dataset.screen = name;
   window.scrollTo(0, 0);
@@ -42,4 +55,10 @@ export function startRouter(defaultScreen = 'menu') {
 }
 
 // Re-draw the current screen (after a setting or profile change).
-export function refresh() { if (started) show(); }
+// Game screens keep their own state and are left alone.
+export function refresh() {
+  if (!started) return;
+  const entry = screens.get(current());
+  if (entry && entry.live) return;
+  show();
+}

@@ -114,9 +114,8 @@
 .is-flagship .mode-tile-inner { position: relative; }
 .is-flagship .mode-name { padding-right: 84px; }
 
-.menu-extras { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-6); }
+.menu-extras { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-3); margin-top: var(--space-6); }
 .menu-extras .btn { padding: var(--space-3); font-size: 14px; }
-.menu-extras .btn:only-child { grid-column: 1 / -1; }
 
 .statusbar {
   display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
@@ -128,7 +127,7 @@
   .mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
   .mode-pair { grid-column: 1 / -1; grid-template-columns: repeat(4, 1fr); }
   .mode-tile { min-height: 110px; }
-  .menu-extras { max-width: 480px; margin-left: auto; margin-right: auto; }
+  .menu-extras { max-width: 640px; margin-left: auto; margin-right: auto; }
 }
 
 /* ---------- Pick Your Icon ---------- */

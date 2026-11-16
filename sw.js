@@ -5,7 +5,7 @@
 // RELEASING AN UPDATE: bump CACHE_VERSION (and APP_VERSION in core/version.js)
 // to the same number, and add any new files to APP_FILES.
 
-const CACHE_VERSION = '0.1.0';
+const CACHE_VERSION = '0.2.0';
 const APP_CACHE = `t7p-app-${CACHE_VERSION}`;
 const ART_CACHE = 't7p-art'; // portraits and models: kept across versions
 
@@ -16,6 +16,7 @@ const APP_FILES = [
   'styles/tokens.css',
   'styles/base.css',
   'styles/screens.css',
+  'styles/modes.css',
   'core/app.js',
   'core/version.js',
   'core/store.js',
@@ -26,12 +27,19 @@ const APP_FILES = [
   'core/ui.js',
   'core/router.js',
   'core/install.js',
+  'core/records.js',
+  'core/grid.js',
+  'core/grid-board.js',
+  'core/mode-kit.js',
   'core/screens/loading.js',
   'core/screens/menu.js',
   'core/screens/icon-picker.js',
   'core/screens/get-app.js',
   'core/screens/settings.js',
   'core/screens/about.js',
+  'core/screens/records.js',
+  'modes/grids.js',
+  'modes/gauntlet.js',
   'data/roster.json',
   'fonts/poppins-600.woff2',
   'fonts/poppins-700.woff2',

@@ -4,6 +4,7 @@
 import { store } from './store.js';
 import { settings } from './settings.js';
 import { profile } from './profile.js';
+import { records } from './records.js';
 import { registerScreen, startRouter, refresh } from './router.js';
 import { registerServiceWorker, install } from './install.js';
 import { h } from './ui.js';
@@ -34,7 +35,7 @@ function drawPetals() {
 async function boot() {
   const app = document.getElementById('app');
   await store.init();
-  await Promise.all([settings.load(), profile.load()]);
+  await Promise.all([settings.load(), profile.load(), records.load()]);
   drawPetals();
   try {
     await runLoading(app, { onRetry: boot });

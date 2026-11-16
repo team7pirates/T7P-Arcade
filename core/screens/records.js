@@ -1,0 +1,56 @@
+// My Records: personal bests from every mode that has been played.
+
+import { h, sheet } from '../ui.js';
+import { records } from '../records.js';
+import { formatTime } from '../mode-kit.js';
+
+const GAUNTLET_TIERS = [[8, 'CIPHER GOD'], [6, 'PHANTOM'], [4, 'SHADOW AGENT'], [2, 'OPERATIVE'], [0, 'RECRUIT']];
+const gauntletTier = (n) => GAUNTLET_TIERS.find(([min]) => n >= min)[1];
+
+export function openRecords() {
+  const g = records.get('grids');
+  const ga = records.get('gauntlet');
+  const levels = [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']];
+  const played = levels.some(([k]) => g[k]) || ga.runs;
+
+  sheet({
+    title: 'MY RECORDS',
+    content: played
+      ? h('div', { class: 'records' },
+        h('section', { class: 'rec-block' },
+          h('h3', { class: 'label-spaced set-title' }, 'GRIDS'),
+          h('table', { class: 'rec-table' },
+            h('thead', {}, h('tr', {}, ['', 'Best', 'Played', 'Streak', 'Best streak'].map((t) => h('th', { scope: 'col' }, t)))),
+            h('tbody', {}, levels.map(([k, label]) => {
+              const r = g[k];
+              return h('tr', {},
+                h('th', { scope: 'row' }, label),
+                h('td', {}, r ? String(r.best) : '–'),
+                h('td', {}, r ? String(r.played) : '0'),
+                h('td', {}, r ? String(r.streak) : '–'),
+                h('td', {}, r ? String(r.bestStreak) : '–'),
+              );
+            })),
+          ),
+          levels.some(([k]) => g[k] && g[k].fastestFlawlessMs !== undefined)
+            ? h('p', { class: 'caption muted' }, 'Fastest flawless: ' + levels
+              .filter(([k]) => g[k] && g[k].fastestFlawlessMs !== undefined)
+              .map(([k, label]) => `${label} ${formatTime(g[k].fastestFlawlessMs, { up: true })}`).join(' · '))
+            : null,
+        ),
+        h('section', { class: 'rec-block' },
+          h('h3', { class: 'label-spaced set-title' }, 'GAUNTLET'),
+          ga.runs
+            ? h('div', { class: 'rec-row' },
+              h('span', { class: 'stat gold' }, String(ga.bestGrids)),
+              h('span', {},
+                h('span', { class: 'heading' }, gauntletTier(ga.bestGrids)),
+                h('span', { class: 'caption muted rec-sub' }, `Best run in grids cleared · ${ga.runs} run${ga.runs === 1 ? '' : 's'} · most correct ${ga.bestCorrect}`),
+              ),
+            )
+            : h('p', { class: 'caption muted' }, 'No runs yet.'),
+        ),
+      )
+      : h('p', { class: 'body-text' }, 'Play Grids or Gauntlet and your best results will show up here.'),
+  });
+}

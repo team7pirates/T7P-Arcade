@@ -1,5 +1,11 @@
-// The seven modes on the main menu, in menu order. Each mode's code will live
-// in modes/<id>.js and be switched on here (ready: true) when its wave ships.
+// The seven modes on the main menu, in menu order. Each mode's code lives in
+// modes/<id>.js and is switched on here (ready: true, plus a load function)
+// when its wave ships. The loading screen calls load() for each ready mode.
+
+import { registerScreen } from './router.js';
+
+const loader = (id) => () => import(`../modes/${id}.js`)
+  .then((m) => registerScreen(id, m.render, { live: true }));
 
 export const MODES = [
   {
@@ -19,12 +25,12 @@ export const MODES = [
   },
   {
     id: 'grids', name: 'Grids', sub: 'Solo deployment',
-    flagship: false, wave: 1, ready: false,
+    flagship: false, wave: 1, ready: true, load: loader('grids'),
     blurb: 'Fill the grid with characters that match both the row and the column.',
   },
   {
     id: 'gauntlet', name: 'Gauntlet', sub: 'Survival time attack',
-    flagship: false, wave: 1, ready: false,
+    flagship: false, wave: 1, ready: true, load: loader('gauntlet'),
     blurb: 'Clear grid after grid against the clock. How far can you get?',
   },
   {

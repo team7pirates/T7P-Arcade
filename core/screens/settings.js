@@ -4,6 +4,7 @@ import { h, icon, toast, confirmSheet } from '../ui.js';
 import { settings, DEFAULT_SETTINGS } from '../settings.js';
 import { store } from '../store.js';
 import { profile } from '../profile.js';
+import { records } from '../records.js';
 import { back, refresh } from '../router.js';
 import { APP_VERSION } from '../version.js';
 
@@ -143,7 +144,7 @@ function restoreButton() {
     });
     if (!ok) return;
     await store.replaceAll(parsed.data);
-    await Promise.all([settings.load(), profile.load()]);
+    await Promise.all([settings.load(), profile.load(), records.load()]);
     refresh();
     toast('Backup restored.');
   });
@@ -154,13 +155,13 @@ function restoreButton() {
 async function eraseAll() {
   const ok = await confirmSheet({
     title: 'ERASE EVERYTHING?',
-    message: 'This deletes your codename, icon, settings and every save on this device. It cannot be undone. Back up first if you might want them.',
+    message: 'This deletes your codename, icon, settings, records and every save on this device. It cannot be undone. Back up first if you might want them.',
     confirmLabel: 'Erase',
     danger: true,
   });
   if (!ok) return;
   await store.replaceAll({});
-  await Promise.all([settings.load(), profile.load()]);
+  await Promise.all([settings.load(), profile.load(), records.load()]);
   refresh();
   toast('Everything was erased.');
 }
