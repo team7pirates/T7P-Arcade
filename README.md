@@ -12,6 +12,7 @@ Anime, Marvel and DC character games by TEAM7PIRATES. An offline-first web app (
 | `core/` | The shared code every mode uses (saves, settings, characters, screens) |
 | `core/screens/` | Loading screen, main menu, Pick Your Icon, Settings, About, My Records |
 | `core/grid.js`, `core/grid-board.js` | Grid core: makes solvable grids and draws the board (Grids, Gauntlet) |
+| `core/combat.js`, `core/battle-view.js` | Combat core: the fight math (role wheel, specials, best of 3) and the animated battle screen. Balance numbers are in `TUNING` at the top of combat.js |
 | `modes/` | One file per mode: `grids.js`, `gauntlet.js` (Wave 1); more added wave by wave |
 | `styles/` | Colors and text styles from the T7P Arcade Design System |
 | `fonts/` | Poppins and Inter, bundled for offline play (SIL Open Font License) |

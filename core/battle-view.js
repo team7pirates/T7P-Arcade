@@ -1,0 +1,244 @@
+// The battle screen: plays a match from the Combat core as an animated card
+// fight. Two cards face off (yours on the left), trade hits with move names,
+// damage numbers and health bars; lineups sit above and below; the turn
+// counter, round score and MATCH POINT banner run along the top.
+//
+//   const view = playMatch(el, { teamA, teamB, onDone })
+//   view.setSpeed(2); view.skip();
+
+import { h, avatar } from './ui.js';
+import { characters } from './characters.js';
+import { tierBadge } from './card.js';
+import { runMatch } from './combat.js';
+import { settings } from './settings.js';
+
+const STATUS_LABEL = { burn: 'BURN', stun: 'STUN', guard: 'GUARD' };
+const fmt = (n) => Math.round(n).toLocaleString();
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// How long each event shows at 1× speed (ms).
+const TIMING = { 'round-start': 1100, enter: 450, turn: 120, attack: 520, damage: 380, clutch: 900, status: 300, stunned: 600, ko: 700, 'round-end': 1200, meter: 0, timeout: 800 };
+
+export function playMatch(container, { teamA, teamB, seed, labels = { A: 'YOU', B: 'THEY' }, onDone }) {
+  const result = runMatch(teamA, teamB, { seed: seed ?? Date.now() });
+  const chars = { A: teamA, B: teamB };
+  let speed = 1;
+  let skipping = !!settings.value.skipFightScenes;
+  let stopped = false;
+
+  // ---- live state shown on screen ----
+  const live = {
+    A: { idx: 0, hp: [], max: [], ko: new Set(), status: {}, meter: 0 },
+    B: { idx: 0, hp: [], max: [], ko: new Set(), status: {}, meter: 0 },
+    round: 1, turn: 0, score: [0, 0], deciding: false,
+  };
+  for (const s of ['A', 'B']) {
+    result.events[0][s === 'A' ? 'teamA' : 'teamB'].forEach((f, i) => { live[s].hp[i] = f.maxHp; live[s].max[i] = f.maxHp; });
+  }
+
+  // ---- layout ----
+  const turnEl = h('span', { class: 'bt-turn' }, 'ROUND 1');
+  const scoreEl = h('div', { class: 'bt-score', 'aria-live': 'polite' });
+  const banner = h('div', { class: 'bt-banner', hidden: true });
+  const lineupB = h('div', { class: 'bt-lineup is-foe', 'aria-label': `${labels.B} lineup` });
+  const lineupA = h('div', { class: 'bt-lineup', 'aria-label': `${labels.A} lineup` });
+  const slotA = h('div', { class: 'bt-slot is-you' });
+  const slotB = h('div', { class: 'bt-slot is-foe' });
+  const speedBtn = h('button', { class: 'btn btn-secondary bt-speed', onClick: () => setSpeed(speed === 1 ? 2 : 1), 'aria-label': 'Change speed' }, '1×');
+  const skipBtn = h('button', { class: 'btn btn-secondary bt-speed', onClick: () => skip() }, 'Skip');
+  const root = h('section', { class: 'battle', 'aria-label': 'Fight' },
+    h('div', { class: 'bt-top' }, turnEl, scoreEl, h('div', { class: 'bt-controls' }, speedBtn, skipBtn)),
+    lineupB,
+    h('div', { class: 'bt-arena' }, slotA, h('span', { class: 'bt-vs', 'aria-hidden': 'true' }, 'VS'), slotB, banner),
+    lineupA,
+  );
+  container.replaceChildren(root);
+
+  const cardEls = { A: null, B: null };
+
+  function drawScore() {
+    const pips = (n) => [0, 1].map((i) => h('span', { class: `bt-pip${i < n ? ' on' : ''}` }));
+    scoreEl.replaceChildren(
+      h('span', { class: 'bt-side' }, labels.A), ...pips(live.score[0]),
+      h('span', { class: 'bt-dash' }, '–'),
+      ...pips(live.score[1]).reverse(), h('span', { class: 'bt-side' }, labels.B),
+    );
+  }
+
+  function drawLineup(side) {
+    const el = side === 'A' ? lineupA : lineupB;
+    if (chars[side].length < 2) { el.replaceChildren(); return; }
+    el.replaceChildren(...chars[side].map((c, i) => h('span', {
+      class: `bt-mini${i === live[side].idx ? ' is-active' : ''}${live[side].ko.has(i) ? ' is-ko' : ''}`,
+      title: c.name,
+    }, avatar(c, characters, 'sm'), live[side].ko.has(i) ? h('span', { class: 'bt-skull', 'aria-label': 'knocked out' }, '✕') : null)));
+  }
+
+  function drawCard(side) {
+    const s = live[side];
+    const c = chars[side][s.idx];
+    const hp = s.hp[s.idx];
+    const max = s.max[s.idx];
+    const pct = Math.max(0, (hp / max) * 100);
+    const statusList = Object.entries(s.status).filter(([, v]) => v);
+    const card = h('div', { class: `bt-card fr-${c.franchise}` },
+      h('div', { class: 'bt-pic' },
+        avatar(c, characters, 'card'),
+        h('span', { class: 'char-pl' }, h('span', { class: 'char-pl-num' }, String(c.powerLevel)), tierBadge(c)),
+        statusList.length ? h('span', { class: 'bt-status' }, statusList.map(([k]) => h('span', { class: `bt-st st-${k}` }, STATUS_LABEL[k]))) : null,
+      ),
+      h('div', { class: 'bt-name' }, c.name),
+      h('div', { class: 'bt-role' }, c.mainRole ? h('span', { class: `chip role-${c.mainRole.toLowerCase()}` }, c.mainRole) : null),
+      h('div', { class: 'bt-meter', 'aria-label': `Special meter ${s.meter}%` },
+        [0, 1, 2, 3, 4].map((i) => h('span', { class: `bt-mpip${s.meter >= (i + 1) * 20 ? ' on' : ''}` }))),
+      h('div', { class: `bt-hp${pct < 30 ? ' is-low' : ''}`, role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': max, 'aria-valuenow': hp, 'aria-label': `${c.name} health` },
+        h('i', { style: { width: `${pct}%` } }),
+        h('span', {}, `${fmt(hp)} / ${fmt(max)}`)),
+    );
+    cardEls[side] = card;
+    (side === 'A' ? slotA : slotB).replaceChildren(card);
+  }
+
+  function drawAll() {
+    turnEl.textContent = live.turn ? `ROUND ${live.round} · TURN ${live.turn}` : `ROUND ${live.round}`;
+    drawScore();
+    drawLineup('A');
+    drawLineup('B');
+    drawCard('A');
+    drawCard('B');
+  }
+
+  function pop(side, text, cls) {
+    if (skipping) return;
+    const card = cardEls[side];
+    if (!card) return;
+    const el = h('span', { class: `bt-pop ${cls}` }, text);
+    card.append(el);
+    setTimeout(() => el.remove(), 1100 / speed);
+  }
+  function flash(side, cls) {
+    if (skipping || settings.reducedMotion()) return;
+    const card = cardEls[side];
+    if (!card) return;
+    card.classList.remove(cls);
+    void card.offsetWidth;
+    card.classList.add(cls);
+  }
+  function showBanner(text, cls = '') {
+    if (skipping) return;
+    banner.textContent = text;
+    banner.className = `bt-banner ${cls}`;
+    banner.hidden = false;
+    setTimeout(() => { banner.hidden = true; }, 1000 / speed);
+  }
+
+  // ---- play the events ----
+  async function play() {
+    drawAll();
+    for (const ev of result.events.slice(1)) {
+      if (stopped) return;
+      apply(ev);
+      const ms = TIMING[ev.t] ?? 0;
+      if (!skipping && ms) await wait(ms / speed);
+    }
+    finish();
+  }
+
+  function apply(ev) {
+    const other = (s) => (s === 'A' ? 'B' : 'A');
+    switch (ev.t) {
+      case 'round-start':
+        live.round = ev.round;
+        live.turn = 0;
+        live.deciding = ev.deciding;
+        for (const s of ['A', 'B']) {
+          live[s].idx = 0; live[s].ko.clear(); live[s].status = {}; live[s].meter = 0;
+          live[s].hp = live[s].max.slice();
+        }
+        drawAll();
+        showBanner(ev.deciding ? 'MATCH POINT' : `ROUND ${ev.round}`, ev.deciding ? 'is-match' : '');
+        break;
+      case 'enter':
+        live[ev.side].idx = ev.idx;
+        live[ev.side].hp[ev.idx] = ev.hp;
+        live[ev.side].status = {};
+        live[ev.side].meter = 0;
+        drawLineup(ev.side);
+        drawCard(ev.side);
+        flash(ev.side, 'anim-enter');
+        break;
+      case 'turn':
+        live.turn += 1;
+        turnEl.textContent = `ROUND ${live.round} · TURN ${live.turn}`;
+        break;
+      case 'attack':
+        flash(ev.side, ev.side === 'A' ? 'anim-lunge-r' : 'anim-lunge-l');
+        if (ev.special) pop(ev.side, `${ev.move.toUpperCase()}!`, 'pop-move');
+        if (ev.heal) { live[ev.side].hp[live[ev.side].idx] = ev.hp; drawCard(ev.side); pop(ev.side, `+${fmt(ev.heal)}`, 'pop-heal'); }
+        if (ev.crit) pop(other(ev.side), 'CRIT!', 'pop-crit');
+        if (ev.adv && !ev.special) pop(ev.side, 'ADVANTAGE', 'pop-adv');
+        break;
+      case 'damage': {
+        const s = live[ev.side];
+        s.hp[s.idx] = ev.hp;
+        if (ev.kind === 'burn') s.status.burn = true;
+        drawCard(ev.side);
+        flash(ev.side, 'anim-hit');
+        pop(ev.side, `-${fmt(ev.dmg)}`, ev.kind === 'burn' ? 'pop-burn' : 'pop-dmg');
+        break;
+      }
+      case 'clutch':
+        pop(ev.side, 'CLUTCH!', 'pop-clutch');
+        break;
+      case 'status':
+        live[ev.side].status[ev.status] = true;
+        drawCard(ev.side);
+        break;
+      case 'stunned':
+        live[ev.side].status.stun = false;
+        drawCard(ev.side);
+        pop(ev.side, 'STUNNED', 'pop-crit');
+        break;
+      case 'meter':
+        live[ev.side].meter = ev.value;
+        if (!skipping) drawCard(ev.side);
+        break;
+      case 'ko':
+        live[ev.side].ko.add(ev.idx);
+        flash(ev.side, 'anim-ko');
+        pop(ev.side, 'KO', 'pop-ko');
+        drawLineup(ev.side);
+        break;
+      case 'round-end':
+        live.score = ev.score;
+        drawScore();
+        showBanner(`${ev.winner === 'A' ? labels.A : labels.B} TAKE ROUND ${ev.round}`, ev.winner === 'A' ? 'is-win' : 'is-loss');
+        break;
+      default:
+        break;
+    }
+  }
+
+  function finish() {
+    if (stopped) return;
+    stopped = true;
+    live.score = result.score;
+    drawAll();
+    const won = result.winner === 'A';
+    const over = h('div', { class: `bt-result ${won ? 'is-win' : 'is-loss'}`, role: 'status' },
+      h('p', { class: 'display-lg win-text' }, won ? 'YOU WIN' : 'THEY WIN'),
+      h('p', { class: 'label-spaced' }, `${result.score[0]} – ${result.score[1]} · ${result.rounds} ROUNDS`),
+    );
+    root.append(over);
+    speedBtn.disabled = true;
+    skipBtn.disabled = true;
+    if (onDone) onDone(result);
+  }
+
+  function setSpeed(n) { speed = n; speedBtn.textContent = `${n}×`; }
+  function skip() { skipping = true; }
+
+  play();
+  return { result, setSpeed, skip, stop: () => { stopped = true; } };
+}
+

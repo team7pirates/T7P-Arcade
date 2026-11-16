@@ -10,7 +10,6 @@ export const DEFAULT_SETTINGS = {
   musicVolume: 60,       // 0–100. Used once the royalty-free playlist is added.
   sfxVolume: 80,         // 0–100.
   skipFightScenes: false,
-  fightScenes3d: true,   // 3D fight scenes on/off (cards only when off).
   reducedMotion: null,   // null = follow the phone's own setting.
   colorblindTiers: false,
 };

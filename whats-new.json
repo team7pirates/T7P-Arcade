@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.5.0",
+      "date": "2026-11-16",
+      "title": "The Combat core and the Fight Lab",
+      "items": [
+        "Fights are here: two cards face off and trade hits, with damage numbers, health bars, special moves and a best-of-3 round score.",
+        "The role wheel: Striker beats Mystic and Tactician, Mystic beats Tactician and Tank, Tactician beats Tank and Speedster, Tank beats Speedster and Striker, Speedster beats Striker and Mystic.",
+        "Each role has a special move: Finisher, Iron Wall, Blitz, Hex and Counterplay.",
+        "Fight Lab on the main menu: pick any characters (1 v 1, 3 v 3 or 5 v 5), watch them fight, or simulate 1,000 fights to see the odds.",
+        "The first character portraits are in: Goku and Superman."
+      ]
+    },
+    {
       "version": "0.4.0",
       "date": "2026-11-15",
       "title": "Wave 2: Tier Target and Blind Tier List",

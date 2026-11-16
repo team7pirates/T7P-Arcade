@@ -32,6 +32,7 @@ export function renderMenu() {
       install.installed ? null
         : h('button', { class: 'btn btn-secondary', onClick: openGetTheApp }, icon('download', 18), 'Get the app'),
       h('button', { class: 'btn btn-secondary', onClick: openRecords }, 'My records'),
+      h('button', { class: 'btn btn-secondary', onClick: () => go('fight-lab') }, 'Fight Lab'),
       h('button', { class: 'btn btn-secondary', onClick: () => go('about') }, icon('info', 18), 'About'),
     ),
     h('button', { class: 'link-btn', onClick: openRatingInfo }, 'How are characters rated?'),

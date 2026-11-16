@@ -22,7 +22,6 @@ export function renderSettings() {
 
     group('Fight scenes',
       toggle('Skip fight scenes', 'Go straight to the result after each fight.', 'skipFightScenes', s.skipFightScenes),
-      toggle('3D fight scenes', 'Turn off on older phones to show card fights only.', 'fightScenes3d', s.fightScenes3d),
     ),
 
     group('Display',
