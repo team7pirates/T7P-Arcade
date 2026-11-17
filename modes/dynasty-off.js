@@ -606,8 +606,8 @@ export function evaluateTrade(L, ti, give, get) {
 // fromTi sends `give` to toTi and gets `get` back.
 export function doTrade(L, fromTi, toTi, give, get) {
   const a = L.teams[fromTi]; const b = L.teams[toTi];
-  for (const pid of give) { a.roster = a.roster.filter((x) => x !== pid); b.roster.push(pid); L.players[pid].team = b.i; }
-  for (const pid of get) { b.roster = b.roster.filter((x) => x !== pid); a.roster.push(pid); L.players[pid].team = a.i; }
+  for (const pid of give) { a.roster = a.roster.filter((x) => x !== pid); b.roster.push(pid); L.players[pid].team = b.i; L.players[pid].formerTeam = a.i; }
+  for (const pid of get) { b.roster = b.roster.filter((x) => x !== pid); a.roster.push(pid); L.players[pid].team = a.i; L.players[pid].formerTeam = b.i; }
   L.trades.push({ season: L.season, week: L.week, a: a.i, b: b.i, aGot: get.slice(), bGot: give.slice() });
   L.news.unshift({ week: L.week, kind: 'TRADE', team: a.i, title: `${a.name} trade ${give.map((pid) => L.players[pid].name).join(' + ')} to ${b.name}`,
     text: `${a.name} get ${get.map((pid) => L.players[pid].name).join(' + ')} back.` });

@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.14.0",
+      "date": "2026-11-17",
+      "title": "Dynasty: a new League screen and the weekly show",
+      "items": [
+        "A new League screen: Power 25 (or your conference) on the left, Games of the Week in the middle, news and the Draft Room below, and your next game, fighter leaders and the GPP race on the right.",
+        "Games of the Week are bigger: huge crests on each side, records and streaks, the Dojo pick and the TV slot. Rivalry games show the rivalry trophy, and the GPP race now has its own slide.",
+        "Around the League has three tabs: League News, your Conference, and Free Agents (signings, trades, tags and the best upcoming free agents).",
+        "Weekly Recap: open a save and you get last week's show: Fighter, KO Artist, Rookie and Bummer of the Week, Game of the Week, the biggest comeback, the blowout, the upset, top-25 clashes, the playoff picture, Power 25 risers and fallers, streaks, draft stock and injuries. Flip back through any week.",
+        "Weekly Preview: hit Continue for the week ahead: Game of the Week with win probability, Ace vs Ace matchups, top-25 games with playoff chances (now, with a win, with a loss), upset alert and coin flips, GPP watch, rivalry games with the series record and last meeting, cards facing their old team, and the injury report.",
+        "Tick \"Don't show again this week\" to skip them until next week. Both are also on the Next Game card.",
+        "Draft board: tap ☆ Watch on any prospect, then use the My Board tab to see only the prospects you're watching or have scouted.",
+        "Fixed: injury news now shows up in Around the League."
+      ]
+    },
+    {
       "version": "0.13.0",
       "date": "2026-11-17",
       "title": "Dynasty: The End of an Era, plus sound effects",

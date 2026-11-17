@@ -32,10 +32,7 @@ export const rivalryList = (L) => R.RIVALRIES.map(([a, b, name]) => ({
 }));
 
 // ---------- The Fight Night Dojo ----------
-export function winChance(L, home, away) {
-  const d = R.strength(L, L.teams[home]) - R.strength(L, L.teams[away]) + 0.8;
-  return 1 / (1 + Math.exp(-d / 3.2));
-}
+export const winChance = (L, home, away) => R.winChance(L, home, away);
 function marquee(L, week) {
   const games = L.schedule[week - 1] || [];
   const val = (g) => 60 - (L.teams[g.home].rank || 32) - (L.teams[g.away].rank || 32) + (R.isRivalry(g.home, g.away, L) ? 30 : 0)

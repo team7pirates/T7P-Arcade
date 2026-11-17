@@ -289,6 +289,11 @@ export const rival = (league, ti) => {
 };
 export const isRivalry = (a, b, league) => RIVALRIES.find((r) => (r[0] === league.teams[a].abbr && r[1] === league.teams[b].abbr) || (r[1] === league.teams[a].abbr && r[0] === league.teams[b].abbr)) || null;
 
+// Chance the home team wins (home edge built in).
+export function winChance(league, home, away) {
+  const d = strength(league, league.teams[home]) - strength(league, league.teams[away]) + 0.8;
+  return 1 / (1 + Math.exp(-d / 3.2));
+}
 export function strength(league, team) {
   const ps = team.roster.map((pid) => league.players[pid]).sort((a, b) => b.power - a.power);
   const top = ps.slice(0, 5).reduce((n, p) => n + p.power, 0) / 5;
@@ -365,8 +370,17 @@ export function playGame(league, game, lineups, { seed, events: givenEvents, res
   const big = !!isRivalry(game.home, game.away, league) || league.phase === 'playoffs';
   const A = lineups.home.map((pid) => fightCard(league, league.players[pid], { big }));
   const B = lineups.away.map((pid) => fightCard(league, league.players[pid], { big }));
+  const odds = winChance(league, game.home, game.away);
+  const rk = [league.teams[game.home].rank || 33, league.teams[game.away].rank || 33];
   const res = given || runMatch(A, B, { seed: seed ?? Math.floor(rand() * 2 ** 31) });
   const events = givenEvents || res.events;
+  // Damage dealt by each side per round, and who took each round.
+  const rdmg = []; const rwin = [];
+  for (const ev of events) {
+    if (ev.t === 'round-start') rdmg.push([0, 0]);
+    else if (ev.t === 'damage' && rdmg.length) rdmg[rdmg.length - 1][ev.side === 'B' ? 0 : 1] += ev.dmg || 0;
+    else if (ev.t === 'round-end') rwin.push(ev.winner === 'A' ? 0 : 1);
+  }
   const dmg = damageDealt(events, 5, 5);
   const ko = { A: [0, 0, 0, 0, 0], B: [0, 0, 0, 0, 0] };
   const sp = { A: [0, 0, 0, 0, 0], B: [0, 0, 0, 0, 0] };
@@ -414,11 +428,22 @@ export function playGame(league, game, lineups, { seed, events: givenEvents, res
   }
   const mvpSide = homeWon ? 'A' : 'B';
   const mvpIdx = dmg[mvpSide].indexOf(Math.max(...dmg[mvpSide]));
+  const lines = {};
+  for (const [s, , pids] of sides) pids.forEach((pid, i) => { lines[pid] = [Math.round(dmg[s][i]), ko[s][i], sp[s][i]]; });
   game.result = {
     winner: homeWon ? game.home : game.away, score: res.score,
     home: lineups.home, away: lineups.away,
     mvp: (homeWon ? lineups.home : lineups.away)[mvpIdx],
+    odds: Math.round(odds * 1000) / 1000, rk, rounds: rdmg.map((r) => r.map(Math.round)), rwin, lines,
   };
+  // Head-to-head book (series record, last meeting, streak).
+  const key = game.home < game.away ? `${game.home}-${game.away}` : `${game.away}-${game.home}`;
+  league.h2h = league.h2h || {};
+  const hh = league.h2h[key] || (league.h2h[key] = { w: {}, last: null, streak: null });
+  const win = game.result.winner;
+  hh.w[win] = (hh.w[win] || 0) + 1;
+  hh.last = { season: league.season, week: league.week, winner: win, score: [Math.max(...res.score), Math.min(...res.score)] };
+  hh.streak = hh.streak && hh.streak.team === win ? { team: win, n: hh.streak.n + 1 } : { team: win, n: 1 };
   return game.result;
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -441,6 +466,8 @@ export function endWeek(league) {
   const rand = randOf(league);
   const games = league.schedule[league.week - 1];
   league.lastWeekScores = games.map((g) => ({ home: g.home, away: g.away, winner: g.result.winner, score: g.result.score }));
+  // Who got hurt this week (kept for the news and the weekly recap).
+  league.hurtWeek = { season: league.season, week: league.week, pids: Object.values(league.players).filter((p) => p.injuredNow && p.team != null).map((p) => p.pid) };
   // Recovery, injuries, training focus.
   const focus = league.user?.focus || 'rest';
   for (const p of Object.values(league.players)) {
@@ -458,6 +485,7 @@ export function endWeek(league) {
   // Growth and Aura every 3 weeks.
   if (league.week % MAG_EVERY === 0) growthTick(league, rand);
   if (hooks.afterWeek) hooks.afterWeek(league, games);
+  if (hooks.afterWeekWeekly) hooks.afterWeekWeekly(league, games);
   rankPower(league);
   if (league.week % MAG_EVERY === 0 && hooks.issue) hooks.issue(league);
   league.week += 1;
@@ -538,7 +566,7 @@ function weekNews(league, games) {
   const streaker = league.teams.slice().sort((a, b) => b.streak - a.streak)[0];
   if (streaker.streak >= 4) out.push({ week: wk, kind: 'STREAK', team: streaker.i, title: `${streaker.name} win ${streaker.streak} straight`, text: 'The longest run in the AFL right now.' });
   for (const p of Object.values(league.players)) {
-    if (p.injuredNow && p.team != null) out.push({ week: wk, kind: 'INJURY', team: p.team, title: `${p.name} hurt`, text: `${league.teams[p.team].name} will be without their ${p.role} for ${p.injury} week${p.injury > 1 ? 's' : ''}.` });
+    if (league.hurtWeek?.pids.includes(p.pid) && p.team != null) out.push({ week: wk, kind: 'INJURY', team: p.team, title: `${p.name} hurt`, text: `${league.teams[p.team].name} will be without their ${p.role} for ${p.injury} week${p.injury > 1 ? 's' : ''}.` });
   }
   return out.slice(0, 6);
 }

@@ -16,6 +16,7 @@ import * as R from './dynasty-rules.js';
 import * as O from './dynasty-off.js';
 import * as MD from './dynasty-media.js';
 import * as LG from './dynasty-legacy.js';
+import * as WK from './dynasty-weekly.js';
 import { sfx } from '../core/sfx.js';
 
 const help = howToPlay('dynasty', 'Dynasty', [
@@ -27,6 +28,7 @@ const help = howToPlay('dynasty', 'Dynasty', [
   'Hype comes from winning fights. Aura comes from being seen: magazine picks and awards. Both carry over.',
   'Meet the front office\'s expectation or your job security drops. Miss it three seasons running and you\'re fired.',
   'Front Office: trade until the Week 8 deadline, sign emergency pickups, and watch the soft cap (150). Going over comes off next season\'s cap.',
+  'Each time you open a save you get the Weekly Recap, then the Weekly Preview. Tick "Don\'t show again this week" to skip them; both are also on the Next Game card.',
   'Draft: you earn 8 scouting points a week. 6 points reveals a prospect\'s potential; a second report shows Generational Talent or Bust risk.',
   'Off-season: retirements, awards night, re-sign (one Franchise Tag), up to 2 development upgrades, a one-round draft, then 3 rounds of free agency.',
   'Media: OSM prints an issue every 3 weeks. The cover star and your spotlight player gain Aura. The Fight Night Dojo picks the big games every week.',
@@ -111,7 +113,7 @@ export async function render() {
               s.complete ? h('p', { class: 'caption gold' }, '★ LEGACY COMPLETE · THE NEW ERA') : null,
               h('p', { class: 'caption muted' }, `${s.user.coach} · Season ${s.season} · ${s.phase === 'done' ? 'season complete' : s.phase === 'offseason' ? 'off-season' : s.phase === 'playoffs' ? 'playoffs' : `week ${s.week}`} · ${t.w}-${t.l}`))),
             h('div', { class: 'btn-row' },
-              h('button', { class: 'btn btn-primary', onClick: () => { L = LG.migrate(MD.migrate(O.migrate(s))); slot = n; tab = 'league'; drawHub(); } }, 'Continue'),
+              h('button', { class: 'btn btn-primary', onClick: () => { L = LG.migrate(MD.migrate(O.migrate(s))); slot = n; enterDynasty(); } }, 'Continue'),
               h('button', { class: 'btn btn-secondary', onClick: async () => {
                 const ok = await confirmSheet({ title: 'DELETE THIS DYNASTY?', message: `${t.name}, season ${s.season}. This can't be undone.`, confirmLabel: 'Delete', danger: true });
                 if (ok) { await store.remove(slotKey(n)); await store.remove(`dynasty:photos:slot${n}`); toast('Save deleted.'); }
@@ -273,16 +275,18 @@ export async function render() {
       const g = R.userGame(L);
       const opp = team(g.home === L.user.team ? g.away : g.home);
       const rv = R.isRivalry(g.home, g.away, L);
-      return h('section', { class: 'dy-next dy-panel' },
-        h('p', { class: 'label-spaced gold' }, `NEXT GAME · WEEK ${L.week}`),
-        h('div', { class: 'dy-next-row' }, crest(opp, 56), h('div', {},
+      return h('section', { class: 'dy-next dy-panel dy-next2' },
+        h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'NEXT GAME'), h('p', { class: 'caption muted' }, `WEEK ${L.week}`)),
+        h('div', { class: 'dy-next-row' }, rv ? trophy(rv[2], 64) : crest(opp, 64), h('div', {},
           h('p', { class: 'caption muted' }, g.home === L.user.team ? 'VS' : 'AT'),
-          h('p', { class: 'heading' }, `${opp.rank ? `#${opp.rank} ` : ''}${opp.name}`),
+          h('p', { class: 'dy-next-name' }, `${opp.rank && opp.rank <= 25 ? `#${opp.rank} ` : ''}${opp.name}`.toUpperCase()),
           h('p', { class: 'caption muted' }, `${opp.w}-${opp.l} · ${team(g.home).arena}`))),
-        rv ? h('div', { class: 'dy-trophy-row' }, trophy(rv[2], 56), h('p', { class: 'dy-trophy-line' }, `RIVALRY · ${rv[2].toUpperCase()} IS ON THE LINE`)) : null,
-        h('div', { class: 'btn-row' },
-          h('button', { class: 'btn btn-primary', onClick: () => openGamePlan() }, 'Game Plan'),
-          h('button', { class: 'btn btn-secondary', onClick: autoWeek }, 'Auto-play week')));
+        rv ? h('p', { class: 'dy-trophy-line' }, `RIVALRY · ${rv[2].toUpperCase()} IS ON THE LINE`) : null,
+        h('button', { class: 'btn btn-primary btn-wide', onClick: () => openGamePlan() }, '📋 Game Plan'),
+        h('div', { class: 'btn-row dy-next-links' },
+          h('button', { class: 'btn btn-secondary btn-sm', onClick: autoWeek }, 'Auto-play week'),
+          L.week > 1 ? h('button', { class: 'btn btn-secondary btn-sm', onClick: () => showRecap(L.week - 1, () => { tab = 'league'; drawHub(); }) }, 'Weekly recap') : null,
+          h('button', { class: 'btn btn-secondary btn-sm', onClick: () => showPreview(() => { tab = 'league'; drawHub(); }) }, 'Weekly preview')));
     }
     if (L.phase === 'playoffs') {
       const g = R.playoffGameForUser(L);
@@ -314,6 +318,143 @@ export async function render() {
         h('button', { class: 'btn btn-secondary', onClick: () => drawSeasonEnd(last) }, 'Season summary')));
   }
 
+  // ---------- The League hub (v0.14.0 layout) ----------
+  const hubTab = { power: 'p25', news: 'league', draft: 'top', lead: 'dmg' };
+  // A row of tabs that swaps its body in place (no full redraw).
+  function tabbed(key, tabs, body, extra = null) {
+    const box = h('div', { class: 'dy-tabbed-body' }, body(hubTab[key]));
+    const bar = h('div', { class: 'dy-subtabs', role: 'tablist' }, tabs.map(([id, label]) => h('button', {
+      class: `dy-subtab${hubTab[key] === id ? ' is-on' : ''}`, role: 'tab', 'aria-selected': hubTab[key] === id ? 'true' : 'false',
+      onClick: (e) => { hubTab[key] = id; bar.querySelectorAll('button').forEach((b) => { const on = b === e.currentTarget; b.classList.toggle('is-on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); }); fill(box, body(id)); },
+    }, label)));
+    return [bar, extra, box];
+  }
+  const kfmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : String(Math.round(n)));
+  const confOf = (t) => (t.div < 2 ? 0 : 1);
+  const lastResult = (ti) => {
+    for (let w = Math.min(L.week - 1, R.WEEKS); w >= 1; w--) {
+      const g = L.schedule[w - 1]?.find((x) => (x.home === ti || x.away === ti) && x.result);
+      if (g) { const won = g.result.winner === ti; const opp = team(g.home === ti ? g.away : g.home); const s = g.result.score; const sc = g.home === ti ? s : [s[1], s[0]]; return `${won ? 'W' : 'L'} ${sc[0]}-${sc[1]} ${g.home === ti ? 'vs' : 'at'} ${opp.abbr}`; }
+    }
+    return null;
+  };
+  const streakText = (t) => (t.streak >= 2 ? `won ${t.streak} straight` : t.streak <= -2 ? `lost ${-t.streak} straight` : null);
+  const rankName = (t) => `${t.rank && t.rank <= 25 ? `#${t.rank} ` : ''}${t.name}`;
+
+  function gameSlide(g, k) {
+    const a = team(g.home); const b = team(g.away);
+    const rv = R.isRivalry(g.home, g.away, L);
+    const kicker = rv ? `RIVALRY · ${rv[2].toUpperCase()}` : (a.rank <= 10 && b.rank <= 10) ? 'TOP-10 SHOWDOWN' : k === 0 ? 'GAME OF THE WEEK' : 'RANKED SHOWDOWN';
+    const bar = (t, side) => h('div', { class: `dy-gw-bar is-${side}`, style: `--c:${t.c1}` },
+      h('p', { class: 'dy-gw-bar-name' }, h('span', { class: 'dy-gw-rank', style: `color:${t.c2}` }, t.rank && t.rank <= 25 ? `#${t.rank} ` : ''), t.name.toUpperCase()),
+      h('p', { class: 'dy-gw-bar-sub' }, [`${t.w}-${t.l}`, lastResult(t.i), streakText(t)].filter(Boolean).join(' · ')));
+    return h('div', { class: 'dy-slide dy-gw', style: `--a1:${a.c1};--a2:${a.c2};--b1:${b.c1};--b2:${b.c2}` },
+      tinted(a, b, 'dy-arena dy-gw-arena'),
+      h('div', { class: 'dy-gw-crest is-a' }, crest(a, 230)),
+      h('div', { class: 'dy-gw-crest is-b' }, crest(b, 230)),
+      h('div', { class: 'dy-gw-mid' },
+        h('p', { class: 'dy-gw-brand' }, h('span', {}, 'THE FIGHT NIGHT'), 'DOJO'),
+        h('p', { class: 'dy-gw-kicker' }, kicker),
+        h('p', { class: 'dy-gw-team' }, h('span', { style: `color:${a.c2 === '#000000' ? '#fff' : a.c2}` }, a.rank && a.rank <= 25 ? `#${a.rank} ` : ''), a.name.toUpperCase()),
+        rv ? h('div', { class: 'dy-gw-trophy' }, trophy(rv[2], 110)) : h('p', { class: 'dy-gw-vs' }, 'VS'),
+        h('p', { class: 'dy-gw-team' }, h('span', { style: `color:${b.c2 === '#000000' ? '#fff' : b.c2}` }, b.rank && b.rank <= 25 ? `#${b.rank} ` : ''), b.name.toUpperCase()),
+        h('div', { class: 'dy-gw-when' }, h('p', { class: 'heading' }, `WEEK ${L.week} · SEASON ${L.season}`), h('p', { class: 'caption' }, a.arena.toUpperCase()), h('p', { class: 'caption muted' }, `${R.DIVISIONS[a.div].toUpperCase()} DIVISION`)),
+        h('div', { class: 'dy-gw-boxes' },
+          h('div', {}, h('p', { class: 'heading' }, `${team(g.pick).abbr} ${g.chance}%`), h('p', { class: 'caption muted' }, 'DOJO PICK')),
+          h('div', {}, h('p', { class: 'heading loss' }, k === 0 ? 'SBN PRIME' : 'AGN'), h('p', { class: 'caption muted' }, 'TV')))),
+      bar(a, 'a'), bar(b, 'b'));
+  }
+  function raceSlide() {
+    const race = R.awardRace(L).slice(0, 4);
+    if (!race.length) return null;
+    const lead = race[0].p;
+    return h('div', { class: 'dy-slide dy-gw dy-gw-race' },
+      tinted(team(lead.team), team(lead.team), 'dy-arena dy-gw-arena'),
+      h('div', { class: 'dy-gw-crest is-a dy-gw-lead' }, pAvatar(lead, 'card')),
+      h('div', { class: 'dy-gw-crest is-b' }, trophy(R.AWARDS.prodigy, 250)),
+      h('div', { class: 'dy-gw-mid' },
+        h('p', { class: 'dy-gw-brand' }, h('span', {}, 'THE FIGHT NIGHT'), 'DOJO'),
+        h('p', { class: 'dy-gw-kicker' }, 'THE GPP RACE'),
+        h('ol', { class: 'dy-gw-racelist' }, race.map(({ p, s }, i) => h('li', {}, h('span', { class: 'dy-gw-rank gold' }, String(i + 1)), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name.toUpperCase()), h('span', { class: 'caption muted' }, `${team(p.team).abbr} · ${kfmt(p.stats.dmg)} dmg · ${p.stats.ko} KOs`)), h('span', { class: 'dy-num gold' }, R.oddsFor(i, s, race[0].s)))))),
+      h('div', { class: 'dy-gw-bar is-a', style: `--c:${team(lead.team).c1}` }, h('p', { class: 'dy-gw-bar-name' }, lead.name.toUpperCase()), h('p', { class: 'dy-gw-bar-sub' }, `${team(lead.team).name} · the favorite`)));
+  }
+
+  function carouselEl() {
+    const slides = [];
+    if (L.phase === 'season') (MD.dojoWeek(L)?.games || []).forEach((g, k) => slides.push(gameSlide(g, k)));
+    const rs = L.phase === 'season' || L.phase === 'playoffs' ? raceSlide() : null;
+    if (rs) slides.push(rs);
+    if (!slides.length) return null;
+    let idx = 0;
+    const track = h('div', { class: 'dy-car-track' }, slides);
+    const dots = h('div', { class: 'dy-dots' });
+    const go = (i) => { idx = (i + slides.length) % slides.length; track.style.transform = `translateX(-${idx * 100}%)`; dots.querySelectorAll('button').forEach((d, j) => d.classList.toggle('is-on', j === idx)); };
+    const restart = () => {
+      clearInterval(carouselTimer);
+      if (slides.length > 1 && !document.documentElement.classList.contains('reduce-motion')) carouselTimer = setInterval(() => go(idx + 1), 7000);
+    };
+    slides.forEach((_, i) => dots.append(h('button', { class: `dy-dot${i === 0 ? ' is-on' : ''}`, 'aria-label': `Show slide ${i + 1}`, onClick: () => { go(i); restart(); } })));
+    const el = h('section', { class: 'dy-carousel dy-gw-carousel', 'aria-label': 'Games of the week', 'aria-roledescription': 'carousel' },
+      h('p', { class: 'dy-gw-tag' }, 'GAMES OF THE WEEK'),
+      track,
+      h('button', { class: 'dy-gw-arrow is-prev', 'aria-label': 'Previous', onClick: () => { go(idx - 1); restart(); } }, '‹'),
+      h('button', { class: 'dy-gw-arrow is-next', 'aria-label': 'Next', onClick: () => { go(idx + 1); restart(); } }, '›'),
+      dots);
+    setTimeout(restart, 0);
+    return el;
+  }
+
+  function newsList(items, empty) {
+    return items.length ? h('ul', { class: 'dy-news' }, items.slice(0, 10).map((n) => h('li', {},
+      newsIcon(n),
+      h('div', {}, h('p', { class: 'dy-news-kind' }, `${n.kind}${n.week ? ` · WEEK ${n.week}` : ''}`), h('p', { class: 'dy-news-title' }, n.title), h('p', { class: 'caption muted' }, n.text))))) : h('p', { class: 'caption muted dy-pad' }, empty);
+  }
+  function faUpdates() {
+    const moves = L.news.filter((n) => ['SIGNED', 'TRADE', 'TAGGED', 'RETIRED'].includes(n.kind));
+    const soon = Object.values(L.players).filter((p) => p.team != null && p.contract && p.contract.left <= 1 && !p.retired).sort((a, b) => b.power - a.power).slice(0, 8);
+    return h('div', {},
+      moves.length ? newsList(moves, '') : null,
+      h('p', { class: 'label-spaced dy-pad' }, 'BEST UPCOMING FREE AGENTS'),
+      h('ul', { class: 'dy-list' }, soon.map((p) => pLine(p, h('span', { class: 'dy-num' }, String(p.power)), `${team(p.team).abbr} · ${p.role} · asks about ${O.asking(p)}${p.team === L.user.team ? ' · YOURS' : ''}`))));
+  }
+  function draftRoom(view) {
+    let list = O.draftBoard(L);
+    if (view === 'mine') list = list.filter((p) => p.watch || p.scout > 0);
+    list = list.slice().sort((a, b) => (a.stock || 99) - (b.stock || 99) || b.stars - a.stars).slice(0, 8);
+    if (!list.length) return h('p', { class: 'caption muted dy-pad' }, view === 'mine' ? 'Nobody on your board yet. Watch or scout prospects in the Draft tab.' : 'The draft class arrives with the new season.');
+    return h('table', { class: 'dy-table' },
+      h('thead', {}, h('tr', {}, ['', 'Prospect', 'Role', 'World', 'Stars', 'Board'].map((x) => h('th', { scope: 'col' }, x)))),
+      h('tbody', {}, list.map((p, i) => { const mv = p.stockPrev ? p.stockPrev - p.stock : 0; return h('tr', {},
+        h('td', { class: 'dy-num' }, String(p.stock || i + 1)),
+        h('td', {}, h('span', { class: 'dy-cell-p' }, pAvatar(p), h('span', {}, p.name, p.watch ? h('span', { class: 'gold' }, ' ★') : null))),
+        h('td', { class: `caption ${ROLE_CLASS(p.role)}` }, p.role), h('td', { class: 'caption muted' }, p.series),
+        h('td', {}, stars(p.stars)),
+        h('td', { class: `dy-num ${mv > 0 ? 'win' : mv < 0 ? 'loss' : 'muted'}` }, mv > 0 ? `▲${mv}` : mv < 0 ? `▼${-mv}` : '–')); })));
+  }
+  function powerList(view) {
+    const t0 = me();
+    const list = view === 'conf'
+      ? L.teams.filter((t) => confOf(t) === confOf(t0)).sort((a, b) => b.w - a.w || (b.rw - b.rl) - (a.rw - a.rl))
+      : L.teams.slice().sort((a, b) => (a.rank || 99) - (b.rank || 99)).slice(0, 25);
+    return h('ol', { class: 'dy-p25' }, list.map((t, i) => {
+      const mv = t.prevRank ? t.prevRank - t.rank : 0;
+      return h('li', { class: t.i === L.user.team ? 'is-you' : '' },
+        h('span', { class: 'dy-p25-rank' }, String(view === 'conf' ? i + 1 : t.rank || '–')),
+        h('span', { class: `dy-move ${mv > 0 ? 'up' : mv < 0 ? 'down' : ''}` }, view === 'conf' ? '' : mv > 0 ? `↑${mv}` : mv < 0 ? `↓${-mv}` : '–'),
+        crest(t, 30),
+        h('span', { class: 'dy-p25-name' }, h('span', {}, t.name.toUpperCase()), h('span', { class: 'dy-p25-sub' }, `${R.DIVISIONS[t.div]} · ${t.abbr}`)),
+        h('span', { class: 'dy-p25-rec' }, `${t.w}-${t.l}`));
+    }));
+  }
+  function leaderList(kind) {
+    const key = { dmg: (p) => p.stats.dmg, ko: (p) => p.stats.ko, sp: (p) => p.stats.sp }[kind];
+    const ps = Object.values(L.players).filter((p) => p.team != null && p.stats.gp).sort((a, b) => key(b) - key(a)).slice(0, 5);
+    if (!ps.length) return h('p', { class: 'caption muted dy-pad' }, 'No fights yet.');
+    return h('ol', { class: 'dy-leaders' }, ps.map((p, i) => h('li', {}, h('span', { class: 'dy-num' }, String(i + 1)), pAvatar(p),
+      h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name.toUpperCase()), h('span', { class: `caption ${ROLE_CLASS(p.role)}` }, `${p.role} | ${team(p.team).name}`)),
+      h('span', { class: 'dy-big-num' }, kind === 'dmg' ? fmt(p.stats.dmg) : String(key(p))))));
+  }
+
   function drawLeague() {
     const scores = L.lastWeekScores || [];
     const ticker = scores.length ? h('div', { class: 'dy-ticker', 'aria-label': 'Last week\'s scores' },
@@ -324,73 +465,188 @@ export async function render() {
           h('span', { class: aw ? 'is-w' : '' }, crest(a, 18), ` ${a.abbr} ${s.score[0]}`),
           h('span', { class: aw ? '' : 'is-w' }, crest(b, 18), ` ${b.abbr} ${s.score[1]}`));
       })))) : null;
-
-    // Games of the Week: the three biggest games next week.
-    let slides = [];
-    if (L.phase === 'season') slides = (MD.dojoWeek(L)?.games || []);
-    let idx = 0;
-    const track = h('div', { class: 'dy-car-track' }, slides.map((g, k) => {
-      const a = team(g.home); const b = team(g.away);
-      const sa = players(a).sort((x, y) => y.hype - x.hype)[0]; const sb = players(b).sort((x, y) => y.hype - x.hype)[0];
-      const rv = R.isRivalry(g.home, g.away, L);
-      return h('div', { class: 'dy-slide' },
-        tinted(a, b),
-        h('div', { class: 'dy-slide-star is-a' }, pAvatar(sa, 'card')),
-        h('div', { class: 'dy-slide-star is-b' }, pAvatar(sb, 'card')),
-        h('div', { class: 'dy-slide-mid' },
-          h('p', { class: 'dy-dojo' }, 'THE FIGHT NIGHT DOJO'),
-          h('p', { class: 'dy-slide-tag' }, rv ? `RIVALRY · ${rv[2].toUpperCase()}` : k === 0 ? 'GAME OF THE WEEK' : 'RANKED SHOWDOWN'),
-          crest(a, 48), h('p', { class: 'dy-slide-team' }, `${a.rank ? `#${a.rank} ` : ''}${a.name}`),
-          h('p', { class: 'dy-vs' }, 'VS'),
-          h('p', { class: 'dy-slide-team' }, `${b.rank ? `#${b.rank} ` : ''}${b.name}`), crest(b, 48),
-          h('p', { class: 'caption' }, `${a.arena} · ${k === 0 ? 'SBN PRIME' : 'AGN'}`),
-          g.pick != null ? h('p', { class: 'dy-slide-pick' }, `DOJO PICK: ${team(g.pick).abbr} · ${g.chance}%`) : null));
-    }));
-    const dots = h('div', { class: 'dy-dots' });
-    const go = (i) => { idx = (i + slides.length) % slides.length; track.style.transform = `translateX(-${idx * 100}%)`; dots.querySelectorAll('button').forEach((d, j) => d.classList.toggle('is-on', j === idx)); };
-    slides.forEach((_, i) => dots.append(h('button', { class: `dy-dot${i === 0 ? ' is-on' : ''}`, 'aria-label': `Show game ${i + 1}`, onClick: () => { go(i); restart(); } })));
-    const restart = () => {
-      clearInterval(carouselTimer);
-      if (slides.length > 1 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) carouselTimer = setInterval(() => go(idx + 1), 6000);
-    };
-    const carousel = slides.length ? h('section', { class: 'dy-carousel', 'aria-label': 'Games of the week', 'aria-roledescription': 'carousel' }, track, dots) : null;
-
-    const power = L.teams.slice().sort((a, b) => (a.rank || 99) - (b.rank || 99)).slice(0, 25);
-    const race = R.awardRace(L).slice(0, 4);
-    const leaders = Object.values(L.players).filter((p) => p.team != null && p.stats.gp).sort((a, b) => b.stats.dmg - a.stats.dmg).slice(0, 5);
-    const fa = players(me()).filter((p) => p.contract && p.contract.left <= 1).sort((a, b) => b.power - a.power);
-
-    shell(h('div', { class: 'dy-content dy-grid' },
+    const race = R.awardRace(L).slice(0, 5);
+    const conf = R.CONFERENCES[confOf(me())];
+    const confNews = L.news.filter((n) => n.team != null && L.teams[n.team] && confOf(L.teams[n.team]) === confOf(me()));
+    shell(h('div', { class: 'dy-content dy-hub3' },
       ticker,
-      h('div', { class: 'dy-col-main' },
+      h('aside', { class: 'dy-hub-left dy-panel dy-panel-flush' },
+        h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'AFL POWER 25'), h('p', { class: 'caption muted' }, 'AGN')),
+        ...tabbed('power', [['p25', 'POWER 25'], ['conf', conf.toUpperCase()]], powerList)),
+      h('div', { class: 'dy-hub-center' },
+        carouselEl(),
+        h('div', { class: 'dy-hub-pair' },
+          h('section', { class: 'dy-panel dy-panel-flush' },
+            h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'AROUND THE LEAGUE'), h('p', { class: 'caption muted' }, 'NEWS, MOVES AND CONFERENCE NOTES')),
+            ...tabbed('news', [['league', 'LEAGUE NEWS'], ['conf', 'CONFERENCE'], ['fa', 'FREE AGENTS']], (v) => (v === 'league' ? newsList(L.news, 'Nothing yet. Play a week.') : v === 'conf' ? newsList(confNews, `Quiet in the ${conf} Conference.`) : faUpdates()))),
+          h('section', { class: 'dy-panel dy-panel-flush' },
+            h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'DRAFT ROOM'), h('button', { class: 'dy-link', onClick: () => { tab = 'draft'; drawHub(); } }, 'VIEW ALL ›')),
+            ...tabbed('draft', [['top', 'TOP PROSPECTS'], ['mine', 'MY BOARD']], draftRoom)))),
+      h('aside', { class: 'dy-hub-right' },
         nextAction(),
         magBanner(),
-        carousel,
-        h('section', { class: 'dy-panel' },
-          h('h2', { class: 'dy-h' }, 'AROUND THE LEAGUE'),
-          L.news.length ? h('ul', { class: 'dy-news' }, L.news.slice(0, 8).map((n) => h('li', {},
-            newsIcon(n),
-            h('div', {}, h('p', { class: 'dy-news-kind' }, `${n.kind}${n.week ? ` · WEEK ${n.week}` : ''}`), h('p', { class: 'dy-news-title' }, n.title), h('p', { class: 'caption muted' }, n.text))))) : h('p', { class: 'caption muted' }, 'Nothing yet. Play a week.'))),
-      h('div', { class: 'dy-col-side' },
-        h('section', { class: 'dy-panel' },
-          h('h2', { class: 'dy-h' }, 'POWER 25'),
-          h('ol', { class: 'dy-power' }, power.map((t) => {
-            const mv = t.prevRank ? t.prevRank - t.rank : 0;
-            return h('li', { class: t.i === L.user.team ? 'is-you' : '' },
-              h('span', { class: 'dy-num' }, String(t.rank || '–')),
-              h('span', { class: `dy-move ${mv > 0 ? 'up' : mv < 0 ? 'down' : ''}` }, mv > 0 ? `▲${mv}` : mv < 0 ? `▼${-mv}` : '–'),
-              crest(t, 26), h('span', { class: 'dy-power-name' }, t.name), h('span', { class: 'dy-num' }, `${t.w}-${t.l}`));
-          }))),
-        h('section', { class: 'dy-panel dy-race' },
-          h('div', { class: 'dy-h-trophy' }, trophy(R.AWARDS.prodigy, 64), h('h2', { class: 'dy-h gold' }, 'GPP RACE · GENERATIONAL PRODIGY PLAYER')),
-          race.length ? h('ol', { class: 'dy-list' }, race.map(({ p, s }, i) => h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, team(p.team).name)), h('span', { class: 'dy-num' }, R.oddsFor(i, s, race[0].s))))) : h('p', { class: 'caption muted' }, 'The race starts after Week 1.')),
-        h('section', { class: 'dy-panel' },
-          h('h2', { class: 'dy-h' }, 'DAMAGE LEADERS'),
-          leaders.length ? h('ol', { class: 'dy-list' }, leaders.map((p) => h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, team(p.team).abbr)), h('span', { class: 'dy-num' }, fmt(p.stats.dmg))))) : h('p', { class: 'caption muted' }, 'No fights yet.')),
-        h('section', { class: 'dy-panel' },
-          h('h2', { class: 'dy-h' }, 'YOUR UPCOMING FREE AGENTS'),
-          fa.length ? h('ul', { class: 'dy-list' }, fa.map((p) => h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${p.role} · contract ends this season`)), h('span', { class: 'dy-num' }, String(p.power))))) : h('p', { class: 'caption muted' }, 'Nobody on your roster is in the last year of a contract.')))));
-    restart();
+        h('section', { class: 'dy-panel dy-panel-flush' },
+          h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'FIGHTER LEADERS'), h('p', { class: 'caption muted' }, 'SEASON LEADERS')),
+          ...tabbed('lead', [['dmg', 'DAMAGE'], ['ko', 'KOS'], ['sp', 'SPECIALS']], leaderList)),
+        h('section', { class: 'dy-panel dy-panel-flush' },
+          h('div', { class: 'dy-panel-head' }, h('div', { class: 'dy-h-trophy' }, trophy(R.AWARDS.prodigy, 48), h('h2', { class: 'dy-h gold' }, 'GPP RACE'))),
+          race.length ? h('ol', { class: 'dy-leaders' }, race.map(({ p, s }, i) => h('li', {}, h('span', { class: 'dy-num' }, String(i + 1)), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name.toUpperCase()), h('span', { class: 'caption muted' }, team(p.team).name)), h('span', { class: 'dy-num gold' }, R.oddsFor(i, s, race[0].s))))) : h('p', { class: 'caption muted dy-pad' }, 'The race starts after Week 1.')))));
+  }
+
+  // ---------- Weekly Recap and Weekly Preview ----------
+  function weeklyFrame({ icon, title, sub, body, foot, onClose, nav }) {
+    const seen = L.weeklySeen && L.weeklySeen.season === L.season && L.weeklySeen.week === L.week;
+    const box = h('input', { type: 'checkbox', id: 'dy-wk-skip', checked: seen, onChange: async (e) => { L.weeklySeen = e.target.checked ? { season: L.season, week: L.week } : null; await save(); } });
+    const el = h('div', { class: 'dy-weekly', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+      h('header', { class: 'dy-wk-head' },
+        h('span', { class: 'dy-wk-icon', 'aria-hidden': 'true' }, icon),
+        h('div', {}, h('h2', { class: 'dy-wk-title' }, title), h('p', { class: 'dy-wk-sub' }, sub)),
+        nav || null,
+        h('button', { class: 'dy-wk-x', 'aria-label': 'Close', onClick: onClose }, '✕')),
+      h('div', { class: 'dy-wk-body' }, body),
+      h('footer', { class: 'dy-wk-foot' },
+        h('label', { class: 'dy-wk-skip' }, box, ' Don\'t show again this week'),
+        h('span', { class: 'dy-wk-foot-right' }, ...foot)));
+    return el;
+  }
+  const panel = (title, ...kids) => h('section', { class: 'dy-wk-panel' }, h('h3', { class: 'dy-wk-h' }, title), ...kids);
+  const pRow = (p, right, sub) => h('li', { class: 'dy-wk-row' }, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name.toUpperCase(), h('span', { class: 'dy-wk-ovr' }, ` ${p.power}`)), h('span', { class: 'caption muted' }, sub)), right);
+  const statBoxes = (pairs) => h('div', { class: 'dy-wk-stats' }, pairs.map(([v, k]) => h('div', {}, h('p', { class: 'dy-wk-stat' }, String(v)), h('p', { class: 'caption muted' }, k))));
+
+  function roundTable(g, note) {
+    const r = g.result;
+    const n = Math.max(3, r.rounds.length);
+    const row = (ti, side) => h('tr', { class: r.winner === ti ? 'is-w' : '' },
+      h('td', {}, h('span', { class: 'dy-cell-p' }, crest(team(ti), 26), h('span', {}, `${team(ti).rank && r.rk[side] <= 25 ? `#${r.rk[side]} ` : ''}${team(ti).name.toUpperCase()}`))),
+      ...Array.from({ length: n }, (_, k) => h('td', { class: `dy-num ${r.rwin[k] === side ? '' : 'muted'}` }, r.rounds[k] ? kfmt(r.rounds[k][side]) : '–')),
+      h('td', { class: 'dy-wk-total' }, String(r.score[side])));
+    return h('div', {}, h('table', { class: 'dy-table dy-wk-table' },
+      h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'TEAM'), ...Array.from({ length: n }, (_, k) => h('th', { scope: 'col' }, `R${k + 1}`)), h('th', { scope: 'col' }, 'W'))),
+      h('tbody', {}, row(g.away, 1), row(g.home, 0))),
+      note ? h('p', { class: 'caption muted dy-wk-note' }, note) : null);
+  }
+
+  function showRecap(week, then) {
+    stopTimers();
+    const rc = WK.recap(L, week);
+    if (!rc) { then(); return; }
+    const mv = WK.movers(L); const pic = rc.latest ? WK.picture(L) : null; const stock = rc.latest ? WK.draftStock(L) : null;
+    const weeks = Array.from({ length: Math.min(L.phase === 'season' ? L.week - 1 : R.WEEKS, R.WEEKS) }, (_, i) => i + 1);
+    const nav = h('div', { class: 'dy-wk-nav' },
+      h('button', { class: 'dy-wk-navb', disabled: week <= 1, 'aria-label': 'Earlier week', onClick: () => showRecap(week - 1, then) }, '‹'),
+      h('select', { class: 'dy-select', 'aria-label': 'Week', onChange: (e) => showRecap(Number(e.target.value), then) }, weeks.map((w) => h('option', { value: String(w), selected: w === week }, `Week ${w} · ${L.schedule[w - 1].length} games`))),
+      h('button', { class: 'dy-wk-navb', disabled: week >= weeks.length, 'aria-label': 'Later week', onClick: () => showRecap(week + 1, then) }, '›'));
+    const card = (x) => {
+      const p = L.players[x.pid]; const t = team(x.team); const o = team(x.opp);
+      const [first, ...rest] = p.name.split(' ');
+      return panel(x.label, h('div', { class: 'dy-wk-pcard', style: `--c1:${t.c1};--c2:${t.c2}` },
+        h('div', { class: 'dy-wk-pic' }, pAvatar(p, 'card')),
+        h('div', { class: 'dy-wk-pinfo' },
+          h('p', { class: 'dy-wk-first' }, rest.length ? first.toUpperCase() : ''), h('p', { class: 'dy-wk-last' }, (rest.length ? rest.join(' ') : first).toUpperCase()),
+          h('p', { class: 'caption' }, `${p.role.toUpperCase()} | ${t.abbr} · SEASON ${p.career}`),
+          h('p', { class: `dy-wk-res ${x.won ? 'win' : 'loss'}` }, `${x.won ? 'W' : 'L'} ${x.score[0]}-${x.score[1]} `, h('span', { class: 'muted' }, x.home ? 'vs' : '@'), ' ', crest(o, 18), ` ${o.name.toUpperCase()}`)),
+        crest(t, 70),
+        statBoxes([[kfmt(x.dmg), 'DMG'], [x.ko, 'KOS'], [x.sp, 'SPECIALS']])));
+    };
+    const rowsTeams = (ids, f) => h('ul', { class: 'dy-wk-list' }, ids.map((i) => { const t = team(i); return h('li', { class: 'dy-wk-row' }, crest(t, 26), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, t.name.toUpperCase()), h('span', { class: 'caption muted' }, lastResult(i) || '')), f(t)); }));
+    const body = h('div', { class: 'dy-wk-grid' },
+      h('div', { class: 'dy-wk-cards' }, rc.players.map(card)),
+      h('div', { class: 'dy-wk-row3' },
+        panel('GAME OF THE WEEK', rc.close ? roundTable(rc.close, 'Went the distance: the closest fight of the week on damage.') : h('p', { class: 'caption muted' }, 'No three-round fights this week.')),
+        panel('BIGGEST COMEBACK', rc.comeback ? roundTable(rc.comeback, `${team(rc.comeback.result.winner).name} lost round 1 and came back.`) : h('p', { class: 'caption muted' }, 'Nobody came back from a round down.')),
+        panel('BLOWOUT OF THE WEEK', rc.blowout ? roundTable(rc.blowout, `A ${rc.blowout.result.score[0] + rc.blowout.result.score[1] === 2 ? '2-0' : ''} sweep.`) : h('p', { class: 'caption muted' }, 'No sweeps this week.'))),
+      h('div', { class: 'dy-wk-row3' },
+        panel('UPSET OF THE WEEK', rc.upset ? roundTable(rc.upset, `${team(rc.upset.result.winner).name} won with a ${rc.upsetChance}% chance.`) : h('p', { class: 'caption muted' }, 'The favorites held serve.')),
+        panel('TOP 25 MATCHUPS', rc.top25.length ? h('div', { class: 'dy-wk-stack' }, rc.top25.slice(0, 2).map((g) => roundTable(g, `${team(g.result.winner).name} win`))) : h('p', { class: 'caption muted' }, 'No top-25 clashes this week.')),
+        pic ? panel('PLAYOFF PICTURE', h('p', { class: 'caption muted' }, 'Chance to win the division and make the playoffs'), h('ol', { class: 'dy-wk-pic2' }, pic.map((x, i) => { const t = team(x.i); return h('li', {}, h('span', { class: 'dy-num' }, String(i + 1)), crest(t, 22), h('span', { class: 'dy-list-text' }, t.name.toUpperCase()), h('span', { class: 'caption muted' }, `${t.w}-${t.l}`), h('span', { class: 'dy-num' }, `${Math.round(x.odds * 1000) / 10}%`)); }))) : null),
+      rc.latest ? h('div', { class: 'dy-wk-row4' },
+        panel('POWER RISERS', rowsTeams(mv.risers, (t) => h('span', { class: 'dy-num' }, `#${t.prevRank} → `, h('b', {}, `#${t.rank}`)))),
+        panel('POWER FALLERS', rowsTeams(mv.fallers, (t) => h('span', { class: 'dy-num' }, `#${t.prevRank} → `, h('b', { class: 'loss' }, `#${t.rank}`)))),
+        panel('LONGEST ACTIVE STREAKS', h('div', { class: 'dy-wk-two' },
+          h('div', {}, h('p', { class: 'label-spaced win' }, 'WINNING'), h('ul', { class: 'dy-wk-list' }, mv.hot.map((i) => h('li', { class: 'dy-wk-row' }, crest(team(i), 22), h('span', { class: 'dy-list-text' }, team(i).name.toUpperCase()), h('b', { class: 'win' }, `W${team(i).streak}`))))),
+          h('div', {}, h('p', { class: 'label-spaced loss' }, 'LOSING'), h('ul', { class: 'dy-wk-list' }, mv.cold.map((i) => h('li', { class: 'dy-wk-row' }, crest(team(i), 22), h('span', { class: 'dy-list-text' }, team(i).name.toUpperCase()), h('b', { class: 'loss' }, `L${-team(i).streak}`)))))))) : null,
+      rc.latest ? h('div', { class: 'dy-wk-row2' },
+        panel('DRAFT STOCK', stock.risers.length || stock.fallers.length ? h('div', {},
+          h('p', { class: 'label-spaced win' }, 'RISERS'), h('ul', { class: 'dy-wk-list' }, stock.risers.map((x) => { const p = L.players[x.pid]; return pRow(p, h('span', { class: 'dy-num' }, `${x.from} › `, h('b', { class: 'win' }, x.to)), `${p.role} | ${p.series}`); })),
+          h('p', { class: 'label-spaced loss' }, 'FALLERS'), h('ul', { class: 'dy-wk-list' }, stock.fallers.map((x) => { const p = L.players[x.pid]; return pRow(p, h('span', { class: 'dy-num' }, `${x.from} › `, h('b', { class: 'loss' }, x.to)), `${p.role} | ${p.series}`); })))
+          : h('p', { class: 'caption muted' }, 'The board settles after a couple of weeks.')),
+        panel('NOTABLE INJURIES', rc.injuries.length ? h('ul', { class: 'dy-wk-list' }, rc.injuries.map((pid) => { const p = L.players[pid]; return pRow(p, h('span', { class: 'dy-wk-out' }, h('b', {}, `${p.injury} wk`), h('span', { class: 'caption muted' }, 'OUT')), `${p.role} · ${team(p.team).name}`); })) : h('p', { class: 'caption muted' }, 'Nobody got hurt this week.'))) : null);
+    const games = L.schedule[week - 1].length;
+    fill(root, weeklyFrame({
+      icon: '▦', title: 'WEEKLY RECAP', sub: `SEASON ${L.season} · WEEK ${week}`, body, nav, onClose: then,
+      foot: [h('span', { class: 'caption muted' }, `${games} games · Week ${week}`), h('button', { class: 'btn btn-primary', onClick: then }, 'Continue')],
+    }));
+  }
+
+  function showPreview(then) {
+    stopTimers();
+    const pv = WK.preview(L);
+    if (!pv) { then(); return; }
+    const gw = pv.gotw;
+    const vsCard = (m) => {
+      const a = m.a != null ? L.players[m.a] : null; const hh = m.h != null ? L.players[m.h] : null;
+      const side = (p, ti) => h('div', { class: 'dy-wk-vsp' }, p ? pAvatar(p, 'md') : crest(team(ti), 56),
+        h('p', { class: 'heading' }, p ? p.name.toUpperCase() : `${team(ti).abbr} UNIT`),
+        h('p', { class: 'caption muted' }, p ? `${p.role.toUpperCase()} · ${team(ti).abbr}` : team(ti).name),
+        h('p', { class: 'dy-wk-stat' }, p ? String(R.effPower(L, p)) : '–'),
+        h('p', { class: 'caption muted' }, p ? `${kfmt(p.stats.dmg)} dmg · ${p.stats.ko} KOs` : ''));
+      return h('div', { class: `dy-wk-vs${m.mine ? ' is-mine' : ''}` },
+        h('p', { class: 'dy-wk-vs-head' }, h('span', { class: 'gold' }, m.mine ? 'YOUR ACE VS THEIRS' : 'ACE VS ACE'), h('span', { class: 'caption muted' }, `${team(m.away).name.toUpperCase()} AT ${team(m.home).name.toUpperCase()}`)),
+        h('div', { class: 'dy-wk-vs-row' }, side(a, m.away), h('span', { class: 'dy-wk-vs-x' }, 'VS'), side(hh, m.home)));
+    };
+    const line = (x) => h('li', { class: 'dy-wk-row' }, crest(team(x.fav), 26), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, `${rankName(team(x.fav)).toUpperCase()} `, h('span', { class: 'muted' }, 'OVER'), ` ${rankName(team(x.dog)).toUpperCase()}`), h('span', { class: 'caption muted' }, `${x.chance}% to win · ${team(x.away).abbr} at ${team(x.home).abbr}`)), crest(team(x.dog), 22));
+    const body = h('div', { class: 'dy-wk-grid' },
+      h('div', { class: 'dy-wk-top' },
+        gw ? h('section', { class: 'dy-wk-panel dy-wk-gotw', style: `--a:${team(gw.away).c1};--h:${team(gw.home).c1}` },
+          h('p', { class: 'dy-gw-tag' }, 'GAME OF THE WEEK'),
+          h('div', { class: 'dy-wk-gotw-crests' }, crest(team(gw.away), 120), crest(team(gw.home), 120)),
+          h('p', { class: 'dy-gw-brand' }, h('span', {}, 'THE FIGHT NIGHT'), 'DOJO'),
+          h('p', { class: 'dy-gw-team' }, `${rankName(team(gw.away)).toUpperCase()} `, h('span', { class: 'caption muted' }, `${team(gw.away).w}-${team(gw.away).l}`)),
+          R.isRivalry(gw.home, gw.away, L) ? h('div', { class: 'dy-gw-trophy' }, trophy(R.isRivalry(gw.home, gw.away, L)[2], 80)) : h('p', { class: 'dy-gw-vs' }, 'AT'),
+          h('p', { class: 'dy-gw-team' }, `${rankName(team(gw.home)).toUpperCase()} `, h('span', { class: 'caption muted' }, `${team(gw.home).w}-${team(gw.home).l}`)),
+          h('p', { class: 'label-spaced' }, 'WIN PROBABILITY'),
+          h('div', { class: 'dy-wk-prob' }, h('span', { style: `width:${100 - pv.gotwChance}%;background:${team(gw.away).c1}` }), h('span', { style: `width:${pv.gotwChance}%;background:${team(gw.home).c1}` })),
+          h('div', { class: 'dy-wk-prob-n' }, h('b', {}, `${100 - pv.gotwChance}%`), h('b', {}, `${pv.gotwChance}%`)),
+          h('p', { class: 'caption' }, `WEEK ${pv.week} · ${team(gw.home).arena.toUpperCase()} · SBN PRIME`)) : null,
+        panel('MATCHUPS OF THE WEEK', h('div', { class: 'dy-wk-vsgrid' }, pv.matchups.map(vsCard)))),
+      h('div', { class: 'dy-wk-row3' },
+        panel('TOP 25 MATCHUPS', pv.top25.length ? h('div', { class: 'dy-wk-stack' }, pv.top25.map((m) => h('div', { class: 'dy-wk-t25' },
+          h('p', { class: 'dy-wk-t25-head' }, h('span', { class: 'heading' }, `${rankName(team(m.away)).toUpperCase()} `, h('span', { class: 'muted' }, 'AT'), ` ${rankName(team(m.home)).toUpperCase()}`), h('span', { class: 'caption' }, `${team(m.fav).abbr} ${m.chance}%`)),
+          h('table', { class: 'dy-table' }, h('thead', {}, h('tr', {}, ['Playoff chances', 'Now', 'With win', 'With loss'].map((x) => h('th', { scope: 'col' }, x)))),
+            h('tbody', {}, m.rows.map((r) => h('tr', {}, h('td', {}, h('span', { class: 'dy-cell-p' }, crest(team(r.i), 22), `${rankName(team(r.i))} (${team(r.i).w}-${team(r.i).l})`)), h('td', { class: 'dy-num' }, `${r.now}%`), h('td', { class: 'dy-num win' }, `${r.win}%`), h('td', { class: 'dy-num loss' }, `${r.loss}%`)))))))) : h('p', { class: 'caption muted' }, 'No top-25 clashes this week.')),
+        panel('UPSET ALERT', pv.upsetAlert.length ? h('ul', { class: 'dy-wk-list' }, pv.upsetAlert.map(line)) : h('p', { class: 'caption muted' }, 'No ranked team looks shaky this week.'),
+          pv.coinFlips.length ? h('p', { class: 'label-spaced dy-wk-sub2' }, 'COIN FLIPS') : null,
+          h('ul', { class: 'dy-wk-list' }, pv.coinFlips.map((x) => h('li', { class: 'dy-wk-row' }, crest(team(x.away), 22), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, `${team(x.away).name.toUpperCase()} `, h('span', { class: 'muted' }, 'at'), ` ${team(x.home).name.toUpperCase()}`)), crest(team(x.home), 22), h('span', { class: 'dy-num' }, `${team(x.fav).abbr} ${x.chance}%`))))),
+        panel('GPP WATCH', h('ol', { class: 'dy-wk-list' }, pv.race.map((x, i) => { const p = L.players[x.pid]; return h('li', { class: 'dy-wk-row' }, h('span', { class: 'dy-wk-big' }, String(i + 1)), pAvatar(p, 'md'),
+          h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name.toUpperCase()), h('span', { class: 'caption muted' }, `${p.role} · ${team(p.team).name}`), h('span', { class: 'caption' }, x.opp != null ? `${x.home ? 'vs' : 'at'} ${rankName(team(x.opp))}` : 'No game')),
+          statBoxes([[kfmt(p.stats.dmg), 'DMG'], [p.stats.ko, 'KOS']])); })))),
+      h('div', { class: 'dy-wk-row3' },
+        panel('RIVALRY GAMES', pv.rivals.length ? h('ul', { class: 'dy-wk-list' }, pv.rivals.map((x) => {
+          const st = x.book.streak; const last = x.book.last;
+          return h('li', { class: 'dy-wk-rival' }, trophy(x.trophy, 70),
+            h('div', { class: 'dy-list-text' },
+              h('p', { class: 'heading' }, x.trophy.toUpperCase()),
+              h('p', { class: 'dy-wk-rival-line' }, crest(team(x.away), 22), h('b', {}, ` ${x.book.b}-${x.book.a} `), crest(team(x.home), 22), h('span', { class: 'caption muted' }, ` ${team(x.away).name} at ${team(x.home).name}`)),
+              h('p', { class: 'caption muted' }, last ? `${st && st.n > 1 ? `${team(st.team).name} have won ${st.n} straight · ` : ''}last meeting: ${team(last.winner).name} ${last.score[0]}-${last.score[1]} (season ${last.season})` : 'First meeting')),
+            h('span', { class: 'dy-num' }, `${team(x.fav).abbr} ${x.chance}%`));
+        })) : h('p', { class: 'caption muted' }, 'No rivalry games this week.')),
+        panel('FACING THEIR OLD TEAM', pv.oldTeam.length ? h('ul', { class: 'dy-wk-list' }, pv.oldTeam.map((x) => { const p = L.players[x.pid]; return pRow(p, statBoxes([[kfmt(p.stats.dmg), 'DMG'], [p.stats.ko, 'KOS']]), `${p.role} · ${team(x.team).abbr} · ${x.home ? 'vs' : 'at'} ${team(x.opp).name.toUpperCase()}, their old team`); })) : h('p', { class: 'caption muted' }, 'No reunions this week.')),
+        panel('INJURY REPORT', pv.injuries.length ? h('ul', { class: 'dy-wk-list' }, pv.injuries.map((pid) => { const p = L.players[pid]; return pRow(p, h('span', { class: 'dy-wk-out' }, h('b', {}, `${p.injury} wk`), h('span', { class: 'caption muted' }, 'REMAINING')), `${p.role} · ${team(p.team).name}`); })) : h('p', { class: 'caption muted' }, 'Everyone is healthy.'))));
+    fill(root, weeklyFrame({
+      icon: '⚑', title: 'WEEKLY PREVIEW', sub: `SEASON ${L.season} · WEEK ${pv.week} · THE WEEK AHEAD`, body, onClose: then,
+      foot: [h('span', { class: 'caption muted' }, `${L.schedule[pv.week - 1].length} games · Week ${pv.week}`),
+        h('button', { class: 'btn btn-secondary', onClick: () => openGamePlan() }, 'Game Plan'),
+        h('button', { class: 'btn btn-primary', onClick: then }, 'Continue')],
+    }));
+  }
+
+  // On load: recap of last week, then the preview, then the hub.
+  function enterDynasty() {
+    const toHub = () => { tab = 'league'; drawHub(); };
+    const seen = L.weeklySeen && L.weeklySeen.season === L.season && L.weeklySeen.week === L.week;
+    if (L.phase !== 'season' || seen) { toHub(); return; }
+    if (L.week > 1) showRecap(L.week - 1, () => showPreview(toHub));
+    else showPreview(toHub);
   }
 
   // ---------- Coach ----------
@@ -568,7 +824,7 @@ export async function render() {
   }
 
   // ---------- The Draft tab and board ----------
-  const board = { world: null, role: null };
+  const board = { world: null, role: null, view: 'all' };
 
   function hexMap() {
     const worlds = O.classWorlds(L);
@@ -586,8 +842,10 @@ export async function render() {
   function boardList(mode) {
     const onClock = mode === 'pick' && O.onTheClock(L) === L.user.team;
     let list = O.draftBoard(L);
+    if (board.view === 'mine') list = list.filter((p) => p.watch || p.scout > 0);
     if (board.world) list = list.filter((p) => p.series === board.world);
     if (board.role) list = list.filter((p) => p.role === board.role);
+    if (!list.length) return h('p', { class: 'body-text dy-board-empty' }, board.view === 'mine' ? 'Your board is empty. Tap ☆ Watch on a prospect to keep track of them, or scout them.' : 'No prospects match.');
     list.sort((a, b) => (b.scout >= 1 ? b.potential : b.stars * 8 + 56) - (a.scout >= 1 ? a.potential : a.stars * 8 + 56) || b.stars - a.stars);
     const pts = L.user.scoutPts || 0;
     return h('ul', { class: 'dy-board' }, list.map((p) => {
@@ -602,6 +860,7 @@ export async function render() {
             h('span', { class: 'caption' }, v.potential != null ? `Potential ${v.potential}` : 'Potential ?'),
             v.tag ? h('span', { class: `caption ${tagCls}` }, v.tag) : null)),
         h('span', { class: 'dy-prospect-btns' },
+          h('button', { class: `btn btn-sm dy-watch-btn${p.watch ? ' is-on' : ''}`, 'aria-pressed': p.watch ? 'true' : 'false', onClick: async () => { p.watch = !p.watch; await save(); redrawBoard(); } }, p.watch ? '★ Watching' : '☆ Watch'),
           p.scout < 2 ? h('button', { class: 'btn btn-secondary btn-sm', disabled: pts < R.SCOUT_COST, onClick: async () => {
             const r = O.scout(L, p.pid); if (!r.ok) { toast(r.why); return; }
             await save(); redrawBoard();
@@ -611,6 +870,13 @@ export async function render() {
   }
 
   function boardFilters() {
+    const mine = O.draftBoard(L).filter((p) => p.watch || p.scout > 0).length;
+    return h('div', { class: 'dy-board-tools' },
+      h('div', { class: 'dy-subtabs', role: 'tablist', 'aria-label': 'Draft board view' },
+        [['all', `ALL PROSPECTS (${O.draftBoard(L).length})`], ['mine', `MY BOARD (${mine})`]].map(([id, label]) => h('button', { class: `dy-subtab${board.view === id ? ' is-on' : ''}`, role: 'tab', 'aria-selected': board.view === id ? 'true' : 'false', onClick: () => { board.view = id; redrawBoard(); } }, label))),
+      roleChips());
+  }
+  function roleChips() {
     return h('div', { class: 'dy-chips', role: 'group', 'aria-label': 'Filter by role' },
       [null, ...R.ROLES].map((r) => h('button', { class: `dy-chip${board.role === r ? ' is-on' : ''}`, 'aria-pressed': board.role === r ? 'true' : 'false', onClick: () => { board.role = r; redrawBoard(); } }, r || 'All roles')));
   }
