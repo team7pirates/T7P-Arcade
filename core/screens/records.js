@@ -13,14 +13,26 @@ export function openRecords() {
   const tt = records.get('tier-target');
   const bl = records.get('blind-tier-list');
   const ff = records.get('forbidden-fusion');
+  const br = records.get('brawl');
   const levels = [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']];
-  const played = levels.some(([k]) => g[k]) || ga.runs || tt.normal || tt.hard || bl.lists || ff.normal || ff.hard;
+  const played = levels.some(([k]) => g[k]) || ga.runs || tt.normal || tt.hard || bl.lists || ff.normal || ff.hard || br.runs;
   const fmt = (n) => Math.round(n).toLocaleString();
 
   sheet({
     title: 'MY RECORDS',
     content: played
       ? h('div', { class: 'records' },
+        h('section', { class: 'rec-block' },
+          h('h3', { class: 'label-spaced set-title' }, 'BRAWL'),
+          br.runs
+            ? h('table', { class: 'rec-table' },
+              h('thead', {}, h('tr', {}, ['Brawls', 'Titles', 'Match record', 'Best finish'].map((t) => h('th', { scope: 'col' }, t)))),
+              h('tbody', {}, h('tr', {},
+                h('td', {}, String(br.runs)), h('td', {}, String(br.titles || 0)),
+                h('td', {}, `${br.wins || 0}–${br.losses || 0}`),
+                h('td', {}, ['Quarterfinals', 'Semifinals', 'Runner-up', 'Champion'][br.best || 0]))))
+            : h('p', { class: 'caption muted' }, 'No Brawls yet.'),
+        ),
         h('section', { class: 'rec-block' },
           h('h3', { class: 'label-spaced set-title' }, 'FORBIDDEN FUSION'),
           ff.normal || ff.hard

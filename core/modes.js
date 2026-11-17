@@ -15,12 +15,12 @@ export const MODES = [
   },
   {
     id: 'dynasty', loadingLine: 'SETTING UP THE FRONT OFFICE', name: 'Dynasty', sub: 'Build · Simulate · Dynasty',
-    flagship: true, wave: 4, ready: false,
+    flagship: true, wave: 5, ready: false,
     blurb: 'Run a franchise for up to 10 seasons: draft, trade, develop and chase the Hall of Fame.',
   },
   {
     id: 'brawl', loadingLine: 'DRAWING UP THE BRACKET', name: 'Brawl', sub: 'Draft · Bracket · Champion',
-    flagship: true, wave: 4, ready: false,
+    flagship: true, wave: 4, ready: true, load: loader('brawl'),
     blurb: 'Draft a squad and fight through a bracket to be crowned champion.',
   },
   {

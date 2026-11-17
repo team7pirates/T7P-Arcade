@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.8.0",
+      "date": "2026-11-16",
+      "title": "Brawl is here",
+      "items": [
+        "New flagship mode, Brawl: snake-draft a five-card squad, one of each role, against seven rival GMs.",
+        "Then fight through an 8-team knockout bracket: quarterfinals, semifinals and the final, best of 3 rounds each.",
+        "Before each match you see the rival's lineup and set your order to counter it. The rival GM sees yours too and can swap two of its cards, so think one step ahead.",
+        "Chemistry: three or more from the same series, or five from one franchise, fight with extra Power.",
+        "About half of all Brawls open with a Woj Bomb league event: Rivalry Bracket, Favorable Draw, Stacked Field or Underdog Run.",
+        "Game MVPs, a Tournament MVP and your career record (titles, wins, best finish) in My Records.",
+        "Dynasty moves to Wave 5 so it can be planned properly first."
+      ]
+    },
+    {
       "version": "0.7.0",
       "date": "2026-11-16",
       "title": "Forbidden Fusion is here",
