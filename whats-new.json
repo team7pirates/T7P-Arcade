@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.6.3",
+      "date": "2026-11-16",
+      "title": "Every character has a portrait",
+      "items": [
+        "All 553 characters now have their own portrait, from Adam Warlock to Zeno Zoldyck.",
+        "Portraits are saved on your phone the first time you see them, so they work offline after that."
+      ]
+    },
+    {
       "version": "0.6.2",
       "date": "2026-11-16",
       "title": "New soundtrack",
