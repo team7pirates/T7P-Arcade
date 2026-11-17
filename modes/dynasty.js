@@ -1229,7 +1229,7 @@ export async function render() {
     const used = t.upgrades || 0;
     offFrame('UPGRADES', h('div', { class: 'dy-off-body' },
       capPanel(t),
-      h('p', { class: 'body-text' }, `Invest in development: Normal → Star → Superstar. One step per card each off-season, up to ${O.UPGRADES_PER_TEAM} a team, only in a card's first 4 seasons. The rest of the contract goes up ×1.4 (Star) or ×1.8 (Superstar), split evenly. Upgraded cards grow faster and gain hidden potential, and you find out if they are a Generational Talent or a bust.`),
+      h('p', { class: 'body-text' }, `Invest in development: Normal → Star → Superstar. One step per card each off-season, up to ${O.UPGRADES_PER_TEAM} a team, only in a card's first 4 seasons. Salary follows growth speed, 1x / 2x / 3x: Star doubles the cap hit and Superstar adds another 1.5x (3x a Normal card), but never more than +6 a season per step. A bust still grows fast, it just tops out sooner. Upgraded cards grow faster and gain hidden potential, and you find out if they are a Generational Talent or a bust.`),
       h('p', { class: 'label-spaced' }, `${used} OF ${O.UPGRADES_PER_TEAM} USED`),
       h('ul', { class: 'dy-list' }, ps.map((p) => {
         const chk = O.canUpgrade(L, p);

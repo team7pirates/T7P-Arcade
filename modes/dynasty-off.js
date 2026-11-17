@@ -18,7 +18,12 @@ const seriesCount = (L, t, series, skip = []) => roster(L, t).filter((p) => p.se
 
 export const DRAFT_SIZE = 48;
 export const UPGRADES_PER_TEAM = 2;
-export const UPGRADE_MULT = [1.4, 1.8];      // Normal→Star, Star→Superstar
+// v0.19.0 (Khalil): salary follows the growth speed, 1x / 2x / 3x.
+// Normal→Star doubles the cap hit; Star→Superstar is 1.5x more (3x the
+// Normal price). The raise is capped at +6 a season per step, so a card on a
+// big contract can't eat the whole cap.
+export const UPGRADE_MULT = [2, 1.5];        // Normal→Star, Star→Superstar
+export const UPGRADE_MAX_RAISE = 6;          // per season, per step
 export const MIN_SALARY = 1;
 export const FA_ROUNDS = 3;
 export const FA_BAR = [66, 56, 42];          // interest a player needs to sign, by round
@@ -304,7 +309,7 @@ function aiResign(L) {
 
 // ---------- 4. Development upgrades ----------
 // Normal→Star→Superstar, one step per card per off-season, up to 2 per
-// team, first 4 seasons only. The contract left is raised ×1.4 or ×1.8.
+// team, first 4 seasons only. The contract left is raised ×2 or ×1.5 (max +6 a season).
 export function canUpgrade(L, p) {
   const t = L.teams[p.team];
   if (!p.contract || p.contract.left < 1) return { ok: false, why: 'Not under contract' };
@@ -316,7 +321,8 @@ export function canUpgrade(L, p) {
 }
 export function upgradeCost(p) {
   const left = p.contract.left; const rest = R.capHit(p) * left;
-  const after = rest * UPGRADE_MULT[p.dev];
+  const hit = R.capHit(p);
+  const after = Math.min(hit * UPGRADE_MULT[p.dev], hit + UPGRADE_MAX_RAISE) * left;
   return { hitNow: R.capHit(p), hitAfter: r1(after / left), extra: r1((after - rest) / left), left };
 }
 export function upgrade(L, pid) {

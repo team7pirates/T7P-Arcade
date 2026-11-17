@@ -16,7 +16,7 @@
 
 import * as R from './dynasty-rules.js';
 import * as O from './dynasty-off.js';
-import { basePhone, pick, fillIn, say, mine, back, sys, note, trim } from '../core/phone-core.js';
+import { basePhone, pick, fresh, fillIn, say, mine, back, sys, note, trim } from '../core/phone-core.js';
 import * as D from '../core/phone-dating.js';
 
 export const CHAT_BOOST = 3;
@@ -28,14 +28,14 @@ const GM_FIRST = ['Darnell', 'Keiko', 'Marco', 'Priya', 'Hank', 'Sofia', 'Tariq'
 const GM_LAST = ['Cole', 'Fujita', 'Russo', 'Shah', 'Briggs', 'Alves', 'Haddad', 'Lin', 'Pratt', 'Moreno', 'Grant', 'Mori', 'Kent', 'Okoye', 'Petrov', 'Aziz', 'Boone', 'Ito', 'Hayes', 'Duarte'];
 export const gmName = (t) => `${GM_FIRST[t.i % GM_FIRST.length]} ${GM_LAST[(t.i * 7 + 3) % GM_LAST.length]}`;
 
-const SQUAD_OPENERS = ['Coach, big one this week. Say something.', 'Group chat is quiet. Hype us up, coach.', 'We\'re locked in. What\'s the message for {opp}?', 'Coach. {opp} are talking. Your call.'];
-const HYPE = ['Nobody in this league wants to see us. Let\'s go!', 'We are the main event. Act like it.', 'They came to watch us. Give them a show.'];
-const FOCUS = ['Stick to the game plan. Win your matchup.', 'Heads down. Every round counts.', 'Discipline wins this one. Stay sharp.'];
-const LOOSE = ['Have fun out there. Swing big.', 'No pressure. Go be dangerous.', 'Break their game plan. Get weird with it.'];
-const SQUAD_BACK = ['🔥🔥🔥', 'LET\'S GOOO', 'Say less coach 💪', 'Locked in.', '🫡'];
-const LOSER = ['Good win. We\'ll see you again.', 'You got us this time.', 'Enjoy it. Next time is different.', 'Respect. Your squad came ready.'];
-const GLOAT = ['Tell your fighters to get used to it.', 'Same time next season?', 'We didn\'t even need the swap.'];
-const RESPECT = ['Good game, coach. Your squad made us earn it.', 'Respect. That was a real fight.', 'GG. Tough team you have.'];
+const SQUAD_OPENERS = ['Coach, the whole squad is in the chat. Talk to us.', 'Film session done. Anything before {opp}?', '{opp} said we\'re soft. Your move, coach.', 'Last practice before {opp}. Words?', 'Coach, big one this week. Say something.', 'Group chat is quiet. Hype us up, coach.', 'We\'re locked in. What\'s the message for {opp}?', 'Coach. {opp} are talking. Your call.'];
+const HYPE = ['This is our league. Fight like it.', 'Every camera in the arena is on us. Smile, then win.', 'Make them regret showing up.', 'Nobody in this league wants to see us. Let\'s go!', 'We are the main event. Act like it.', 'They came to watch us. Give them a show.'];
+const FOCUS = ['Win the first round and the rest follows.', 'Trust the matchups. Trust each other.', 'One fight at a time. No highlights, just wins.', 'Stick to the game plan. Win your matchup.', 'Heads down. Every round counts.', 'Discipline wins this one. Stay sharp.'];
+const LOOSE = ['Throw the playbook out. Surprise me.', 'Go out there and cause problems.', 'Play like it\'s the backyard. Have fun.', 'Have fun out there. Swing big.', 'No pressure. Go be dangerous.', 'Break their game plan. Get weird with it.'];
+const SQUAD_BACK = ['Heard 🗣️', 'We got you coach', 'Running through walls rn', '💯', '🔥🔥🔥', 'LET\'S GOOO', 'Say less coach 💪', 'Locked in.', '🫡'];
+const LOSER = ['Your fighters showed up today. Mine didn\'t.', 'Well coached. I\'ll be studying that tape.', 'We\'ll get you in the rematch.', 'Good win. We\'ll see you again.', 'You got us this time.', 'Enjoy it. Next time is different.', 'Respect. Your squad came ready.'];
+const GLOAT = ['Maybe take notes next time.', 'Tell your owner I said hi.', 'Rough day at the office, huh?', 'Tell your fighters to get used to it.', 'Same time next season?', 'We didn\'t even need the swap.'];
+const RESPECT = ['Your team made it close. Good luck the rest of the way.', 'Thanks for a clean fight.', 'Respect. See you down the road.', 'Good game, coach. Your squad made us earn it.', 'Respect. That was a real fight.', 'GG. Tough team you have.'];
 
 function phoneOf(L) {
   if (!L.phone) L.phone = basePhone({ offers: [] });
@@ -43,6 +43,9 @@ function phoneOf(L) {
   return L.phone;
 }
 const mineTeam = (L) => L.teams[L.user.team];
+// A number that goes up every week, for the no-repeat rule (a line won't come back for 2 weeks).
+export const nowOf = (L) => L.season * 20 + R.gameWeek(L);
+const line = (L, arr) => fresh(phoneOf(L), arr, Math.random, nowOf(L));
 const roster = (L, t) => t.roster.map((pid) => L.players[pid]);
 
 // Set up the phone the first time it opens in a save.
@@ -191,11 +194,11 @@ function squadEvent(L) {
   if (!g) return;
   const opp = L.teams[g.home === me.i ? g.away : g.home];
   const p = pick(ps, Math.random);
-  const th = say(ph, { key: 'squad', name: `${me.name} squad`, kind: 'team', icon: '👥' }, `${p.name}: ${fillIn(pick(SQUAD_OPENERS, Math.random), { opp: opp.name })}`);
+  const th = say(ph, { key: 'squad', name: `${me.name} squad`, kind: 'team', icon: '👥' }, `${p.name}: ${fillIn(line(L, SQUAD_OPENERS), { opp: opp.name })}`);
   th.pending = { type: 'squad', week: R.gameWeek(L), season: L.season, options: [
-    { id: 'hype', tone: 'hype', text: pick(HYPE, Math.random), hint: `+${CHAT_BOOST} Aura for your fighters next game` },
-    { id: 'focus', tone: 'focus', text: pick(FOCUS, Math.random), hint: `+${CHAT_BOOST} Clutch next game` },
-    { id: 'loose', tone: 'loose', text: pick(LOOSE, Math.random), hint: `+${CHAT_BOOST} Chaos next game` },
+    { id: 'hype', tone: 'hype', text: line(L, HYPE), hint: `+${CHAT_BOOST} Aura for your fighters next game` },
+    { id: 'focus', tone: 'focus', text: line(L, FOCUS), hint: `+${CHAT_BOOST} Clutch next game` },
+    { id: 'loose', tone: 'loose', text: line(L, LOOSE), hint: `+${CHAT_BOOST} Chaos next game` },
   ] };
 }
 
@@ -205,10 +208,10 @@ function coachEvent(L, g) {
   const u = L.user.team;
   if (!g?.result || g.result.winner !== u) return;
   const ti = g.home === u ? g.away : g.home; const t = L.teams[ti];
-  const th = say(ph, { key: `coach-${ti}`, name: `${t.coachName || 'Coach'} (${t.abbr} coach)`, kind: 'coach', icon: '🧢' }, pick(LOSER, Math.random));
+  const th = say(ph, { key: `coach-${ti}`, name: `${t.coachName || 'Coach'} (${t.abbr} coach)`, kind: 'coach', icon: '🧢' }, line(L, LOSER));
   th.pending = { type: 'coach', options: [
-    { id: 'gloat', tone: 'gloat', text: pick(GLOAT, Math.random), hint: `+${COACH_BOOST} Chaos next game (your squad saw that)` },
-    { id: 'respect', tone: 'respect', text: pick(RESPECT, Math.random), hint: `+${COACH_BOOST} Aura next game` },
+    { id: 'gloat', tone: 'gloat', text: line(L, GLOAT), hint: `+${COACH_BOOST} Chaos next game (your squad saw that)` },
+    { id: 'respect', tone: 'respect', text: line(L, RESPECT), hint: `+${COACH_BOOST} Aura next game` },
   ] };
 }
 
@@ -237,7 +240,7 @@ export function afterPlayoffGame(L, g) {
   if (L.playoffs && !L.playoffs.champion) squadEvent(L);
 }
 
-export const dateCtx = (L) => ({ rand: Math.random, turn: `s${L.season}w${R.gameWeek(L)}`, turnLabel: 'week', where: 'the AFL broadcast', when: 'game', perk: `+${DATE_BOOST} Aura for your team next game` });
+export const dateCtx = (L) => ({ rand: Math.random, now: nowOf(L), turn: `s${L.season}w${R.gameWeek(L)}`, turnLabel: 'week', where: 'the AFL broadcast', when: 'game', perk: `+${DATE_BOOST} Aura for your team next game` });
 export function onDate(L) { addBoost(L, 'aura', DATE_BOOST); }
 
 // ---------- Replies ----------
@@ -252,7 +255,7 @@ export function reply(L, key, optionId) {
     if (p.season !== L.season || p.week !== R.gameWeek(L)) { sys(th, 'That game already happened.'); return 'Too late for that game.'; }
     const stat = { hype: 'aura', focus: 'clutch', loose: 'chaos' }[o.id];
     addBoost(L, stat, CHAT_BOOST);
-    back(th, pick(SQUAD_BACK, Math.random));
+    back(th, line(L, SQUAD_BACK));
     sys(th, `+${CHAT_BOOST} ${stat.toUpperCase()} for your fighters next game.`);
     return `+${CHAT_BOOST} ${stat[0].toUpperCase()}${stat.slice(1)} next game.`;
   }

@@ -1463,7 +1463,7 @@ button.dy-lu-card:hover:not(:disabled) { background: var(--surface-raised); }
 .ph-home { z-index: 3; }
 @media (max-width: 640px) { .ph-root:has(.ph-frame:not([hidden])) .ph-open { display: none; } .ph-root:has(.ph-frame:not([hidden])) .ph-toast { position: fixed; top: 70px; left: 16px; right: 16px; max-width: none; z-index: 5; } }
 /* v0.18.0: mobile League screen no longer stretches the page */
-html, body { overflow-x: hidden; }
+html { overflow-x: clip; } .screen { overflow-x: clip; }
 .dy-ticker, .dy-ticker-window, .dy-carousel { overflow: hidden; max-width: 100%; }
 .dy-hub3 > *, .dy-hub-center > *, .dy-hub-right > * { min-width: 0; max-width: 100%; }
 @media (max-width: 860px) {
@@ -1518,3 +1518,9 @@ html, body { overflow-x: hidden; }
 .ph-dock { grid-auto-columns: minmax(0, 1fr); gap: 2px; padding-left: 6px; padding-right: 6px; }
 .ph-app-icon { width: min(46px, 100%); aspect-ratio: 1; height: auto; }
 .ph-app-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* v0.19.0: pick saves to send */
+.save-pick-wrap { display: flex; flex-direction: column; gap: var(--space-3); }
+.save-pick { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.save-pick-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--surface-2, rgba(255,255,255,.05)); cursor: pointer; }
+.save-pick-row input { width: 20px; height: 20px; accent-color: var(--brand-gold); }
+.save-pick-text { display: flex; flex-direction: column; }

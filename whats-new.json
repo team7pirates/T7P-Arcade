@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.19.0",
+      "date": "2026-11-17",
+      "title": "Scrolling fixed, move saves offline, fresher texts",
+      "items": [
+        "Mouse-wheel scrolling works again on PC and in the installed Chrome app. Version 0.18.0 broke it; you shouldn't have needed the scrollbar.",
+        "Move saves without the internet: Settings → Send or back up saves. Pick everything or just one save (a Dynasty slot or a Forbidden Fusion file), then send it with AirDrop, Nearby Share or Bluetooth, or save the file and copy it over with a cable.",
+        "Restore now asks: Add to this device (keeps everything else) or Replace everything.",
+        "Texts don't repeat: a line you've seen or sent won't come back for 2 floors in Fusion or 2 weeks in Dynasty. Every message pool is about twice as big.",
+        "Fusion trash talk has a third answer: CLOWN them for +180 followers. It's a coin flip whether they get mad and call you out anyway.",
+        "Dynasty upgrades now follow the 1x / 2x / 3x rule: a Star costs double, a Superstar triple, but never more than +6 a season per step."
+      ]
+    },
+    {
       "version": "0.18.0",
       "date": "2026-11-17",
       "title": "Phones everywhere, five save files and a better League on phones",

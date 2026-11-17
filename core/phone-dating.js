@@ -11,7 +11,8 @@
 //     sparks; a yes is a date and a small boost. One date per turn (a floor
 //     in Fusion, a week in Dynasty).
 
-import { pick, fillIn, say, mine, back, sys, note } from './phone-core.js';
+import { fresh as freshCore, fillIn, say, mine, back, sys, note } from './phone-core.js';
+const pickF = (ph, arr, ctx) => freshCore(ph, arr, ctx.rand, ctx.now ?? 0);
 
 export const PEOPLE = [
   { id: 'm1', name: 'Mika Sato', age: 27, job: 'Ramen chef', icon: '🍜', bio: 'Will judge you by how you hold chopsticks. Late-night noodle runs are a love language.' },
@@ -30,14 +31,14 @@ export const PEOPLE = [
 export const person = (id) => PEOPLE.find((p) => p.id === id);
 export const MATCH_CHANCE = 0.6;
 
-const OPENERS = [
+const OPENERS = ['Okay, your profile is way too good. What\'s the catch?', 'My friend dared me to swipe right. No regrets so far.', 
   'Okay I have to ask: was that really you on {where}? 👀', 'Hi! Your profile made me laugh. That\'s rare.', 'So... do you always look that serious, or just in photos?',
   'You matched with me. Bold move. 😄', 'Hey you. Saw you on {where}. Impressive.',
 ];
-const FLIRT = ['You\'re even better in person, I bet.', 'Pretty sure you just made my whole week.', 'I was going to play it cool. That\'s over now.', 'Is it hot in here or is that just the screen?'];
-const FUNNY = ['Fair warning: my best move is falling asleep during movies.', 'Rate my skills 1 to 10. Wrong answers only.', 'I\'d say I\'m a catch, but I drop things a lot.', 'I promise I\'m funnier than my profile. Low bar, I know.'];
-const ASK = ['Want to grab food after my next {when}?', 'Let me take you out. You pick the place.', 'Coffee this week? I\'ll even let you win an argument.'];
-const LIKE_BACK = ['Haha okay, you\'re smooth. 😊', 'Stop, I\'m smiling at my phone like a weirdo.', 'Okay that was actually good.', 'You\'re trouble. I like it.'];
+const FLIRT = ['You have a great smile. Just saying.', 'I\'d skip a fight for you. Maybe.', 'Okay, you just became my favorite notification.', 'You\'re even better in person, I bet.', 'Pretty sure you just made my whole week.', 'I was going to play it cool. That\'s over now.', 'Is it hot in here or is that just the screen?'];
+const FUNNY = ['I can do one push-up. Impressed yet?', 'My cooking is a fighting style. Nobody survives it.', 'I talk to my plants. They don\'t answer either. 😅', 'Fair warning: my best move is falling asleep during movies.', 'Rate my skills 1 to 10. Wrong answers only.', 'I\'d say I\'m a catch, but I drop things a lot.', 'I promise I\'m funnier than my profile. Low bar, I know.'];
+const ASK = ['Dinner on me after my next {when}?', 'There\'s a night market this week. Come with me?', 'Want to grab food after my next {when}?', 'Let me take you out. You pick the place.', 'Coffee this week? I\'ll even let you win an argument.'];
+const LIKE_BACK = ['Okay, you win this round. 😊', 'Blushing. Don\'t tell anyone.', 'Haha okay, you\'re smooth. 😊', 'Stop, I\'m smiling at my phone like a weirdo.', 'Okay that was actually good.', 'You\'re trouble. I like it.'];
 const MEH_BACK = ['...lol okay.', 'Interesting choice of words. 😅', 'I\'ll let that one slide.'];
 const YES = ['Yes! It\'s a date. 🥰', 'Okay, you talked me into it. See you there!', 'Finally. I was waiting for you to ask.'];
 const NO = ['Maybe once I know you a little better. 😊', 'This week is crazy for me. Ask me again soon?', 'Slow down, champ. Keep talking to me first.'];
@@ -60,15 +61,15 @@ export function reshuffle(ph) {
 const keyOf = (id) => `date-${id}`;
 const who = (p) => ({ key: keyOf(p.id), name: p.name, kind: 'date', icon: p.icon });
 
-function prompt(t, p, m, ctx) {
+function prompt(ph, t, p, m, ctx) {
   const dated = m.lastDate === ctx.turn;
   const chance = askChance(m);
   t.pending = { type: 'date', id: p.id, options: [
-    { id: 'flirt', tone: 'flirt', text: pick(FLIRT, ctx.rand), hint: 'Usually builds a spark ♥' },
-    { id: 'funny', tone: 'funny', text: pick(FUNNY, ctx.rand), hint: 'A spark if it lands' },
+    { id: 'flirt', tone: 'flirt', text: pickF(ph, FLIRT, ctx), hint: 'Usually builds a spark ♥' },
+    { id: 'funny', tone: 'funny', text: pickF(ph, FUNNY, ctx), hint: 'A spark if it lands' },
     dated
       ? { id: 'later', tone: 'later', text: 'Can\'t stop thinking about our date.', hint: `You already went out this ${ctx.turnLabel || 'turn'}` }
-      : { id: 'ask', tone: 'date', text: fillIn(pick(ASK, ctx.rand), { when: ctx.when || 'fight' }), hint: `${Math.round(chance * 100)}% they say yes · a yes is a date: ${ctx.perk || 'a small boost'}` },
+      : { id: 'ask', tone: 'date', text: fillIn(pickF(ph, ASK, ctx), { when: ctx.when || 'fight' }), hint: `${Math.round(chance * 100)}% they say yes · a yes is a date: ${ctx.perk || 'a small boost'}` },
   ] };
 }
 export const askChance = (m) => Math.min(0.9, 0.3 + 0.15 * (m.sparks || 0));
@@ -82,8 +83,8 @@ export function swipe(ph, id, like, ctx) {
   if (ctx.rand() >= MATCH_CHANCE) return { matched: false, line: 'No match this time. Keep swiping.' };
   const m = { id, sparks: 0, dates: 0, lastDate: null };
   d.matches.unshift(m);
-  const t = say(ph, who(p), fillIn(pick(OPENERS, ctx.rand), { where: ctx.where || 'the news' }));
-  prompt(t, p, m, ctx);
+  const t = say(ph, who(p), fillIn(pickF(ph, OPENERS, ctx), { where: ctx.where || 'the news' }));
+  prompt(ph, t, p, m, ctx);
   note(ph, 'Matchup', `It's a match with ${p.name}!`, 'dating');
   return { matched: true, line: `💘 It's a match with ${p.name}!` };
 }
@@ -99,21 +100,21 @@ export function reply(ph, key, optionId, ctx) {
   let line = ''; let date = null;
   if (o.id === 'flirt' || o.id === 'funny') {
     const lands = ctx.rand() < (o.id === 'flirt' ? 0.8 : 0.6);
-    if (lands) { m.sparks = Math.min(5, (m.sparks || 0) + 1); back(t, pick(LIKE_BACK, ctx.rand)); line = `${p.name.split(' ')[0]} liked that. ♥ ${m.sparks}`; }
-    else { back(t, pick(MEH_BACK, ctx.rand)); line = 'That one didn\'t land.'; }
+    if (lands) { m.sparks = Math.min(5, (m.sparks || 0) + 1); back(t, pickF(ph, LIKE_BACK, ctx)); line = `${p.name.split(' ')[0]} liked that. ♥ ${m.sparks}`; }
+    else { back(t, pickF(ph, MEH_BACK, ctx)); line = 'That one didn\'t land.'; }
   } else if (o.id === 'ask') {
     if (ctx.rand() < askChance(m)) {
-      back(t, pick(YES, ctx.rand));
+      back(t, pickF(ph, YES, ctx));
       sys(t, `DATE NIGHT with ${p.name}: ${ctx.perk || 'a small boost'}.`);
-      back(t, pick(AFTER, ctx.rand));
+      back(t, pickF(ph, AFTER, ctx));
       m.dates += 1; m.lastDate = ctx.turn; m.sparks = Math.max(1, (m.sparks || 0) - 1);
       dating(ph).dates += 1; dating(ph).last = { id: p.id, turn: ctx.turn };
       date = p; line = `Date with ${p.name.split(' ')[0]}! ${ctx.perk || ''}`.trim();
-    } else { back(t, pick(NO, ctx.rand)); m.sparks = Math.max(0, (m.sparks || 0) - 1); line = 'Not yet. Keep talking.'; }
+    } else { back(t, pickF(ph, NO, ctx)); m.sparks = Math.max(0, (m.sparks || 0) - 1); line = 'Not yet. Keep talking.'; }
   } else {
     back(t, 'Me neither. 😊'); line = 'Aww.';
   }
-  prompt(t, p, m, ctx);
+  prompt(ph, t, p, m, ctx);
   return { line, date };
 }
 
@@ -122,7 +123,7 @@ export function refreshPrompts(ph, ctx) {
   const d = dating(ph);
   for (const m of d.matches) {
     const t = ph.threads.find((x) => x.key === keyOf(m.id));
-    if (t) prompt(t, person(m.id), m, ctx);
+    if (t) prompt(ph, t, person(m.id), m, ctx);
   }
 }
 // Did you have a date this turn?

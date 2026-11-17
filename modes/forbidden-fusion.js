@@ -121,7 +121,7 @@ const withFollowers = (f, r) => ({ ...f, aura: Math.min(100, (f.aura || 0) + FP.
 
 const fmtN = (n) => (n >= 10000 ? `${(n / 1000).toFixed(1)}k` : Math.round(n).toLocaleString());
 // Matchup: one date per floor; a date is +5 Aura for the next fight.
-const dateCtx = (r) => ({ rand: Math.random, turn: `f${r.next?.floor ?? r.floor}`, turnLabel: 'floor', where: `floor ${r.floor || 1} of the Tower`, when: 'fight', perk: `+${FP.DATE_AURA} Aura for your next floor` });
+const dateCtx = (r) => ({ rand: Math.random, now: r.floor || 0, turn: `f${r.next?.floor ?? r.floor}`, turnLabel: 'floor', where: `floor ${r.floor || 1} of the Tower`, when: 'fight', perk: `+${FP.DATE_AURA} Aura for your next floor` });
 
 function newRun(hard) {
   const build = structuredClone(data.build);

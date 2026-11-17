@@ -38,6 +38,17 @@ export const REST_PENALTY = 0.8;
 const pick = (arr, rand) => arr[Math.floor(rand() * arr.length)];
 const fill = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => (v[k] != null ? v[k] : ''));
 const short = (name) => String(name).split(' ')[0];
+// v0.19.0: a line you saw (or sent) won't come back for 2 floors.
+export const FRESH_GAP = 2;
+function fresh(r, arr, rand) {
+  const ph = r.phone; const now = r.floor || 0;
+  if (!ph.used) ph.used = {};
+  for (const k of Object.keys(ph.used)) if (now - ph.used[k] > FRESH_GAP + 1) delete ph.used[k];
+  const ok = arr.filter((t) => !(t in ph.used) || now - ph.used[t] > FRESH_GAP);
+  const t = pick(ok.length ? ok : arr, rand);
+  ph.used[t] = now;
+  return t;
+}
 
 // ---------- Phone state ----------
 export function newPhone(followers = 0) {
@@ -82,17 +93,32 @@ const TRASH = [
   'You got lucky on floor {floor}. Luck runs out.',
   'I\'ve been waiting for someone like you to climb this high. Easy work.',
   'They call you the Forbidden One? I call you my next highlight.',
+  'Your whole climb is a highlight reel of easy fights.',
+  'I watched you breathe hard on floor {floor}. That\'s embarrassing.',
+  'You fight like you read the manual last night.',
+  'The Gym really let you out looking like that?',
+  'Stop climbing. You\'re making the rest of us look bored.',
+  'I\'ll make it quick. I have plans after.',
+  'Your fans are loud. Let\'s see how loud they are after I\'m done.',
+  'Floor {floor} was a warm-up for me. It was your peak.',
 ];
-const HOSTILE_REPLY = ['Pull up. Next floor, you and me.', 'Say less. You\'re next.', 'Talk is cheap. Meet me on floor {next}.'];
-const HUMBLE_REPLY = ['Respect. I\'ll see you when I see you.', 'Just here to climb. Good luck up there.', 'All love. I\'m focused on my own fights.'];
-const HOSTILE_BACK = ['Bet. Don\'t blink.', 'Finally. Floor {next}.', 'Clear your schedule.'];
-const HUMBLE_BACK = ['...Fine. Stay out of my way.', 'Soft. Whatever.', 'We\'ll see how long that lasts.'];
+const HOSTILE_REPLY = ['Pull up. Next floor, you and me.', 'Say less. You\'re next.', 'Talk is cheap. Meet me on floor {next}.', 'Floor {next}. Bring your excuses.', 'You picked the wrong fighter to text.', 'I\'ll see you on floor {next}. Don\'t be late.', 'Keep my name out your mouth. Floor {next}.', 'Book it. You and me, floor {next}.'];
+const HUMBLE_REPLY = ['Respect. I\'ll see you when I see you.', 'Just here to climb. Good luck up there.', 'All love. I\'m focused on my own fights.', 'Appreciate the attention. Back to work.', 'Hope you have a good climb too.', 'I let my fights do the talking.', 'Noted. Stay safe up there.', 'Not today. I\'ve got a floor to clear.'];
+const CLOWN_REPLY = ['Who? 😂', 'Sorry, I only respond to fighters with highlights.', 'This you? *posts your worst loss*', 'Did your trainer write that for you? 🤣', 'I\'d fight you but you\'re not on my level. Literally. Floor numbers.', 'Cute message. Framing it.'];
+const HOSTILE_BACK = ['Bet. Don\'t blink.', 'Finally. Floor {next}.', 'Clear your schedule.', 'I\'ve been waiting for this.', 'Don\'t back out now.', 'Perfect. Bring a medic.'];
+const HUMBLE_BACK = ['...Fine. Stay out of my way.', 'Soft. Whatever.', 'We\'ll see how long that lasts.', 'Boring. But okay.', 'Hm. Classy. I hate it.', 'Your loss. Or mine. Whatever.'];
+const CLOWN_MAD = ['Oh you think you\'re FUNNY? Floor {next}. Me. You.', 'Laugh now. I\'m booking floor {next}.', 'Screenshot this: floor {next}, you\'re done.'];
+const CLOWN_QUIET = ['...', 'whatever bro', 'lol ok', 'blocked'];
 
-const BOSS_TEST = ['You made it to floor {floor}. Before you get to me, I want to see what you really have. My lieutenant, {lt}, is waiting on floor {next}.', 'I don\'t fight strangers. Beat {lt} on floor {next} and maybe I\'ll take you seriously.'];
-const BOSS_SNUB = ['Floor {boss}? You\'re not worth my time. My crew will handle you.', 'I\'ve watched your climb. I\'m not impressed. When you get to floor {boss}, you\'ll meet my people, not me.'];
-const FANS = ['Been with you since floor 1! 🔥', 'You\'re the reason I watch the Tower now.', 'Can you shout me out after your next win?? 🙏'];
-const HATERS = ['Overrated. Floor {floor} is where you fold.', 'Bandwagon fighter with a borrowed face.', 'I\'ll be laughing when you lose.'];
-const TRAINER_HURT = ['You took a beating on floor {floor}. I can patch you up if you sit out a round of promo work. Your call.', 'You\'re running hot and hurt. Rest up a bit before the next one?'];
+const BOSS_TEST = ['Everybody says you\'re special. {lt} works for me. Floor {next}. Show me.', 'Before you climb to me, get past {lt} on floor {next}. If you can.', 'You made it to floor {floor}. Before you get to me, I want to see what you really have. My lieutenant, {lt}, is waiting on floor {next}.', 'I don\'t fight strangers. Beat {lt} on floor {next} and maybe I\'ll take you seriously.'];
+const BOSS_SNUB = ['You think I fight every nobody who climbs? My crew waits on floor {boss}.', 'Floor {boss} is mine. You\'ll never see me. Just my people.', 'Floor {boss}? You\'re not worth my time. My crew will handle you.', 'I\'ve watched your climb. I\'m not impressed. When you get to floor {boss}, you\'ll meet my people, not me.'];
+const FANS = ['Been with you since floor 1! 🔥', 'You\'re the reason I watch the Tower now.', 'Can you shout me out after your next win?? 🙏', 'My little brother dressed as you for school today 😭', 'Watched floor {floor} three times. Unreal.', 'Got your fighter as my lock screen now.', 'Please never stop climbing.', 'Floor {floor} had me screaming at my phone!!'];
+const HATERS = ['Overrated. Floor {floor} is where you fold.', 'Bandwagon fighter with a borrowed face.', 'I\'ll be laughing when you lose.', 'Your fans are bots.', 'Mid fighter, loud fans.', 'Lucky. Every. Single. Floor.', 'Can\'t wait for the boss to humble you.', 'You only beat people who were tired.'];
+const CLAP = ['Watch the next floor and cry about it.', 'Keep watching. I know you will.', 'You spelled "goat" wrong.', 'Write me a longer one next time.', 'Thanks for the views 😘'];
+const IGNORE = ['🙏 Appreciate you watching anyway.', 'All good. Enjoy the show.', 'Hope your day gets better.', 'Love you too 💜'];
+const LOVE = ['Thank you! This one\'s for you 🔥', 'You\'re the best. Next floor\'s for you.', 'Shout-out to you! 🙌', 'This means a lot. Let\'s keep going.'];
+const FLEX = ['Just getting started. Stay tuned.', 'You haven\'t seen anything yet.', 'Top floor or nothing.', 'Get comfortable. It\'s a long climb.'];
+const TRAINER_HURT = ['You took a beating on floor {floor}. I can patch you up if you sit out a round of promo work. Your call.', 'You\'re running hot and hurt. Rest up a bit before the next one?', 'That last fight cost you. Ice bath and some tape? It\'ll slow the money down.', 'I\'m not sending you up there like this. Ten minutes on my table?', 'You\'re limping. Rest or keep pushing, I\'m with you either way.'];
 // Each sponsor's task fits what they sell (v0.18.0).
 const SPONSORS = [
   { brand: 'Kiai Energy', icon: '⚡', rep: 'Tomo at Kiai Energy', task: 'clear3', label: 'Clear the next 3 floors', pay: 1.0,
@@ -104,15 +130,15 @@ const SPONSORS = [
   { brand: 'Zenith Gloves', icon: '🥊', rep: 'Hiro at Zenith Gloves', task: 'boss', label: 'Beat the next boss', pay: 1.5,
     pitch: 'Zenith Gloves are made for knockouts. Put them on and beat the next boss' },
 ];
-const FEED_WIN = ['{me} just cleared floor {floor} and didn\'t even look tired.', 'Floor {floor} down. This climb is different.', 'Somebody check on {foe}. {me} is not playing.', 'The Tower is shaking. {me} on floor {floor}!!'];
-const FEED_HATE = ['{me} is a fraud, wait for the boss.', 'Floor {floor} was a gift. Next one\'s real.'];
+const FEED_WIN = ['{me} said "next" and meant it. Floor {floor} done.', 'Not even close. {me} on floor {floor}.', 'Clip of the day: {me} vs {foe}.', 'Tower check: {me} still standing after floor {floor}.', '{me} just cleared floor {floor} and didn\'t even look tired.', 'Floor {floor} down. This climb is different.', 'Somebody check on {foe}. {me} is not playing.', 'The Tower is shaking. {me} on floor {floor}!!'];
+const FEED_HATE = ['{me} fans are acting like floor {floor} was hard 💀', 'Ask me again when {me} sees a real boss.', '{me} is a fraud, wait for the boss.', 'Floor {floor} was a gift. Next one\'s real.'];
 const FAN_NAMES = ['@TowerWatcher', '@ForbiddenFan99', '@OmegaSwarmSZN', '@BountyHunterX', '@GymRatTV', '@FloorByFloor', '@AGN_Fan', '@TopFloorTalk'];
 // After you beat them.
-const BEATEN_SALTY = ['That was luck. Run it back.', 'I slipped. Don\'t get comfortable.', 'Enjoy it while it lasts.', 'Everybody saw that. Next time is different.'];
-const BEATEN_GOOD = ['GG. You\'re the real thing.', 'Respect. I didn\'t think you had that in you.', 'Good fight. My body hurts. 😂', 'Okay. You earned that one.'];
-const GLOAT = ['Sit down. Floor {floor} belongs to me.', 'Tell everybody who did that to you.', 'That\'s what happens when you get in my way.'];
-const RESPECT = ['Good fight. You pushed me.', 'Respect. You made me work for it.', 'GG. Heal up.'];
-const REVENGE = ['Remember me? Floor {floor}. Me and you. Again.', 'I trained for this. Rematch on floor {floor}.', 'You talked a lot after last time. Floor {floor}.'];
+const BEATEN_SALTY = ['My hand slipped. That\'s all that was.', 'You didn\'t beat me. I beat myself.', 'Don\'t post that clip.', 'Lucky shot. Lucky fight.', 'That was luck. Run it back.', 'I slipped. Don\'t get comfortable.', 'Enjoy it while it lasts.', 'Everybody saw that. Next time is different.'];
+const BEATEN_GOOD = ['That special move was nasty. Teach me sometime?', 'You hit harder than you look.', 'Okay, I see the hype now.', 'Go win it all. Make me look good.', 'GG. You\'re the real thing.', 'Respect. I didn\'t think you had that in you.', 'Good fight. My body hurts. 😂', 'Okay. You earned that one.'];
+const GLOAT = ['Ice that ego while you\'re at it.', 'Stay on the floor next time.', 'Highlight of my week. Thanks.', 'I barely broke a sweat.', 'Sit down. Floor {floor} belongs to me.', 'Tell everybody who did that to you.', 'That\'s what happens when you get in my way.'];
+const RESPECT = ['You were tougher than I thought.', 'Proud to share the floor with you.', 'Heal up. Run it back sometime, friendly.', 'Real one. Respect.', 'Good fight. You pushed me.', 'Respect. You made me work for it.', 'GG. Heal up.'];
+const REVENGE = ['I can\'t sleep since that fight. Floor {floor}. Let\'s fix that.', 'Round two. Floor {floor}. No excuses this time.', 'Remember me? Floor {floor}. Me and you. Again.', 'I trained for this. Rematch on floor {floor}.', 'You talked a lot after last time. Floor {floor}.'];
 export const BEATEN_TIP = 4;       // Aura for your next floor after a respectful reply
 export const REVENGE_GAP = 3;      // floors until a gloated foe comes back
 export const DATE_AURA = 5;        // Aura for your next floor after a date
@@ -128,8 +154,8 @@ export function afterFloor(r, ctx) {
   // Deals that just finished or failed.
   settleDeals(r, ctx);
   // The feed and the news react to every floor.
-  post(ph, pick(FAN_NAMES, rand), fill(pick(FEED_WIN, rand), { me: ctx.me, floor, foe: foeName }), 50 + Math.floor(rand() * 400) + floor * 40, floor);
-  if (rand() < 0.4) post(ph, pick(FAN_NAMES, rand), fill(pick(FEED_HATE, rand), { me: ctx.me, floor }), 10 + Math.floor(rand() * 90), floor);
+  post(ph, pick(FAN_NAMES, rand), fill(fresh(r, FEED_WIN, rand), { me: ctx.me, floor, foe: foeName }), 50 + Math.floor(rand() * 400) + floor * 40, floor);
+  if (rand() < 0.4) post(ph, pick(FAN_NAMES, rand), fill(fresh(r, FEED_HATE, rand), { me: ctx.me, floor }), 10 + Math.floor(rand() * 90), floor);
   gainFollowers(ph, 60 + floor * 25 + (ctx.underdog ? 120 : 0) + (ctx.callout ? 300 : 0) + (ctx.boss ? 400 : 0));
   if (ctx.boss) headline(ph, `${ctx.me} takes down the boss of floor ${floor}`, `${foeName} falls. The Tower has a new name to fear.`, floor);
   else if (ctx.callout) headline(ph, `${ctx.me} answers the callout`, `${foeName} talked. ${ctx.me} answered on floor ${floor}.`, floor);
@@ -163,11 +189,12 @@ function trashEvent(r, ctx, next) {
   const c = nearChar(ctx.roster, Math.min(99, floorPower(next, ctx.hard) + 6 + (swarmSize(next) - 1) * 4), avoidOf(r), ctx.rand);
   if (!c) return;
   const who = { key: `c${c.id}`, name: c.name, cid: c.id, kind: 'rival' };
-  const t = say(r.phone, who, fill(pick(TRASH, ctx.rand), { floor: ctx.floor, me: short(ctx.me) }), ctx.floor);
+  const t = say(r.phone, who, fill(fresh(r, TRASH, ctx.rand), { floor: ctx.floor, me: short(ctx.me) }), ctx.floor);
   t.pending = { type: 'trash', floor: next, cid: c.id, options: [
-    { id: 'hostile', tone: 'hostile', text: fill(pick(HOSTILE_REPLY, ctx.rand), { next }), hint: `${short(c.name)} becomes your floor ${next} opponent · Bounty ×${CALLOUT_BOUNTY}` },
-    { id: 'humble', tone: 'humble', text: pick(HUMBLE_REPLY, ctx.rand), hint: 'Keep climbing as normal · a few followers for staying classy' },
-  ] };
+    { id: 'hostile', tone: 'hostile', text: fill(fresh(r, HOSTILE_REPLY, ctx.rand), { next }), hint: `${short(c.name)} becomes your floor ${next} opponent · Bounty ×${CALLOUT_BOUNTY}` },
+    { id: 'humble', tone: 'humble', text: fresh(r, HUMBLE_REPLY, ctx.rand), hint: 'Keep climbing as normal · a few followers for staying classy' },
+    { id: 'clown', tone: 'funny', text: fresh(r, CLOWN_REPLY, ctx.rand), hint: `+180 followers · coin flip: they get mad and call you out anyway (Bounty ×${CALLOUT_BOUNTY})` },
+  ], cname: c.name };
 }
 
 function bossEvent(r, ctx, next) {
@@ -179,13 +206,13 @@ function bossEvent(r, ctx, next) {
   if (ctx.rand() < 0.55) {
     const lt = nearChar(ctx.roster, Math.min(99, floorPower(next, ctx.hard) + 4), new Set([...avoidOf(r), boss.id]), ctx.rand);
     if (!lt) return;
-    const t = say(r.phone, who, fill(pick(BOSS_TEST, ctx.rand), { floor: ctx.floor, next, lt: lt.name }), ctx.floor);
+    const t = say(r.phone, who, fill(fresh(r, BOSS_TEST, ctx.rand), { floor: ctx.floor, next, lt: lt.name }), ctx.floor);
     t.pending = { type: 'boss-test', floor: next, bossFloor, lt: lt.id, options: [
       { id: 'accept', tone: 'hostile', text: `Send ${short(lt.name)}. Then I\'m coming for you.`, hint: `Floor ${next} is ${short(lt.name)} (+4 Power) · win and the boss comes in rattled (−5 Power)` },
       { id: 'decline', tone: 'humble', text: 'I don\'t need to audition. See you on your floor.', hint: 'Normal floor next · the boss comes at full strength' },
     ] };
   } else {
-    const t = say(r.phone, who, fill(pick(BOSS_SNUB, ctx.rand), { boss: bossFloor }), ctx.floor);
+    const t = say(r.phone, who, fill(fresh(r, BOSS_SNUB, ctx.rand), { boss: bossFloor }), ctx.floor);
     t.pending = { type: 'boss-snub', floor: bossFloor, options: [
       { id: 'hostile', tone: 'hostile', text: 'Send all of them. I\'ll come through every one.', hint: `Floor ${bossFloor} becomes the boss\'s crew of 3 · Bounty ×${CREW_BOUNTY}` },
       { id: 'humble', tone: 'humble', text: 'Respect. I\'ll earn the fight with you.', hint: 'The boss fights you alone, as normal' },
@@ -199,18 +226,18 @@ function beatenEvent(r, ctx) {
   if (!big && ctx.rand() > 0.55) return;
   const who = { key: `c${foe.id}`, name: foe.name, cid: foe.id, kind: ctx.boss ? 'boss' : 'rival' };
   const salty = ctx.rand() < (ctx.callout || ctx.type === 'revenge' ? 0.75 : 0.5);
-  const t = say(r.phone, who, pick(salty ? BEATEN_SALTY : BEATEN_GOOD, ctx.rand), ctx.floor);
+  const t = say(r.phone, who, fresh(r, salty ? BEATEN_SALTY : BEATEN_GOOD, ctx.rand), ctx.floor);
   const canRevenge = !ctx.boss && !r.revenge;
   t.pending = { type: 'beaten', cid: foe.id, floor: ctx.floor, options: [
-    { id: 'gloat', tone: 'gloat', text: fill(pick(GLOAT, ctx.rand), { floor: ctx.floor }), hint: canRevenge ? `+250 followers · ${short(foe.name)} wants a rematch in ${REVENGE_GAP} floors (+3 Power, Bounty ×${CALLOUT_BOUNTY})` : '+250 followers' },
-    { id: 'respect', tone: 'respect', text: pick(RESPECT, ctx.rand), hint: `+80 followers · they send you a tip: +${BEATEN_TIP} Aura next floor` },
+    { id: 'gloat', tone: 'gloat', text: fill(fresh(r, GLOAT, ctx.rand), { floor: ctx.floor }), hint: canRevenge ? `+250 followers · ${short(foe.name)} wants a rematch in ${REVENGE_GAP} floors (+3 Power, Bounty ×${CALLOUT_BOUNTY})` : '+250 followers' },
+    { id: 'respect', tone: 'respect', text: fresh(r, RESPECT, ctx.rand), hint: `+80 followers · they send you a tip: +${BEATEN_TIP} Aura next floor` },
   ] };
 }
 
 function revengeEvent(r, ctx, next) {
   const rv = r.revenge; r.revenge = null;
   r.plan[next] = { type: 'revenge', ids: [rv.cid], mod: 3, mult: CALLOUT_BOUNTY };
-  const t = say(r.phone, { key: `c${rv.cid}`, name: rv.name, cid: rv.cid, kind: 'rival' }, fill(pick(REVENGE, ctx.rand), { floor: next }), ctx.floor);
+  const t = say(r.phone, { key: `c${rv.cid}`, name: rv.name, cid: rv.cid, kind: 'rival' }, fill(fresh(r, REVENGE, ctx.rand), { floor: next }), ctx.floor);
   sys(t, `REMATCH: ${rv.name} is your floor ${next} opponent (+3 Power) · Bounty ×${CALLOUT_BOUNTY}.`);
   headline(r.phone, `${rv.name} wants revenge`, `After the trash talk, ${rv.name} called for a rematch on floor ${next}.`, ctx.floor);
 }
@@ -218,7 +245,7 @@ function revengeEvent(r, ctx, next) {
 function trainerEvent(r, ctx) {
   if (r.phone.threads.find((t) => t.key === 'trainer')?.pending) return;
   const who = { key: 'trainer', name: 'Coach Daichi (your trainer)', kind: 'trainer' };
-  const t = say(r.phone, who, fill(pick(TRAINER_HURT, ctx.rand), { floor: ctx.floor }), ctx.floor);
+  const t = say(r.phone, who, fill(fresh(r, TRAINER_HURT, ctx.rand), { floor: ctx.floor }), ctx.floor);
   t.pending = { type: 'rest', options: [
     { id: 'rest', tone: 'humble', text: 'You\'re right. Patch me up.', hint: `Heal ${Math.round(REST_HEAL * 100)}% now · next floor pays ${Math.round((1 - REST_PENALTY) * 100)}% less Bounty` },
     { id: 'push', tone: 'hostile', text: 'No time. I\'m going up.', hint: 'No heal · full Bounty' },
@@ -244,12 +271,12 @@ function fanEvent(r, ctx) {
   const hater = ctx.rand() < 0.45;
   const name = pick(FAN_NAMES, ctx.rand);
   const who = { key: `fan-${name}`, name, kind: hater ? 'hater' : 'fan' };
-  const t = say(r.phone, who, fill(pick(hater ? HATERS : FANS, ctx.rand), { floor: ctx.floor }), ctx.floor);
+  const t = say(r.phone, who, fill(fresh(r, hater ? HATERS : FANS, ctx.rand), { floor: ctx.floor }), ctx.floor);
   t.pending = { type: hater ? 'hater' : 'fan', options: hater
-    ? [{ id: 'clap', tone: 'hostile', text: 'Watch the next floor and cry about it.', hint: 'Followers +150 (spicy), small chance it backfires' },
-      { id: 'ignore', tone: 'humble', text: '🙏 Appreciate you watching anyway.', hint: 'Followers +60' }]
-    : [{ id: 'love', tone: 'humble', text: 'Thank you! This one\'s for you 🔥', hint: 'Followers +100' },
-      { id: 'flex', tone: 'hostile', text: 'Just getting started. Stay tuned.', hint: 'Followers +80' }] };
+    ? [{ id: 'clap', tone: 'hostile', text: fresh(r, CLAP, ctx.rand), hint: 'Followers +150 (spicy), small chance it backfires' },
+      { id: 'ignore', tone: 'humble', text: fresh(r, IGNORE, ctx.rand), hint: 'Followers +60' }]
+    : [{ id: 'love', tone: 'humble', text: fresh(r, LOVE, ctx.rand), hint: 'Followers +100' },
+      { id: 'flex', tone: 'hostile', text: fresh(r, FLEX, ctx.rand), hint: 'Followers +80' }] };
 }
 
 // ---------- Replies ----------
@@ -267,13 +294,22 @@ export function reply(r, key, optionId, ctx) {
   if (p.type === 'trash') {
     if (o.id === 'hostile') {
       r.plan[p.floor] = { type: 'callout', ids: [p.cid], mod: 0, mult: CALLOUT_BOUNTY };
-      back(fill(pick(HOSTILE_BACK, ctx.rand), { next: p.floor }));
+      back(fill(fresh(r, HOSTILE_BACK, ctx.rand), { next: p.floor }));
       sys(t, `CALLOUT: ${t.name} is your floor ${p.floor} opponent.`);
       gainFollowers(ph, 120);
       post(ph, '@AGN_Wire', `CALLOUT ALERT: ${ctx.me} vs ${t.name} is set for floor ${p.floor}.`, 900 + Math.floor(ctx.rand() * 600), p.floor);
       line = `${t.name} is your next opponent.`;
+    } else if (o.id === 'clown') {
+      gainFollowers(ph, 180);
+      post(ph, pick(FAN_NAMES, ctx.rand), `${ctx.me} just cooked ${t.name} in the DMs 😭😭`, 600 + Math.floor(ctx.rand() * 900), p.floor);
+      if (ctx.rand() < 0.5) {
+        r.plan[p.floor] = { type: 'callout', ids: [p.cid], mod: 0, mult: CALLOUT_BOUNTY };
+        back(fill(fresh(r, CLOWN_MAD, ctx.rand), { next: p.floor }));
+        sys(t, `CALLOUT: ${t.name} is your floor ${p.floor} opponent.`);
+        line = `+180 followers. ${short(t.name)} got mad: floor ${p.floor} callout.`;
+      } else { back(fresh(r, CLOWN_QUIET, ctx.rand)); line = '+180 followers. They went quiet.'; }
     } else {
-      back(pick(HUMBLE_BACK, ctx.rand));
+      back(fresh(r, HUMBLE_BACK, ctx.rand));
       gainFollowers(ph, 40);
       line = 'You kept it classy. The climb goes on as normal.';
     }

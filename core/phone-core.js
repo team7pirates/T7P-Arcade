@@ -38,3 +38,13 @@ export function trim(ph, keep = 40) {
   for (const t of ph.threads) if (t.msgs.length > keep) t.msgs = t.msgs.slice(-keep);
   if (ph.threads.length > 30) ph.threads = ph.threads.filter((t, i) => i < 30 || t.pending);
 }
+// v0.19.0: a line won't come back until `gap` turns have passed (a floor in
+// Fusion, a week in Dynasty). `now` is a number that goes up each turn.
+export function fresh(ph, arr, rand, now, gap = 2) {
+  if (!ph.used) ph.used = {};
+  for (const k of Object.keys(ph.used)) if (now - ph.used[k] > gap + 1) delete ph.used[k];
+  const ok = arr.filter((t) => !(t in ph.used) || now - ph.used[t] > gap);
+  const t = pick(ok.length ? ok : arr, rand);
+  ph.used[t] = now;
+  return t;
+}
