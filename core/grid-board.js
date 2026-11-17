@@ -4,6 +4,7 @@
 import { h, icon, avatar, sheet } from './ui.js';
 import { characters } from './characters.js';
 import { categoryById, cellPoints } from './grid.js';
+import { sfx } from './sfx.js';
 
 // state.cells[r][c] is null (open) or { kind: 'hit' | 'burn' | 'intel', id }
 export function emptyCells(size) {
@@ -149,7 +150,8 @@ export function openGuess(grid, state, r, c, { multiplier = 1, showPoints = true
   const guess = (ch) => {
     if (busy) return;
     const result = onGuess(ch);
-    if (result.ok) { busy = true; s.close(); return; }
+    if (result.ok) { sfx.play('correct'); busy = true; s.close(); return; }
+    sfx.play('wrong');
     feedback.textContent = result.message;
     feedback.classList.remove('shake');
     void feedback.offsetWidth;

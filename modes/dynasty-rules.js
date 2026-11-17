@@ -609,6 +609,7 @@ export function endSeason(league) {
   const coy = league.teams.slice().sort((a, b) => (b.w - expectedWins(b)) - (a.w - expectedWins(a)))[0];
   row.coachOfYear = coy.i;
   if (hooks.seasonRow) hooks.seasonRow(league, row);
+  if (hooks.seasonRowLegacy) hooks.seasonRowLegacy(league, row);
   league.history.unshift(row);
   if (league.user) judgeCoach(league);
   league.phase = 'done';
@@ -629,7 +630,8 @@ function judgeCoach(league) {
   else if (u.expect === 'few') met = t.w >= 7 || made;
   else met = t.w > (u.lastWins ?? 0) || made;
   u.missStreak = met ? 0 : (u.missStreak || 0) + 1;
-  u.security = u.missStreak >= 3 ? 'Fired' : u.missStreak === 2 ? 'Hot seat' : u.missStreak === 1 ? 'Watched closely' : 'Safe for now';
+  const grace = u.rep && u.rep.titles >= 2 ? 1 : 0; // a proven winner gets one extra season
+  u.security = u.missStreak >= 3 + grace ? 'Fired' : u.missStreak >= 2 + grace ? 'Hot seat' : u.missStreak >= 1 ? 'Watched closely' : 'Safe for now';
   u.career.push({ season: league.season, team: t.i, w: t.w, l: t.l, playoffs: made, champion: league.playoffs.champion === t.i, met });
   return met;
 }
@@ -669,7 +671,7 @@ export function openJobs(league) {
   return out;
 }
 
-export function hire(league, ti, coachName, quiz) {
+export function hire(league, ti, coachName, quiz, rep = null) {
   const last = league.history[0];
   const t = league.teams[ti];
   const rank = last.standings.findIndex((s) => s.i === ti) + 1;
@@ -677,6 +679,7 @@ export function hire(league, ti, coachName, quiz) {
   league.user = {
     team: ti, coach: coachName, quiz, focus: 'rest', expect: t.stage, lastWins: t.lastW ?? t.w,
     missStreak: 0, security: 'Safe for now', career: [], hiredSeason: league.season + 1, priorCoaches: prior, lastRank: rank,
+    rep: rep && rep.dynasties ? rep : null, coached: {},
   };
   t.coachName = coachName;
   if (quiz.career === 'champion') t.roster.forEach((pid) => { league.players[pid].hype = Math.min(100, league.players[pid].hype + 8); });

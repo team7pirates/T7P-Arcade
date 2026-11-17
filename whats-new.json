@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.13.0",
+      "date": "2026-11-17",
+      "title": "Dynasty: The End of an Era, plus sound effects",
+      "items": [
+        "Every dynasty now has an ending. When the last original character retires (around season 10), the off-season stops for a send-off to the last legends and the story of your career: record, Grails, trophy shelf, the best players you coached, your Pantheon members, and a final OSM cover with you on it.",
+        "The countdown: once 60 legends are left, the news and OSM keep track. The last season is billed as the farewell tour.",
+        "The New Era: after the send-off, your save keeps going with made-up characters only, for as long as you want.",
+        "Hall of Coaches: every finished dynasty is saved there, with an all-time trophy cabinet. Find it on the Dynasty save screen.",
+        "Your legacy carries over: in a new save you can take any job (not just teams that missed the playoffs), your hire makes headlines, and free agents like playing for you. With 2 or more Grails you get one extra season before the hot seat.",
+        "Sound effects across the arcade: hits, specials, KOs, round gongs, wins and losses, right and wrong guesses on the grids, button taps, magazine page flips, draft picks and trophy fanfares. Set the volume (or turn them off) in Settings."
+      ]
+    },
+    {
       "version": "0.12.0",
       "date": "2026-11-17",
       "title": "Made for big screens",

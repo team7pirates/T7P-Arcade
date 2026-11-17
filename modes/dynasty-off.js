@@ -7,6 +7,7 @@
 //   development upgrades → the draft → free agency (3 rounds) → new season.
 
 import * as R from './dynasty-rules.js';
+import * as LG from './dynasty-legacy.js';
 
 const { ROLES, CAP, ROSTER_SIZE, MAX_PER_SERIES, SCOUT_COST } = R;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -22,7 +23,7 @@ export const MIN_SALARY = 1;
 export const FA_ROUNDS = 3;
 export const FA_BAR = [66, 56, 42];          // interest a player needs to sign, by round
 export const OFF_STEPS = ['retire', 'awards', 'resign', 'upgrade', 'draft', 'fa', 'ready'];
-export const OFF_LABEL = { fired: 'New job', retire: 'Retirements', awards: 'Awards night', resign: 'Re-sign', upgrade: 'Upgrades', draft: 'The draft', fa: 'Free agency', ready: 'New season' };
+export const OFF_LABEL = { legacy: 'Legacy', fired: 'New job', retire: 'Retirements', awards: 'Awards night', resign: 'Re-sign', upgrade: 'Upgrades', draft: 'The draft', fa: 'Free agency', ready: 'New season' };
 
 // Newcomer names: any culture, any world (Khalil's rule).
 const NF = ['Kaito', 'Marcus', 'Aiko', 'Diego', 'Lena', 'Kwame', 'Yuna', 'Theo', 'Soren', 'Priya', 'Jalen', 'Mika', 'Rafael', 'Hana', 'Idris', 'Elio',
@@ -186,7 +187,10 @@ export function startOffseason(L) {
   if (inducted.length) news(L, { kind: 'PANTHEON', team: L.players[inducted[0]].team ?? 0, title: `${inducted.map((pid) => L.players[pid].name).join(', ')} enter${inducted.length === 1 ? 's' : ''} the Generational Pantheon`, text: 'Retired at 95+ Power. The AFL will not see their like again.' });
   const big = retired.slice().sort((a, b) => b.power - a.power)[0];
   if (big) news(L, { kind: 'RETIRED', team: big.team ?? 0, title: `${big.name} retires after ${big.seasons} seasons`, text: `${retired.length} cards called it a career this off-season.` });
-  L.off = { step: L.user?.security === 'Fired' ? 'fired' : 'retire', retired, inducted, order: null, pick: 0, picks: [], fa: null };
+  const legacy = LG.checkEnd(L, retired);
+  const steps = legacy ? ['retire', 'legacy', ...OFF_STEPS.slice(1)] : OFF_STEPS.slice();
+  if (legacy) news(L, { kind: 'END OF AN ERA', team: L.players[L.lastLegends[0]]?.team ?? L.user.team, title: `${L.players[L.lastLegends[0]]?.name || 'The last legend'} retires. The legends are gone.`, text: 'The last of the original AFL characters has called it a career.' });
+  L.off = { step: L.user?.security === 'Fired' ? 'fired' : 'retire', steps, legacy, retired, inducted, order: null, pick: 0, picks: [], fa: null };
   return L.off;
 }
 
@@ -201,6 +205,8 @@ function prune(L) {
   }
   L.trades = (L.trades || []).slice(-30);
   for (const t of L.trades) [...t.aGot, ...t.bGot].forEach((pid) => keep.add(pid));
+  Object.keys(L.user?.coached || {}).forEach((pid) => keep.add(Number(pid)));
+  (L.lastLegends || []).forEach((pid) => keep.add(pid));
   for (const p of Object.values(L.players)) {
     if (p.retired && p.retiredSeason < L.season && !keep.has(p.pid)) delete L.players[p.pid];
   }
@@ -209,13 +215,15 @@ function prune(L) {
 export function nextStep(L) {
   const o = L.off;
   if (o.step === 'fired') { o.step = 'retire'; return o.step; }
-  const i = OFF_STEPS.indexOf(o.step);
+  const list = o.steps || OFF_STEPS;
+  const i = list.indexOf(o.step);
   // Leaving a step settles it for every AI team.
+  if (o.step === 'legacy' && !L.complete) LG.completeDynasty(L);
   if (o.step === 'resign') { releaseUnsigned(L, L.user.team); aiResign(L); }
   if (o.step === 'upgrade') aiUpgrades(L);
   if (o.step === 'draft') { finishDraft(L); }
   if (o.step === 'fa') { faCleanup(L); }
-  o.step = OFF_STEPS[Math.min(OFF_STEPS.length - 1, i + 1)];
+  o.step = list[Math.min(list.length - 1, i + 1)];
   if (o.step === 'draft' && !o.order) setDraftOrder(L);
   if (o.step === 'fa' && !o.fa) openFreeAgency(L);
   return o.step;
@@ -432,6 +440,7 @@ export function interest(L, p, t, offer) {
   parts.style = (fits.includes(p.role) ? 1 : 0.4) * 6;
   const buzz = roster(L, t).reduce((n, q) => n + q.hype + q.aura, 0) / Math.max(1, t.roster.length) / 2;
   parts.spotlight = p.lowKey ? 0 : clamp(buzz / 70, 0, 1) * clamp(p.aura / 60, 0.5, 1.4) * 9;
+  if (L.user && t.i === L.user.team && L.user.rep) parts.legacy = LG.faPull(L.user.rep);
   const yrs = Math.abs((offer.years || wantYears(p)) - wantYears(p));
   const score = Object.values(parts).reduce((n, v) => n + v, 0) - yrs * 4;
   const blocked = same >= MAX_PER_SERIES ? `Already ${MAX_PER_SERIES} from ${p.series}` : null;
@@ -551,6 +560,8 @@ export function startNextSeason(L) {
   const t = L.teams[L.user.team];
   if (t.roster.length !== ROSTER_SIZE) return { ok: false, why: `Your roster needs exactly ${ROSTER_SIZE} cards (you have ${t.roster.length}).` };
   R.resetForSeason(L);
+  const era = LG.seasonStartNews(L);
+  if (era) news(L, { ...era, team: L.user.team });
   for (const tm of L.teams) {
     tm.coachName = tm.coachName || 'Coach';
     if (tm.capPenalty > 0) news(L, { kind: 'CAP', team: tm.i, title: `${tm.name} start ${tm.capPenalty} under the cap`, text: `Last season's overage comes off this season's cap: ${R.capOf(tm)} to spend.` });

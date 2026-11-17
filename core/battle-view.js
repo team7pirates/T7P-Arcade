@@ -14,6 +14,7 @@ import { characters } from './characters.js';
 import { tierBadge } from './card.js';
 import { runMatch } from './combat.js';
 import { settings } from './settings.js';
+import { sfx } from './sfx.js';
 
 const STATUS_LABEL = { burn: 'BURN', stun: 'STUN', guard: 'GUARD' };
 const fmt = (n) => Math.round(n).toLocaleString();
@@ -150,6 +151,12 @@ export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, be
 
   function apply(ev) {
     const other = (s) => (s === 'A' ? 'B' : 'A');
+    if (!skipping) {
+      if (ev.t === 'attack') sfx.play(ev.special ? 'special' : 'swing');
+      else if (ev.t === 'damage') sfx.play('hit');
+      else if (ev.t === 'ko') sfx.play('ko');
+      else if (ev.t === 'round-start') sfx.play('gong');
+    }
     switch (ev.t) {
       case 'round-start':
         live.round = ev.round;
@@ -232,6 +239,7 @@ export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, be
     live.score = result.score;
     drawAll();
     const won = result.winner === 'A';
+    sfx.play(won ? 'win' : 'loss');
     const over = h('div', { class: `bt-result ${won ? 'is-win' : 'is-loss'}`, role: 'status' },
       h('p', { class: 'display-lg win-text' }, won ? 'YOU WIN' : 'THEY WIN'),
       h('p', { class: 'label-spaced' }, need === 1 ? 'ONE-ROUND FIGHT' : `${result.score[0]} – ${result.score[1]} · ${result.rounds} ROUNDS`),

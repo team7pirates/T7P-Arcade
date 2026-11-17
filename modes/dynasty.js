@@ -15,6 +15,8 @@ import { playMatch } from '../core/battle-view.js';
 import * as R from './dynasty-rules.js';
 import * as O from './dynasty-off.js';
 import * as MD from './dynasty-media.js';
+import * as LG from './dynasty-legacy.js';
+import { sfx } from '../core/sfx.js';
 
 const help = howToPlay('dynasty', 'Dynasty', [
   'You are the new head coach of an Anime Fighting League team. Pick any team that missed last season\'s playoffs.',
@@ -29,6 +31,8 @@ const help = howToPlay('dynasty', 'Dynasty', [
   'Off-season: retirements, awards night, re-sign (one Franchise Tag), up to 2 development upgrades, a one-round draft, then 3 rounds of free agency.',
   'Media: OSM prints an issue every 3 weeks. The cover star and your spotlight player gain Aura. The Fight Night Dojo picks the big games every week.',
   'Museum: every champion, award winner, rivalry trophy and Pantheon member. Your office wall and trophy shelf live on the Coach tab.',
+  'The end of an era: when the last original character retires (around season 10), your dynasty is complete. It goes into the Hall of Coaches, and the save carries on into the New Era with made-up characters only.',
+  'Your legacy carries into new saves: you can take any job, free agents like you more, and with 2+ Grails you get an extra season before the hot seat.',
 ]);
 
 const slotKey = (n) => `dynasty:slot${n}`;
@@ -85,10 +89,12 @@ export async function render() {
     stopTimers();
     L = null; slot = null;
     const saves = await Promise.all([1, 2, 3].map((n) => store.get(slotKey(n), null)));
+    const hallCount = ((await store.get(LG.ARCHIVE_KEY, null)) || []).length;
     fill(root,
       header('THE ANIME FIGHTING LEAGUE'),
       h('div', { class: 'dy-wrap' },
-        h('p', { class: 'body-text' }, 'Run an AFL franchise. Three save slots.'),
+        h('div', { class: 'dy-slots-head' }, h('p', { class: 'body-text' }, 'Run an AFL franchise. Three save slots.'),
+          hallCount ? h('button', { class: 'btn btn-secondary', onClick: drawHall }, `Hall of Coaches (${hallCount})`) : null),
         h('div', { class: 'dy-slots' }, saves.map((s, k) => {
           const n = k + 1;
           if (!s || !s.user) {
@@ -102,9 +108,10 @@ export async function render() {
             h('p', { class: 'label-spaced' }, `SLOT ${n}`),
             h('div', { class: 'dy-slot-team' }, crest(t, 48), h('div', {},
               h('p', { class: 'heading' }, t.name),
+              s.complete ? h('p', { class: 'caption gold' }, '★ LEGACY COMPLETE · THE NEW ERA') : null,
               h('p', { class: 'caption muted' }, `${s.user.coach} · Season ${s.season} · ${s.phase === 'done' ? 'season complete' : s.phase === 'offseason' ? 'off-season' : s.phase === 'playoffs' ? 'playoffs' : `week ${s.week}`} · ${t.w}-${t.l}`))),
             h('div', { class: 'btn-row' },
-              h('button', { class: 'btn btn-primary', onClick: () => { L = MD.migrate(O.migrate(s)); slot = n; tab = 'league'; drawHub(); } }, 'Continue'),
+              h('button', { class: 'btn btn-primary', onClick: () => { L = LG.migrate(MD.migrate(O.migrate(s))); slot = n; tab = 'league'; drawHub(); } }, 'Continue'),
               h('button', { class: 'btn btn-secondary', onClick: async () => {
                 const ok = await confirmSheet({ title: 'DELETE THIS DYNASTY?', message: `${t.name}, season ${s.season}. This can't be undone.`, confirmLabel: 'Delete', danger: true });
                 if (ok) { await store.remove(slotKey(n)); await store.remove(`dynasty:photos:slot${n}`); toast('Save deleted.'); }
@@ -167,7 +174,8 @@ export async function render() {
         h('p', { class: 'label-spaced gold' }, 'BUILDING THE AFL'),
         h('h2', { class: 'display-lg' }, 'SIMULATING LAST SEASON'),
         h('p', { class: 'body-text' }, '32 teams, 320 characters, 12 weeks and a Zenith Clash.')));
-    setTimeout(() => {
+    setTimeout(async () => {
+      draft.rep = LG.reputation(await store.get(LG.ARCHIVE_KEY, null));
       L = R.newLeague(characters.list, Date.now() & 0x7fffffff);
       R.simulateFullSeason(L);
       drawPick();
@@ -176,7 +184,8 @@ export async function render() {
 
   function drawPick() {
     const last = L.history[0];
-    const jobs = R.openJobs(L);
+    const big = draft.rep && draft.rep.dynasties > 0;
+    const jobs = big ? last.standings.map((x) => x.i) : R.openJobs(L);
     const champ = team(last.champion);
     fill(root, header('PICK YOUR TEAM', drawSlots),
       h('div', { class: 'dy-wrap' },
@@ -185,7 +194,7 @@ export async function render() {
           h('div', {},
             h('p', { class: 'label-spaced gold' }, 'LAST SEASON'),
             h('p', { class: 'heading' }, `${champ.name} won the Celestial Grail, ${last.score[0]}–${last.score[1]} over ${team(last.runnerUp).name}.`),
-            h('p', { class: 'caption muted' }, `The four playoff teams aren't hiring. These ${jobs.length} are.`))),
+            h('p', { class: 'caption muted' }, big ? `Your legacy opens every door: all ${jobs.length} teams will take your call.` : `The four playoff teams aren't hiring. These ${jobs.length} are.`))),
         h('div', { class: 'dy-jobs' }, jobs.map((ti) => {
           const t = team(ti); const s = last.standings.find((x) => x.i === ti);
           const star = players(t).sort((a, b) => b.power - a.power)[0];
@@ -217,7 +226,8 @@ export async function render() {
   }
 
   async function takeJob(ti) {
-    const article = R.hire(L, ti, draft.name, draft.quiz);
+    let article = R.hire(L, ti, draft.name, draft.quiz, draft.rep);
+    if (L.user.rep) article = LG.bigNameArticle(L, ti, L.user.rep);
     R.resetForSeason(L);
     L.user.expect = team(ti).stage;
     L.hireArticle = article;
@@ -242,7 +252,7 @@ export async function render() {
     const nav = h('nav', { class: 'dy-tabs', 'aria-label': 'Dynasty sections' }, TABS.map(([id, label]) => h('button', {
       class: `dy-tab${tab === id ? ' is-on' : ''}`, 'aria-current': tab === id ? 'page' : null, onClick: () => { tab = id; drawHub(); },
     }, label, id === 'media' && unreadMag() ? h('span', { class: 'dy-tab-dot', 'aria-label': 'new issue' }) : null)));
-    const status = L.phase === 'done' ? 'SEASON COMPLETE' : L.phase === 'offseason' ? 'OFF-SEASON' : L.phase === 'playoffs' ? 'PLAYOFFS' : `WEEK ${L.week} OF ${R.WEEKS}`;
+    const status = (L.era === 2 && L.phase === 'season' ? 'THE NEW ERA · ' : '') + (L.phase === 'done' ? 'SEASON COMPLETE' : L.phase === 'offseason' ? 'OFF-SEASON' : L.phase === 'playoffs' ? 'PLAYOFFS' : `WEEK ${L.week} OF ${R.WEEKS}`);
     fill(root,
       header(`SEASON ${L.season} · ${status}`, () => { save(); drawSlots(); }),
       h('div', { class: 'dy-bar', style: `--c1:${t.c1};--c2:${t.c2}` },
@@ -460,7 +470,7 @@ export async function render() {
   }
 
   function offSteps() {
-    const steps = (L.off?.step === 'fired' ? ['fired'] : []).concat(O.OFF_STEPS);
+    const steps = (L.off?.step === 'fired' ? ['fired'] : []).concat(L.off?.steps || O.OFF_STEPS);
     const at = steps.indexOf(L.off?.step);
     return h('ol', { class: 'dy-steps', 'aria-label': 'Off-season steps' }, steps.map((k, i) => h('li', {
       class: i < at ? 'is-done' : i === at ? 'is-on' : '', 'aria-current': i === at ? 'step' : null,
@@ -625,6 +635,7 @@ export async function render() {
     const ok = await confirmSheet({ title: `DRAFT ${p.name.toUpperCase()}?`, message: `${p.role} from ${p.series}. Rookie deal: 3 seasons.`, confirmLabel: 'Draft' });
     if (!ok) return;
     if (!O.makePick(L, L.user.team, p.pid)) { toast(`You already have ${R.MAX_PER_SERIES} from ${p.series}.`); return; }
+    sfx.play('pick');
     L.news.unshift({ week: 0, off: true, kind: 'DRAFT', team: L.user.team, title: `${me().name} draft ${p.name}`, text: `Pick No. ${p.draftPick}: a ${p.role} from ${p.series}.` });
     O.simDraft(L, true);
     await save(); drawOff();
@@ -649,7 +660,7 @@ export async function render() {
 
   function drawOff() {
     if (L.phase !== 'offseason') { tab = 'league'; drawHub(); return; }
-    ({ fired: offFired, retire: offRetire, awards: offAwards, resign: offResign, upgrade: offUpgrade, draft: offDraft, fa: offFA, ready: offReady }[L.off.step])();
+    ({ fired: offFired, retire: offRetire, legacy: offLegacy, awards: offAwards, resign: offResign, upgrade: offUpgrade, draft: offDraft, fa: offFA, ready: offReady }[L.off.step])();
   }
 
   function offFired() {
@@ -686,10 +697,11 @@ export async function render() {
         h('ul', { class: 'dy-list' }, o.inducted.map((pid) => { const p = L.players[pid]; return h('li', {}, pAvatar(p, 'md'), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name), h('span', { class: 'caption muted' }, `${p.series} · ${p.career} seasons`)), h('span', { class: 'dy-num gold' }, String(p.power))); }))) : null,
       h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, `YOUR TEAM${mine.length ? '' : ': NOBODY RETIRED'}`), mine.length ? h('ul', { class: 'dy-list' }, mine.map(row)) : null),
       notable.length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'AROUND THE LEAGUE'), h('ul', { class: 'dy-list' }, notable.map(row))) : null),
-    nextBtn('On to awards night'));
+    nextBtn(L.off.legacy && !L.complete ? 'The end of an era' : 'On to awards night'));
   }
 
   function offAwards() {
+    sfx.play('fanfare');
     const row = L.history[0];
     const award = (pid) => (pid ? L.players[pid] : null);
     const gpp = award(row.prodigy);
@@ -800,7 +812,7 @@ export async function render() {
     const s = sheet({ title: `OFFER: ${p.name.toUpperCase()}`, content: body });
     const draw = () => {
       const it = O.interest(L, p, t, st);
-      const parts = [['Money', it.parts.money, 40], ['Winning', it.parts.winning, p.lowKey ? 26 : 18], ['Playing time', it.parts.time, p.lowKey ? 24 : 14], ['Teammates from their world', it.parts.friends, 8], ['Your coaching style', it.parts.style, 6], ['Spotlight (Hype + Aura)', it.parts.spotlight, p.lowKey ? 0 : 9]].filter((x) => x[2]);
+      const parts = [['Money', it.parts.money, 40], ['Winning', it.parts.winning, p.lowKey ? 26 : 18], ['Playing time', it.parts.time, p.lowKey ? 24 : 14], ['Teammates from their world', it.parts.friends, 8], ['Your coaching style', it.parts.style, 6], ['Spotlight (Hype + Aura)', it.parts.spotlight, p.lowKey ? 0 : 9], ['Your legacy', it.parts.legacy || 0, it.parts.legacy ? 8 : 0]].filter((x) => x[2]);
       fill(body,
         h('div', { class: 'dy-offer-top' }, pAvatar(p, 'md'), h('div', {}, h('p', { class: 'heading' }, p.name), h('p', { class: 'caption muted' }, `${p.role} · Power ${p.power} · ${p.series} · season ${p.career}${p.lowKey ? ' · low-key' : ''}`),
           h('p', { class: 'caption' }, `Asks about ${Math.round(ask * 10) / 10} a season for ${O.wantYears(p)} season${O.wantYears(p) > 1 ? 's' : ''}`))),
@@ -899,6 +911,7 @@ export async function render() {
     return h('button', { class: 'osm-thumb', style: `--c1:${t.c1};--c2:${t.c2}`, onClick: () => openMag(m), 'aria-label': `OSM season ${m.season} issue ${m.issue}` },
       h('span', { class: 'osm-thumb-mast' }, 'OSM'),
       p ? h('span', { class: 'osm-thumb-star' }, pAvatar(p, 'card')) : null,
+      m.legacy ? h('span', { class: 'osm-thumb-legacy' }, 'FINAL ISSUE') : null,
       h('span', { class: 'osm-thumb-meta' }, `S${m.season} · #${m.issue}`),
       !m.read ? h('span', { class: 'osm-new' }, 'NEW') : null);
   }
@@ -1011,10 +1024,13 @@ export async function render() {
     return pages;
   }
 
-  function openMag(m) {
+  async function openMag(m) {
     stopTimers();
     m.read = true; save();
-    const pages = magPages(m);
+    const pages = m.legacy ? [legacyCover(m.lg, (await loadPhotos()).coach), h('article', { class: 'osm-page osm-legacy-inner' }, h('p', { class: 'osm-section' }, 'THE CAREER'),
+      h('ul', { class: 'osm-power' }, m.lg.teams.map((x) => h('li', {}, h('img', { src: `art/afl/crests/${x.crest}.webp`, alt: '', style: 'width:36px;height:36px' }), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, x.name), h('span', { class: 'caption muted' }, `${x.seasons} season${x.seasons === 1 ? '' : 's'}`))))),
+      h('p', { class: 'osm-intro' }, `${m.lg.w}-${m.lg.l} · ${m.lg.titles} Grail${m.lg.titles === 1 ? '' : 's'} · ${m.lg.playoffs} playoff trips. The legends are gone. The New Era starts now.`),
+      h('p', { class: 'osm-mast osm-mast-sm' }, 'OSM'))] : magPages(m);
     const wide = () => window.innerWidth / (window.__uiZoom || 1) >= 1000;
     // Spreads: the cover alone, then pairs (on wide screens).
     const spreads = () => (wide() ? [[0], ...Array.from({ length: Math.ceil((pages.length - 1) / 2) }, (_, k) => [1 + k * 2, 2 + k * 2].filter((i) => i < pages.length))] : pages.map((_, i) => [i]));
@@ -1032,6 +1048,7 @@ export async function render() {
     const reduce = () => document.documentElement.classList.contains('reduce-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     function turn(d) {
       if (busy) return;
+      sfx.play('flip');
       if (d > 0 && at === sp.length - 1) { close(); return; }
       const to = at + d; if (to < 0 || to >= sp.length) return;
       if (reduce()) { at = to; paint(); return; }
@@ -1201,6 +1218,86 @@ export async function render() {
           h('p', { class: 'label-spaced' }, 'THE DAY YOU WERE HIRED'),
           h('p', { class: 'dy-article-title' }, L.hireArticle.title),
           h('p', { class: 'dy-article-body' }, L.hireArticle.text)) : null)));
+  }
+
+  // ---------- The end of an era (v0.13.0) ----------
+  const archiveFace = (x, size = 'md') => { const c = characters.get(x.cid); return c ? avatar(c, characters, size) : null; };
+
+  function legacyCover(lg, photo) {
+    const t = me();
+    return h('article', { class: 'osm-page osm-cover osm-legacy-cover' },
+      tinted(t, t, 'dy-arena osm-cover-bg'),
+      h('p', { class: 'osm-mast' }, 'OSM'),
+      h('p', { class: 'osm-sub' }, `OTAKU SPORTS MAGAZINE · THE FINAL ISSUE OF AN ERA · SEASON ${lg.finishedSeason}`),
+      h('div', { class: 'osm-cover-star osm-coach-star' }, photo ? h('img', { src: photo, alt: '' }) : (characters.get(profile.value.iconId) ? avatar(characters.get(profile.value.iconId), characters, 'card') : crest(t, 160))),
+      h('div', { class: 'osm-cover-text' },
+        h('p', { class: 'osm-kicker' }, 'COACH OF AN ERA'),
+        h('h2', { class: 'osm-headline' }, lg.coach.toUpperCase()),
+        h('p', { class: 'osm-dek' }, `${lg.seasons} seasons. ${lg.titles} Celestial Grail${lg.titles === 1 ? '' : 's'}. The coach who saw the legends out.`)),
+      h('ul', { class: 'osm-teasers' }, [`${lg.w}-${lg.l} career record`, `${lg.playoffs} playoff trip${lg.playoffs === 1 ? '' : 's'}`, `${lg.trophies.length} trophies on the shelf`].map((x) => h('li', {}, x))),
+      crest(t, 56));
+  }
+
+  function legacyBody(lg) {
+    return [
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'THE CAREER'),
+        h('div', { class: 'dy-legacy-stats' }, [['SEASONS', lg.seasons], ['RECORD', `${lg.w}-${lg.l}`], ['GRAILS', lg.titles], ['PLAYOFFS', lg.playoffs], ['TROPHIES', lg.trophies.length]]
+          .map(([k, v]) => h('div', {}, h('p', { class: 'label-spaced' }, k), h('p', { class: 'stat' }, String(v))))),
+        h('div', { class: 'dy-legacy-teams' }, lg.teams.map((x) => h('span', { class: 'dy-legacy-team' }, h('img', { src: `art/afl/crests/${x.crest}.webp`, alt: '', class: 'dy-crest', style: 'width:32px;height:32px' }), `${x.name} · ${x.seasons} season${x.seasons === 1 ? '' : 's'}`)))),
+      lg.trophies.length ? h('section', { class: 'dy-panel dy-shelf-panel' }, h('h2', { class: 'dy-h' }, 'THE TROPHY SHELF'),
+        h('ul', { class: 'dy-shelf' }, lg.trophies.map((x) => h('li', { class: x.name === 'The Celestial Grail' ? 'is-big' : '' }, trophy(x.name, x.name === 'The Celestial Grail' ? 130 : 90), h('p', { class: 'caption' }, x.name), h('p', { class: 'caption muted' }, x.why))))) : null,
+      lg.best.length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'THE BEST YOU COACHED'),
+        h('ul', { class: 'dy-list' }, lg.best.map((x) => h('li', {}, archiveFace(x, 'md'), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, x.name), h('span', { class: 'caption muted' }, `${x.role} · ${x.series} · ${x.seasons} season${x.seasons === 1 ? '' : 's'} with you · ${fmt(x.dmg)} dmg · ${x.ko} KOs`)))))) : null,
+      lg.pantheon.length ? h('section', { class: 'dy-panel dy-pantheon' }, h('h2', { class: 'dy-h gold' }, 'YOUR PANTHEON MEMBERS'),
+        h('ul', { class: 'dy-list' }, lg.pantheon.map((x) => h('li', {}, archiveFace(x), h('span', { class: 'dy-list-text' }, x.name), h('span', { class: 'dy-num gold' }, String(x.power)))))) : null,
+    ];
+  }
+
+  async function offLegacy() {
+    if (!L.complete) {
+      sfx.play('farewell');
+      const lg = LG.completeDynasty(L);
+      const arch = (await store.get(LG.ARCHIVE_KEY, null)) || [];
+      if (!arch.some((x) => x.id === lg.id)) { arch.unshift(lg); await store.set(LG.ARCHIVE_KEY, arch.slice(0, 30)); }
+      await save();
+    }
+    const lg = L.legacy;
+    const ph = await loadPhotos();
+    const lastP = (L.lastLegends || []).map((pid) => L.players[pid]).filter(Boolean);
+    offFrame('END OF AN ERA', h('div', { class: 'dy-off-body' },
+      h('section', { class: 'dy-panel dy-legacy-hero' },
+        h('p', { class: 'label-spaced gold' }, 'THE LAST LEGENDS'),
+        h('h2', { class: 'display-md' }, 'THE ERA IS OVER'),
+        h('p', { class: 'body-text' }, `${lastP[0] ? lastP[0].name : 'The last legend'} has retired. Every original AFL character has now called it a career, and the league belongs to a new generation.`),
+        lastP.length ? h('ul', { class: 'dy-farewell' }, lastP.slice(0, 6).map((p) => h('li', {}, h('div', { class: 'osm-potm-pic' }, pAvatar(p, 'card')), h('p', { class: 'heading' }, p.name), h('p', { class: 'caption muted' }, `${p.series} · ${p.career} seasons · Power ${p.power}`)))) : null),
+      h('div', { class: 'dy-legacy-cover' }, legacyCover(lg, ph.coach)),
+      ...legacyBody(lg),
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'THE NEW ERA'),
+        h('p', { class: 'body-text' }, 'Your dynasty is complete and saved to the Hall of Coaches. Keep going with this save as long as you like: the league carries on with made-up characters only.'),
+        h('p', { class: 'caption muted' }, `Your legacy also carries into new saves: you can take any job, the hire makes headlines, and free agents want to play for you.${lg.titles >= 2 ? ' With 2+ Grails, you also get one extra season before the hot seat.' : ''}`))),
+    nextBtn('Begin the New Era'));
+  }
+
+  // ---------- Hall of Coaches (from the save-slot screen) ----------
+  async function drawHall() {
+    const arch = (await store.get(LG.ARCHIVE_KEY, null)) || [];
+    const cab = LG.cabinet(arch); const rep = LG.reputation(arch);
+    fill(root, header('HALL OF COACHES', drawSlots),
+      h('div', { class: 'dy-wrap' },
+        h('section', { class: 'dy-panel' },
+          h('p', { class: 'label-spaced gold' }, 'YOUR LEGACY'),
+          h('p', { class: 'heading' }, `${rep.dynasties} completed dynast${rep.dynasties === 1 ? 'y' : 'ies'} · ${rep.titles} Celestial Grail${rep.titles === 1 ? '' : 's'}`),
+          h('p', { class: 'caption muted' }, `New saves: take any job · big-name hire · free agents +${LG.faPull(rep)} interest${LG.securityGrace(rep) ? ' · one extra season before the hot seat' : ''}.`)),
+        cab.length ? h('section', { class: 'dy-panel dy-shelf-panel' }, h('h2', { class: 'dy-h' }, 'ALL-TIME TROPHY CABINET'),
+          h('ul', { class: 'dy-shelf' }, cab.map((x) => h('li', {}, trophy(x.name, 90), h('p', { class: 'caption' }, x.name), h('p', { class: 'caption gold' }, `× ${x.n}`))))) : null,
+        arch.map((lg) => h('section', { class: 'dy-panel dy-hall-entry' },
+          h('div', { class: 'dy-hall-head' },
+            h('div', {}, h('p', { class: 'label-spaced gold' }, `FINISHED ${lg.date} · ${lg.seasons} SEASONS`), h('h2', { class: 'display-md' }, lg.coach.toUpperCase())),
+            h('div', { class: 'dy-legacy-stats' }, [['RECORD', `${lg.w}-${lg.l}`], ['GRAILS', lg.titles], ['PLAYOFFS', lg.playoffs]].map(([k, v]) => h('div', {}, h('p', { class: 'label-spaced' }, k), h('p', { class: 'stat' }, String(v)))))),
+          h('div', { class: 'dy-legacy-teams' }, lg.teams.map((x) => h('span', { class: 'dy-legacy-team' }, h('img', { src: `art/afl/crests/${x.crest}.webp`, alt: '', class: 'dy-crest', style: 'width:28px;height:28px' }), x.name))),
+          lg.best.length ? h('ul', { class: 'dy-hall-best' }, lg.best.map((x) => h('li', {}, archiveFace(x, 'sm'), h('span', { class: 'caption' }, x.name)))) : null,
+          lg.lastLegends?.length ? h('p', { class: 'caption muted' }, `Saw out the last legends: ${lg.lastLegends.map((x) => x.name).join(', ')}.`) : null)),
+        arch.length ? null : h('p', { class: 'body-text' }, 'Finish a dynasty (coach until the last legend retires) to enter the Hall.')));
   }
 
   // ---------- Schedule ----------
@@ -1457,6 +1554,7 @@ export async function render() {
     const s = userHome ? r.score : [r.score[1], r.score[0]];
     const mvp = L.players[r.mvp];
     const t = me();
+    if (R.isRivalry(g.home, g.away, L) && rc.won) setTimeout(() => sfx.play('fanfare'), 250);
     const hypeMoves = players(t).map((p) => ({ p, d: Math.round(p.hype - (rc.before[p.pid] ?? p.hype)) })).filter((x) => x.d).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 4);
     const hurt = players(t).filter((p) => p.injury > 0);
     const rv = R.isRivalry(g.home, g.away, L);
@@ -1513,6 +1611,7 @@ export async function render() {
     const t = me(); const champ = team(row.champion);
     const mine = row.champion === t.i;
     const u = L.user; const last = u.career[u.career.length - 1];
+    sfx.play(mine ? 'fanfare' : 'gong');
     fill(root, header(`SEASON ${row.season} · THE ZENITH CLASH`, () => { tab = 'league'; drawHub(); }),
       h('div', { class: 'dy-wrap' },
         h('div', { class: 'dy-champ' }, tinted(champ, team(row.runnerUp)),
