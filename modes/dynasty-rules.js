@@ -28,7 +28,8 @@ export const hooks = {};
 
 export const DIVISIONS = ['Origin', 'Elemental', 'Cyber-Martial', 'Mythic'];
 export const CONFERENCES = ['Eastern', 'Western'];
-export const DIV_TROPHY = ['Genesis Blade', 'Primordial Sphere', 'Chrome Gauntlet', 'Chimera Chalice'];
+// Division trophies (Khalil's art, 2026-11-17): Origin, Elemental, Cyber-Martial, Mythic.
+export const DIV_TROPHY = ['The Sentinel Vanguard', 'The Northern Cross', 'The Golden Shore', 'The Sovereign Shield'];
 export const ARENA_ART = [2001, 2002, 2003, 2004];
 
 // [abbr, name, primary, secondary, arena]; 8 per division, in division order.
@@ -90,6 +91,7 @@ export const TROPHY_ART = {
   'The Celestial Grail': 'grail', 'The Generational Prodigy Player': 'prodigy', 'The Generational Prodigy Award': 'prodigy',
   'The Vanguard Blade': 'vanguard', 'The Obsidian Shield': 'obsidian', 'The Phantom Step Award': 'phantom',
   'The Aether Eye': 'aether', 'The Cipher Scroll': 'cipher',
+  'The Sentinel Vanguard': 'div-east', 'The Northern Cross': 'div-north', 'The Golden Shore': 'div-west', 'The Sovereign Shield': 'div-south',
 };
 export const trophyFile = (name) => (TROPHY_ART[name] ? `art/afl/trophies/${TROPHY_ART[name]}.webp` : null);
 
@@ -454,7 +456,9 @@ export function endWeek(league) {
   if (league.week <= TRADE_DEADLINE && hooks.aiTrade) hooks.aiTrade(league, rand);
   // Growth and Aura every 3 weeks.
   if (league.week % MAG_EVERY === 0) growthTick(league, rand);
+  if (hooks.afterWeek) hooks.afterWeek(league, games);
   rankPower(league);
+  if (league.week % MAG_EVERY === 0 && hooks.issue) hooks.issue(league);
   league.week += 1;
   if (league.week > WEEKS) startPlayoffs(league);
 }
@@ -577,10 +581,10 @@ export function endSeason(league) {
   const champ = league.teams[po.champion];
   champ.titles += 1;
   const race = awardRace(league);
-  const roleAward = {};
+  const roleAward = {}; const roleAwardTeams = {};
   for (const r of ROLES) {
     const best = race.find((x) => x.p.role === r);
-    if (best) { roleAward[r] = best.p.pid; best.p.aura = Math.min(100, best.p.aura + 5); }
+    if (best) { roleAward[r] = best.p.pid; roleAwardTeams[r] = best.p.team; best.p.aura = Math.min(100, best.p.aura + 5); }
   }
   race[0].p.aura = Math.min(100, race[0].p.aura + 8);
   const final = po.final.result;
@@ -591,7 +595,7 @@ export function endSeason(league) {
     record: `${champ.w}-${champ.l}`,
     prodigy: race[0].p.pid, prodigyName: race[0].p.name, prodigyTeam: race[0].p.team,
     divisions: po.seeds.slice().sort((a, b) => league.teams[a].div - league.teams[b].div),
-    roleAwards: roleAward,
+    roleAwards: roleAward, roleAwardTeams,
     standings: standings(league).map((t) => ({ i: t.i, w: t.w, l: t.l })),
   };
   // Specialty awards (when we know where the season started).
@@ -603,6 +607,7 @@ export function endSeason(league) {
   // Coach of the year: most wins above expectation.
   const coy = league.teams.slice().sort((a, b) => (b.w - expectedWins(b)) - (a.w - expectedWins(a)))[0];
   row.coachOfYear = coy.i;
+  if (hooks.seasonRow) hooks.seasonRow(league, row);
   league.history.unshift(row);
   if (league.user) judgeCoach(league);
   league.phase = 'done';

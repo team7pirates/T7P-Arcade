@@ -14,6 +14,7 @@ import { SPECIALS } from '../core/combat.js';
 import { playMatch } from '../core/battle-view.js';
 import * as R from './dynasty-rules.js';
 import * as O from './dynasty-off.js';
+import * as MD from './dynasty-media.js';
 
 const help = howToPlay('dynasty', 'Dynasty', [
   'You are the new head coach of an Anime Fighting League team. Pick any team that missed last season\'s playoffs.',
@@ -26,6 +27,8 @@ const help = howToPlay('dynasty', 'Dynasty', [
   'Front Office: trade until the Week 8 deadline, sign emergency pickups, and watch the soft cap (150). Going over comes off next season\'s cap.',
   'Draft: you earn 8 scouting points a week. 6 points reveals a prospect\'s potential; a second report shows Generational Talent or Bust risk.',
   'Off-season: retirements, awards night, re-sign (one Franchise Tag), up to 2 development upgrades, a one-round draft, then 3 rounds of free agency.',
+  'Media: OSM prints an issue every 3 weeks. The cover star and your spotlight player gain Aura. The Fight Night Dojo picks the big games every week.',
+  'Museum: every champion, award winner, rivalry trophy and Pantheon member. Your office wall and trophy shelf live on the Coach tab.',
 ]);
 
 const slotKey = (n) => `dynasty:slot${n}`;
@@ -101,10 +104,10 @@ export async function render() {
               h('p', { class: 'heading' }, t.name),
               h('p', { class: 'caption muted' }, `${s.user.coach} · Season ${s.season} · ${s.phase === 'done' ? 'season complete' : s.phase === 'offseason' ? 'off-season' : s.phase === 'playoffs' ? 'playoffs' : `week ${s.week}`} · ${t.w}-${t.l}`))),
             h('div', { class: 'btn-row' },
-              h('button', { class: 'btn btn-primary', onClick: () => { L = O.migrate(s); slot = n; tab = 'league'; drawHub(); } }, 'Continue'),
+              h('button', { class: 'btn btn-primary', onClick: () => { L = MD.migrate(O.migrate(s)); slot = n; tab = 'league'; drawHub(); } }, 'Continue'),
               h('button', { class: 'btn btn-secondary', onClick: async () => {
                 const ok = await confirmSheet({ title: 'DELETE THIS DYNASTY?', message: `${t.name}, season ${s.season}. This can't be undone.`, confirmLabel: 'Delete', danger: true });
-                if (ok) { await store.remove(slotKey(n)); toast('Save deleted.'); }
+                if (ok) { await store.remove(slotKey(n)); await store.remove(`dynasty:photos:slot${n}`); toast('Save deleted.'); }
                 drawSlots();
               } }, 'Delete')));
         })),
@@ -219,6 +222,7 @@ export async function render() {
     L.user.expect = team(ti).stage;
     L.hireArticle = article;
     L.news.unshift({ week: 0, kind: 'YOUR HIRE', team: ti, title: article.title, text: article.text });
+    (L.mags || []).forEach((m) => { m.read = true; });
     await save();
     fill(root, header('BREAKING NEWS'),
       h('div', { class: 'dy-wrap dy-narrow' },
@@ -231,13 +235,13 @@ export async function render() {
   }
 
   // ---------- The hub ----------
-  const TABS = [['coach', 'COACH'], ['league', 'LEAGUE'], ['roster', 'ROSTER'], ['office', 'FRONT OFFICE'], ['draft', 'DRAFT'], ['schedule', 'SCHEDULE'], ['standings', 'STANDINGS']];
+  const TABS = [['coach', 'COACH'], ['league', 'LEAGUE'], ['roster', 'ROSTER'], ['office', 'FRONT OFFICE'], ['draft', 'DRAFT'], ['media', 'MEDIA'], ['museum', 'MUSEUM'], ['schedule', 'SCHEDULE'], ['standings', 'STANDINGS']];
 
   function shell(content) {
     const t = me();
     const nav = h('nav', { class: 'dy-tabs', 'aria-label': 'Dynasty sections' }, TABS.map(([id, label]) => h('button', {
       class: `dy-tab${tab === id ? ' is-on' : ''}`, 'aria-current': tab === id ? 'page' : null, onClick: () => { tab = id; drawHub(); },
-    }, label)));
+    }, label, id === 'media' && unreadMag() ? h('span', { class: 'dy-tab-dot', 'aria-label': 'new issue' }) : null)));
     const status = L.phase === 'done' ? 'SEASON COMPLETE' : L.phase === 'offseason' ? 'OFF-SEASON' : L.phase === 'playoffs' ? 'PLAYOFFS' : `WEEK ${L.week} OF ${R.WEEKS}`;
     fill(root,
       header(`SEASON ${L.season} · ${status}`, () => { save(); drawSlots(); }),
@@ -251,7 +255,7 @@ export async function render() {
 
   function drawHub() {
     stopTimers();
-    ({ coach: drawCoach, league: drawLeague, roster: drawRoster, office: drawOffice, draft: drawDraftTab, schedule: drawSchedule, standings: drawStandings }[tab] || drawLeague)();
+    ({ coach: drawCoach, league: drawLeague, roster: drawRoster, office: drawOffice, draft: drawDraftTab, media: drawMedia, museum: drawMuseum, schedule: drawSchedule, standings: drawStandings }[tab] || drawLeague)();
   }
 
   function nextAction() {
@@ -313,11 +317,7 @@ export async function render() {
 
     // Games of the Week: the three biggest games next week.
     let slides = [];
-    if (L.phase === 'season') {
-      const games = L.schedule[L.week - 1];
-      const val = (g) => 60 - (team(g.home).rank || 32) - (team(g.away).rank || 32) + (R.isRivalry(g.home, g.away, L) ? 30 : 0) + ((g.home === L.user.team || g.away === L.user.team) ? 10 : 0);
-      slides = games.slice().sort((a, b) => val(b) - val(a)).slice(0, 3);
-    }
+    if (L.phase === 'season') slides = (MD.dojoWeek(L)?.games || []);
     let idx = 0;
     const track = h('div', { class: 'dy-car-track' }, slides.map((g, k) => {
       const a = team(g.home); const b = team(g.away);
@@ -333,7 +333,8 @@ export async function render() {
           crest(a, 48), h('p', { class: 'dy-slide-team' }, `${a.rank ? `#${a.rank} ` : ''}${a.name}`),
           h('p', { class: 'dy-vs' }, 'VS'),
           h('p', { class: 'dy-slide-team' }, `${b.rank ? `#${b.rank} ` : ''}${b.name}`), crest(b, 48),
-          h('p', { class: 'caption' }, `${a.arena} · ${k === 0 ? 'SBN PRIME' : 'AGN'}`)));
+          h('p', { class: 'caption' }, `${a.arena} · ${k === 0 ? 'SBN PRIME' : 'AGN'}`),
+          g.pick != null ? h('p', { class: 'dy-slide-pick' }, `DOJO PICK: ${team(g.pick).abbr} · ${g.chance}%`) : null));
     }));
     const dots = h('div', { class: 'dy-dots' });
     const go = (i) => { idx = (i + slides.length) % slides.length; track.style.transform = `translateX(-${idx * 100}%)`; dots.querySelectorAll('button').forEach((d, j) => d.classList.toggle('is-on', j === idx)); };
@@ -353,6 +354,7 @@ export async function render() {
       ticker,
       h('div', { class: 'dy-col-main' },
         nextAction(),
+        magBanner(),
         carousel,
         h('section', { class: 'dy-panel' },
           h('h2', { class: 'dy-h' }, 'AROUND THE LEAGUE'),
@@ -382,42 +384,6 @@ export async function render() {
   }
 
   // ---------- Coach ----------
-  function drawCoach() {
-    const u = L.user; const t = me();
-    const qbio = (key) => {
-      const q = R.QUIZ.find((x) => x.key === key);
-      if (q.series) return u.quiz.anime;
-      return q.options.find((o) => o.id === u.quiz[key])?.bio || '–';
-    };
-    const perks = [];
-    const st = R.QUIZ[1].options.find((o) => o.id === u.quiz.style); if (st?.perk) perks.push(st.perk);
-    const ca = R.QUIZ[2].options.find((o) => o.id === u.quiz.career); if (ca?.perk) perks.push(ca.perk);
-    perks.push(`${u.quiz.anime} cards +1 Power`);
-    const rv = R.rival(L, u.team);
-    const rivalLine = rv ? `${team(rv.team).coachName} (${team(rv.team).abbr}) · ${rv.trophy}` : 'None yet';
-    shell(h('div', { class: 'dy-content dy-coach' },
-      h('section', { class: 'dy-panel' },
-        h('p', { class: 'label-spaced gold' }, 'HEAD COACH'),
-        h('h2', { class: 'display-lg' }, u.coach.toUpperCase()),
-        h('dl', { class: 'dy-bio' }, [
-          ['Origin', qbio('origin')], ['Style', qbio('style')], ['Old career', qbio('career')], ['Favorite anime', qbio('anime')], ['Chasing', qbio('chasing')],
-          ['Rival', rivalLine], ['Expectation', R.EXPECT_LABEL[u.expect]], ['Job security', u.security],
-        ].map(([k, v]) => h('div', {}, h('dt', {}, k), h('dd', {}, v)))),
-        h('h3', { class: 'dy-h' }, 'PERKS'),
-        h('ul', { class: 'dy-perks' }, perks.map((p) => h('li', {}, p)))),
-      h('section', { class: 'dy-panel' },
-        h('h2', { class: 'dy-h' }, 'CAREER'),
-        u.career.length ? h('table', { class: 'rec-table' },
-          h('thead', {}, h('tr', {}, ['Season', 'Team', 'Record', 'Result', 'Expectation'].map((x) => h('th', { scope: 'col' }, x)))),
-          h('tbody', {}, u.career.map((c) => h('tr', {}, h('td', {}, String(c.season)), h('td', {}, team(c.team).abbr), h('td', {}, `${c.w}-${c.l}`),
-            h('td', {}, c.champion ? 'Champion' : c.playoffs ? 'Playoffs' : 'Missed playoffs'), h('td', {}, c.met ? 'Met' : 'Missed')))))
-          : h('p', { class: 'caption muted' }, `First season with ${t.name}.`),
-        L.hireArticle ? h('article', { class: 'dy-article dy-article-sm' },
-          h('p', { class: 'label-spaced' }, 'THE DAY YOU WERE HIRED'),
-          h('p', { class: 'dy-article-title' }, L.hireArticle.title),
-          h('p', { class: 'dy-article-body' }, L.hireArticle.text)) : null)));
-  }
-
   // ---------- Roster ----------
   function drawRoster() {
     const t = me();
@@ -913,6 +879,328 @@ export async function render() {
       tab = 'league'; drawHub();
       toast(`Season ${L.season}. The front office expects: ${R.EXPECT_LABEL[L.user.expect]}.`);
     } }, `Start season ${L.season + 1}`));
+  }
+
+  // ---------- Media: OSM, the Dojo, the award race ----------
+  const unreadMag = () => (L.mags || []).find((m) => !m.read && m.season === L.season) || null;
+
+  function magBanner() {
+    const m = unreadMag(); if (!m) return null;
+    const p = L.players[m.cover.pid];
+    return h('section', { class: 'dy-panel dy-osm-banner' },
+      p ? pAvatar(p, 'md') : null,
+      h('div', { class: 'dy-list-text' }, h('p', { class: 'label-spaced gold' }, `OSM · ISSUE ${m.issue} IS OUT`), h('p', { class: 'heading' }, m.cover.line)),
+      h('button', { class: 'btn btn-primary btn-sm', onClick: () => openMag(m) }, 'Read'));
+  }
+
+  function magThumb(m) {
+    const p = L.players[m.cover.pid];
+    const t = m.cover.team != null ? team(m.cover.team) : me();
+    return h('button', { class: 'osm-thumb', style: `--c1:${t.c1};--c2:${t.c2}`, onClick: () => openMag(m), 'aria-label': `OSM season ${m.season} issue ${m.issue}` },
+      h('span', { class: 'osm-thumb-mast' }, 'OSM'),
+      p ? h('span', { class: 'osm-thumb-star' }, pAvatar(p, 'card')) : null,
+      h('span', { class: 'osm-thumb-meta' }, `S${m.season} · #${m.issue}`),
+      !m.read ? h('span', { class: 'osm-new' }, 'NEW') : null);
+  }
+
+  function drawMedia() {
+    const d = L.phase === 'season' ? MD.dojoWeek(L) : null;
+    const last = L.dojoLast && L.dojoLast.season === L.season ? L.dojoLast : null;
+    const rec = L.dojoRecord || { w: 0, l: 0 };
+    const race = R.awardRace(L).slice(0, 10);
+    const roles = MD.roleRaces(L);
+    const wake = MD.breakoutRace(L); const phoenix = MD.comebackRace(L);
+    const pickRow = (g, graded) => {
+      const a = team(g.home); const b = team(g.away); const pk = team(g.pick);
+      return h('li', { class: 'dy-dojo-row' },
+        crest(a, 28), h('span', { class: 'dy-num' }, a.abbr), h('span', { class: 'caption muted' }, 'vs'), h('span', { class: 'dy-num' }, b.abbr), crest(b, 28),
+        h('span', { class: 'dy-list-text dy-dojo-pick' }, h('span', {}, `Pick: ${pk.name}`), h('span', { class: 'caption muted' }, `${g.chance}% sure`)),
+        graded ? h('span', { class: `dy-num ${g.right ? 'win' : 'loss'}` }, g.right ? 'RIGHT' : 'WRONG') : null);
+    };
+    const watch = d?.watch != null ? L.players[d.watch] : null;
+    shell(h('div', { class: 'dy-content dy-media' },
+      h('section', { class: 'dy-panel' },
+        h('div', { class: 'dy-osm-head' }, h('h2', { class: 'dy-h' }, 'OSM · OTAKU SPORTS MAGAZINE'), h('p', { class: 'caption muted' }, `A new issue every ${R.MAG_EVERY} weeks. The cover star and the spotlight gain Aura.`)),
+        (L.mags || []).length ? h('div', { class: 'osm-shelf' }, L.mags.map(magThumb)) : h('p', { class: 'caption muted' }, `The first issue comes out after Week ${R.MAG_EVERY}.`)),
+      h('div', { class: 'dy-media-grid' },
+        h('section', { class: 'dy-panel' },
+          h('h2', { class: 'dy-h' }, 'THE FIGHT NIGHT DOJO'),
+          h('p', { class: 'caption muted' }, `The Dojo's picks for the biggest games. Record this season ${rec.season?.w || 0}-${rec.season?.l || 0} · all time ${rec.w}-${rec.l}.`),
+          d && d.games.length ? h('div', {}, h('p', { class: 'label-spaced' }, `WEEK ${d.week} PICKS`), h('ul', { class: 'dy-list' }, d.games.map((g) => pickRow(g, false)))) : h('p', { class: 'body-text' }, 'No games this week. The Dojo is back next season.'),
+          watch ? h('div', { class: 'dy-watch' }, pAvatar(watch, 'md'), h('div', {}, h('p', { class: 'label-spaced gold' }, 'PLAYER TO WATCH'), h('p', { class: 'heading' }, watch.name), h('p', { class: 'caption muted' }, `${team(watch.team).name} · Hype ${Math.round(watch.hype)} · Aura ${watch.aura}`))) : null,
+          last && last !== d ? h('div', {}, h('p', { class: 'label-spaced' }, `WEEK ${last.week} RESULTS`), h('ul', { class: 'dy-list' }, last.games.map((g) => pickRow(g, true)))) : null),
+        h('section', { class: 'dy-panel' },
+          h('div', { class: 'dy-h-trophy' }, trophy('The Celestial Grail', 56), h('h2', { class: 'dy-h' }, 'RIVALRY TROPHIES')),
+          h('ul', { class: 'dy-rivals' }, MD.rivalryList(L).map((r) => {
+            const hold = r.holder ? team(r.holder.team) : null;
+            return h('li', {}, trophy(r.name, 64),
+              h('span', { class: 'dy-list-text' }, h('span', {}, r.name), h('span', { class: 'caption muted' }, `${team(r.a).abbr} vs ${team(r.b).abbr}`),
+                h('span', { class: `caption ${hold ? 'gold' : 'muted'}` }, hold ? `Held by ${hold.name}` : 'Not played yet')),
+              hold ? crest(hold, 32) : null);
+          })))),
+      h('section', { class: 'dy-panel' },
+        h('div', { class: 'dy-h-trophy' }, trophy(R.AWARDS.prodigy, 72), h('div', {}, h('h2', { class: 'dy-h gold' }, 'THE GPP RACE'), h('p', { class: 'caption muted' }, 'Damage, KOs, wins, team record and Hype. Odds from the AGN desk.'))),
+        race.length ? h('ol', { class: 'dy-list dy-race-full' }, race.map(({ p, s }, i) => h('li', {}, h('span', { class: 'dy-num' }, String(i + 1)), pAvatar(p),
+          h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${team(p.team).name} · ${p.role} · ${fmt(p.stats.dmg)} dmg · ${p.stats.ko} KOs`)),
+          h('span', { class: 'dy-num' }, R.oddsFor(i, s, race[0].s))))) : h('p', { class: 'caption muted' }, 'The race starts after Week 1.')),
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'ROLE AWARDS'),
+        h('ul', { class: 'dy-awards-grid dy-role-races' }, roles.map((r) => h('li', {}, trophy(r.award, 84), h('p', { class: 'label-spaced' }, r.role.toUpperCase()),
+          r.top.length ? h('ol', { class: 'dy-mini-race' }, r.top.map(({ p }) => h('li', {}, pAvatar(p), h('span', {}, p.name)))) : h('p', { class: 'caption muted' }, '–'))))),
+      h('div', { class: 'dy-media-grid' },
+        h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, `${R.AWARDS.awakening.toUpperCase()} · BREAKOUT`),
+          wake.length ? h('ul', { class: 'dy-list' }, wake.map((p) => pLine(p, h('span', { class: 'dy-num win' }, `+${p.power - p.startPower}`), `${team(p.team).abbr} · season ${p.career} · Power ${p.power}`))) : h('p', { class: 'caption muted' }, 'Young cards who grow the most this season.')),
+        h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, `${R.AWARDS.phoenix.toUpperCase()} · COMEBACK`),
+          phoenix.length ? h('ul', { class: 'dy-list' }, phoenix.map((p) => pLine(p, h('span', { class: 'dy-num win' }, `+${Math.round(p.hype - p.startHype)}`), `${team(p.team).abbr} · Hype ${Math.round(p.startHype)} → ${Math.round(p.hype)}`))) : h('p', { class: 'caption muted' }, 'Cards who started the season under 45 Hype and fought their way back.')))));
+  }
+
+  // ---------- The OSM reader (page flip) ----------
+  function magPages(m) {
+    const P = (pid) => L.players[pid];
+    const cs = P(m.cover.pid); const ct = m.cover.team != null ? team(m.cover.team) : me();
+    const page = (cls, ...kids) => h('article', { class: `osm-page ${cls}` }, ...kids);
+    const folio = (n) => h('p', { class: 'osm-folio' }, `OSM · SEASON ${m.season} · ISSUE ${m.issue} · ${n}`);
+    const pages = [];
+    pages.push(page('osm-cover', tinted(ct, ct, 'dy-arena osm-cover-bg'),
+      h('p', { class: 'osm-mast' }, 'OSM'),
+      h('p', { class: 'osm-sub' }, `OTAKU SPORTS MAGAZINE · SEASON ${m.season} · ISSUE ${m.issue} · AFTER WEEK ${m.week}`),
+      cs ? h('div', { class: 'osm-cover-star' }, pAvatar(cs, 'card')) : null,
+      h('div', { class: 'osm-cover-text' },
+        h('p', { class: 'osm-kicker' }, cs ? `${cs.role.toUpperCase()} · ${ct.name.toUpperCase()}` : ''),
+        h('h2', { class: 'osm-headline' }, cs ? cs.name.toUpperCase() : ''),
+        h('p', { class: 'osm-dek' }, m.cover.line)),
+      h('ul', { class: 'osm-teasers' }, m.teasers.map((t) => h('li', {}, t))),
+      crest(ct, 56)));
+    pages.push(page('', h('p', { class: 'osm-section' }, 'PLAYERS OF THE MONTH'),
+      h('p', { class: 'osm-intro' }, 'The best at every role over the last three weeks. Each one gains Aura for the cover shoot.'),
+      h('ul', { class: 'osm-potm' }, m.potm.map((x) => { const p = P(x.pid); return p ? h('li', {}, h('div', { class: 'osm-potm-pic' }, pAvatar(p, 'card')),
+        h('p', { class: `label-spaced ${ROLE_CLASS(x.role)}` }, x.role.toUpperCase()), h('p', { class: 'heading' }, p.name),
+        h('p', { class: 'caption muted' }, `${x.team != null ? team(x.team).abbr : ''} · ${fmt(x.dmg)} dmg · ${x.ko} KOs · ${x.w}-${x.l}`)) : null; })),
+      folio(2)));
+    pages.push(page('', h('p', { class: 'osm-section' }, 'THE POWER 10'),
+      h('ol', { class: 'osm-power' }, m.power.map((r) => { const t = team(r.i); const mv = r.prev ? r.prev - r.rank : 0;
+        return h('li', {}, h('span', { class: 'osm-rank' }, String(r.rank)), crest(t, 36), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, t.name), h('span', { class: 'caption muted' }, `${r.w}-${r.l} · ${R.DIVISIONS[t.div]}`)),
+          h('span', { class: `dy-num ${mv > 0 ? 'win' : mv < 0 ? 'loss' : 'muted'}` }, mv > 0 ? `▲${mv}` : mv < 0 ? `▼${-mv}` : '–')); })),
+      folio(3)));
+    pages.push(page('', h('p', { class: 'osm-section' }, 'THE GPP RACE'),
+      h('div', { class: 'osm-race-top' }, trophy(R.AWARDS.prodigy, 200, 'dy-trophy osm-gpp'),
+        h('ol', { class: 'osm-race' }, m.race.map((x, i) => { const p = P(x.pid); return p ? h('li', {}, h('span', { class: 'osm-rank' }, String(i + 1)), pAvatar(p, 'md'),
+          h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name), h('span', { class: 'caption muted' }, x.team != null ? team(x.team).name : '')), h('span', { class: 'dy-num gold' }, x.odds)) : null; }))),
+      h('p', { class: 'osm-intro' }, 'The Generational Prodigy Player goes to the best card of the season. The glass is waiting.'),
+      folio(4)));
+    if (m.spotlight) {
+      const sp = m.spotlight; const st = team(sp.team); const sp1 = P(sp.pid);
+      pages.push(page('osm-spot', tinted(st, st, 'dy-arena osm-spot-bg'),
+        h('p', { class: 'osm-section' }, 'OSM SPOTLIGHT'),
+        h('h2', { class: 'osm-headline osm-headline-sm' }, `INSIDE THE ${st.name.toUpperCase()}`),
+        h('p', { class: 'osm-dek' }, `${sp.record} · No. ${sp.rank || '–'} in the Power 25 · Head coach ${L.user.coach}`),
+        sp1 ? h('div', { class: 'osm-spot-star' }, h('div', { class: 'osm-potm-pic' }, pAvatar(sp1, 'card')), h('blockquote', { class: 'osm-quote' }, sp.quote, h('cite', {}, `— ${sp1.name}`))) : null,
+        h('p', { class: 'osm-body' }, sp.line),
+        folio(5)));
+    }
+    pages.push(page('', h('p', { class: 'osm-section' }, 'RIVALRY WATCH'),
+      h('ul', { class: 'osm-rivals' }, m.rivals.map((r) => h('li', {}, trophy(r.name, 92, 'dy-trophy osm-rival-trophy'),
+        h('p', { class: 'heading' }, r.name), h('p', { class: 'caption muted' }, `${team(r.a).abbr} vs ${team(r.b).abbr}`),
+        h('p', { class: `caption ${r.holder != null ? 'gold' : 'muted'}` }, r.holder != null ? `Held by ${team(r.holder).abbr}` : 'Up for grabs')))),
+      folio(pages.length + 1)));
+    pages.push(page('osm-back', h('p', { class: 'osm-section' }, 'AROUND THE AFL'),
+      m.news.length ? h('ul', { class: 'osm-news' }, m.news.map((n) => h('li', {}, n.trophy ? trophy(n.trophy, 40, 'dy-trophy dy-news-trophy') : crest(team(n.team), 32),
+        h('span', { class: 'dy-list-text' }, h('span', { class: 'label-spaced' }, n.kind), h('span', { class: 'heading' }, n.title))))) : h('p', { class: 'osm-intro' }, 'A quiet three weeks in the AFL.'),
+      h('p', { class: 'osm-next' }, m.week < R.WEEKS ? `NEXT ISSUE AFTER WEEK ${m.week + R.MAG_EVERY}` : 'SEE YOU NEXT SEASON'),
+      h('p', { class: 'osm-mast osm-mast-sm' }, 'OSM'),
+      folio(pages.length + 1)));
+    return pages;
+  }
+
+  function openMag(m) {
+    stopTimers();
+    m.read = true; save();
+    const pages = magPages(m);
+    const wide = () => window.innerWidth >= 1000;
+    // Spreads: the cover alone, then pairs (on wide screens).
+    const spreads = () => (wide() ? [[0], ...Array.from({ length: Math.ceil((pages.length - 1) / 2) }, (_, k) => [1 + k * 2, 2 + k * 2].filter((i) => i < pages.length))] : pages.map((_, i) => [i]));
+    let sp = spreads(); let at = 0; let busy = false;
+    const book = h('div', { class: 'osm-book' });
+    const count = h('p', { class: 'caption muted osm-count', 'aria-live': 'polite' });
+    const prev = h('button', { class: 'btn btn-secondary', onClick: () => turn(-1) }, '‹ Back');
+    const next = h('button', { class: 'btn btn-primary', onClick: () => turn(1) }, 'Next ›');
+    const paint = () => {
+      fill(book, sp[at].map((i) => pages[i]));
+      book.classList.toggle('is-spread', sp[at].length > 1);
+      count.textContent = sp[at].length > 1 ? `Pages ${sp[at][0] + 1}–${sp[at][1] + 1} of ${pages.length}` : `Page ${sp[at][0] + 1} of ${pages.length}`;
+      prev.disabled = at === 0; next.textContent = at === sp.length - 1 ? 'Close' : 'Next ›';
+    };
+    const reduce = () => document.documentElement.classList.contains('reduce-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function turn(d) {
+      if (busy) return;
+      if (d > 0 && at === sp.length - 1) { close(); return; }
+      const to = at + d; if (to < 0 || to >= sp.length) return;
+      if (reduce()) { at = to; paint(); return; }
+      busy = true;
+      book.classList.add(d > 0 ? 'turn-out-next' : 'turn-out-prev');
+      setTimeout(() => {
+        at = to; paint();
+        book.classList.remove('turn-out-next', 'turn-out-prev');
+        book.classList.add(d > 0 ? 'turn-in-next' : 'turn-in-prev');
+        setTimeout(() => { book.classList.remove('turn-in-next', 'turn-in-prev'); busy = false; }, 260);
+      }, 230);
+    }
+    let x0 = null;
+    book.addEventListener('pointerdown', (e) => { x0 = e.clientX; });
+    book.addEventListener('pointerup', (e) => { if (x0 == null) return; const dx = e.clientX - x0; x0 = null; if (Math.abs(dx) > 50) turn(dx < 0 ? 1 : -1); });
+    const onKey = (e) => { if (e.key === 'ArrowRight') turn(1); else if (e.key === 'ArrowLeft') turn(-1); else if (e.key === 'Escape') close(); };
+    const onResize = () => { const first = sp[at][0]; sp = spreads(); at = Math.max(0, sp.findIndex((s) => s.includes(first))); paint(); };
+    document.addEventListener('keydown', onKey); window.addEventListener('resize', onResize);
+    function close() { document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onResize); tab = 'media'; drawHub(); }
+    const prevCleanup = root._cleanup;
+    root._cleanup = () => { document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onResize); prevCleanup(); root._cleanup = prevCleanup; };
+    fill(root, header(`OSM · SEASON ${m.season} · ISSUE ${m.issue}`, close),
+      h('div', { class: 'osm-reader' }, book, h('div', { class: 'osm-controls' }, prev, count, next)));
+    paint();
+  }
+
+  // ---------- The Museum ----------
+  const museum = { view: 'champions' };
+  function drawMuseum() {
+    const views = [['champions', 'CHAMPIONS'], ['awards', 'AWARD WINNERS'], ['rivalries', 'RIVALRY TROPHIES'], ['pantheon', 'GENERATIONAL PANTHEON'], ['records', 'RECORD BOOK']];
+    const rows = L.history;
+    const P = (pid) => (pid != null ? L.players[pid] : null);
+    let body;
+    if (museum.view === 'champions') {
+      body = h('ul', { class: 'dy-museum' }, rows.map((r) => {
+        const c = team(r.champion); const mine = L.user.career.some((x) => x.season === r.season && x.team === r.champion);
+        const gpp = P(r.prodigy);
+        return h('li', { class: `dy-mrow${mine ? ' is-mine' : ''}` },
+          h('span', { class: 'dy-mseason' }, h('span', { class: 'label-spaced' }, 'SEASON'), h('span', { class: 'stat' }, String(r.season))),
+          h('span', { class: 'dy-mchamp' }, trophy('The Celestial Grail', 54), crest(c, 44), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, c.name), h('span', { class: 'caption muted' }, `${r.record} · ${r.coach}${mine ? ' (you)' : ''}`))),
+          h('span', { class: 'dy-mscore' }, h('span', { class: 'dy-num' }, `${r.score[0]}–${r.score[1]}`), h('span', { class: 'caption muted' }, `over ${team(r.runnerUp).abbr}`)),
+          h('span', { class: 'dy-mgpp' }, gpp ? pAvatar(gpp) : null, h('span', { class: 'dy-list-text' }, h('span', {}, r.prodigyName), h('span', { class: 'caption muted' }, `GPP · ${team(r.prodigyTeam)?.abbr || ''}`))),
+          h('span', { class: 'dy-mdivs', title: 'Division winners' }, (r.divisions || []).map((i) => crest(team(i), 24))));
+      }));
+    } else if (museum.view === 'awards') {
+      body = h('ul', { class: 'dy-museum' }, rows.map((r) => h('li', { class: 'dy-mrow dy-mawards' },
+        h('span', { class: 'dy-mseason' }, h('span', { class: 'label-spaced' }, 'SEASON'), h('span', { class: 'stat' }, String(r.season))),
+        h('ul', { class: 'dy-mawards-list' }, [['prodigy', r.prodigy], ...R.ROLES.map((x) => [x, r.roleAwards?.[x]]), ['awakening', r.awakening], ['phoenix', r.phoenix]].filter(([, pid]) => pid != null).map(([k, pid]) => {
+          const p = P(pid); return h('li', {}, trophy(R.AWARDS[k], 40), p ? pAvatar(p) : null, h('span', { class: 'dy-list-text' }, h('span', {}, p ? p.name : '—'), h('span', { class: 'caption muted' }, R.AWARDS[k])));
+        }), h('li', {}, crest(team(r.coachOfYear), 32), h('span', { class: 'dy-list-text' }, h('span', {}, team(r.coachOfYear).coachName), h('span', { class: 'caption muted' }, R.AWARDS.coach)))))));
+    } else if (museum.view === 'rivalries') {
+      body = h('ul', { class: 'dy-awards-grid dy-mrivals' }, MD.rivalryBook(L).map((r) => h('li', {}, trophy(r.name, 120),
+        h('p', { class: 'heading' }, r.name),
+        h('div', { class: 'dy-mriv-score' }, crest(team(r.a), 32), h('span', { class: 'stat' }, `${r.won[r.a]}–${r.won[r.b]}`), crest(team(r.b), 32)),
+        h('p', { class: 'caption muted' }, 'Seasons held at the final whistle'),
+        h('p', { class: `caption ${r.holder != null ? 'gold' : 'muted'}` }, r.holder != null ? `Now: ${team(r.holder).name}` : 'Not played yet'))));
+    } else if (museum.view === 'pantheon') {
+      const pan = (L.pantheon || []).slice().sort((a, b) => b.season - a.season || b.power - a.power);
+      body = pan.length ? h('ul', { class: 'dy-pantheon-grid' }, pan.map((x) => h('li', {}, h('div', { class: 'osm-potm-pic' }, pAvatar(x, 'card')),
+        h('p', { class: 'heading' }, x.name), h('p', { class: 'caption gold' }, `Power ${x.power}`), h('p', { class: 'caption muted' }, `${x.series} · ${x.seasons} seasons · retired season ${x.season}${x.team != null ? ` · ${team(x.team).abbr}` : ''}`))))
+        : h('p', { class: 'body-text' }, 'Nobody yet. Cards who retire at 95+ Power are enshrined here.');
+    } else {
+      const tb = MD.titleBoard(L); const gb = MD.gppBoard(L); const u = L.user;
+      const cw = u.career.reduce((n, c) => n + c.w, 0); const cl = u.career.reduce((n, c) => n + c.l, 0);
+      body = h('div', { class: 'dy-media-grid' },
+        h('section', { class: 'dy-panel' }, h('div', { class: 'dy-h-trophy' }, trophy('The Celestial Grail', 56), h('h2', { class: 'dy-h' }, 'MOST CELESTIAL GRAILS')),
+          h('ol', { class: 'dy-list' }, tb.map((x) => h('li', {}, crest(team(x.team), 32), h('span', { class: 'dy-list-text' }, team(x.team).name), h('span', { class: 'dy-num gold' }, String(x.n)))))),
+        h('section', { class: 'dy-panel' }, h('div', { class: 'dy-h-trophy' }, trophy(R.AWARDS.prodigy, 56), h('h2', { class: 'dy-h' }, 'MOST GPP AWARDS')),
+          h('ol', { class: 'dy-list' }, gb.map((x) => { const p = P(x.pid); return p ? h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, p.name), h('span', { class: 'dy-num gold' }, String(x.n))) : null; }))),
+        h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'THE RECORD BOOK'),
+          h('dl', { class: 'dy-bio' }, [...MD.recordBook(L), ['Your career', `${cw}-${cl} · ${u.career.filter((c) => c.champion).length} titles · ${u.career.filter((c) => c.playoffs).length} playoff trips`]]
+            .map(([k, v]) => h('div', {}, h('dt', {}, k), h('dd', {}, v))))));
+    }
+    shell(h('div', { class: 'dy-content' },
+      h('section', { class: 'dy-panel dy-museum-head' }, trophy('The Celestial Grail', 90, 'dy-trophy dy-grail'),
+        h('div', {}, h('p', { class: 'label-spaced gold' }, 'THE AFL MUSEUM'), h('h2', { class: 'display-md' }, 'HALL OF CHAMPIONS'),
+          h('p', { class: 'caption muted' }, `Every Zenith Clash, every Celestial Grail, every Generational Prodigy. ${rows.length} season${rows.length === 1 ? '' : 's'} on record.`))),
+      h('div', { class: 'dy-chips', role: 'group', 'aria-label': 'Museum rooms' }, views.map(([id, label]) => h('button', { class: `dy-chip${museum.view === id ? ' is-on' : ''}`, 'aria-pressed': museum.view === id ? 'true' : 'false', onClick: () => { museum.view = id; drawMuseum(); } }, label))),
+      body));
+  }
+
+  // ---------- Coach office: photo, wall, trophy shelf ----------
+  const photoKey = () => `dynasty:photos:slot${slot}`;
+  async function loadPhotos() { return (await store.get(photoKey(), null)) || { coach: null, wall: [null, null, null, null, null, null] }; }
+  function pickPhoto() {
+    return new Promise((resolve) => {
+      const input = h('input', { type: 'file', accept: 'image/*', class: 'visually-hidden' });
+      input.addEventListener('change', () => {
+        const f = input.files && input.files[0]; input.remove();
+        if (!f) { resolve(null); return; }
+        const url = URL.createObjectURL(f); const img = new Image();
+        img.onload = () => {
+          const s = Math.min(1, 720 / Math.max(img.width, img.height));
+          const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); toast('That picture could not be opened.'); resolve(null); };
+        img.src = url;
+      });
+      document.body.append(input); input.click();
+    });
+  }
+  async function editPhoto(which, i) {
+    const ph = await loadPhotos();
+    const has = which === 'coach' ? ph.coach : ph.wall[i];
+    const set = async (v) => { if (which === 'coach') ph.coach = v; else ph.wall[i] = v; await store.set(photoKey(), ph); drawCoach(); };
+    if (!has) { const d = await pickPhoto(); if (d) await set(d); return; }
+    const s = sheet({ title: which === 'coach' ? 'COACH PHOTO' : 'OFFICE WALL', content: h('div', { class: 'btn-row' },
+      h('button', { class: 'btn btn-primary', onClick: async () => { s.close(); const d = await pickPhoto(); if (d) await set(d); } }, 'Replace'),
+      h('button', { class: 'btn btn-secondary', onClick: async () => { s.close(); await set(null); } }, 'Remove')) });
+  }
+
+  async function drawCoach() {
+    const u = L.user; const t = me();
+    const ph = await loadPhotos();
+    if (tab !== 'coach') return;
+    const qbio = (key) => {
+      const q = R.QUIZ.find((x) => x.key === key);
+      if (q.series) return u.quiz.anime;
+      return q.options.find((o) => o.id === u.quiz[key])?.bio || '–';
+    };
+    const perks = [];
+    const st = R.QUIZ[1].options.find((o) => o.id === u.quiz.style); if (st?.perk) perks.push(st.perk);
+    const ca = R.QUIZ[2].options.find((o) => o.id === u.quiz.career); if (ca?.perk) perks.push(ca.perk);
+    perks.push(`${u.quiz.anime} cards +1 Power`);
+    const rv = R.rival(L, u.team);
+    const rivalLine = rv ? `${team(rv.team).coachName} (${team(rv.team).abbr}) · ${rv.trophy}` : 'None yet';
+    const icon = characters.get(profile.value.iconId);
+    const shelf = MD.trophyShelf(L);
+    const live = L.phase === 'season' || L.phase === 'playoffs';
+    const cw = u.career.reduce((n, c) => n + c.w, 0) + (live ? t.w : 0); const cl = u.career.reduce((n, c) => n + c.l, 0) + (live ? t.l : 0);
+    shell(h('div', { class: 'dy-content' },
+      h('div', { class: 'dy-coach' },
+        h('section', { class: 'dy-panel dy-coach-card' },
+          h('button', { class: 'dy-coach-photo', onClick: () => editPhoto('coach'), 'aria-label': ph.coach ? 'Change coach photo' : 'Add a coach photo' },
+            ph.coach ? h('img', { src: ph.coach, alt: '' }) : icon ? avatar(icon, characters, 'lg') : h('span', { class: 'dy-add' }, '+ ADD PHOTO')),
+          h('div', { class: 'dy-coach-id' },
+            h('p', { class: 'label-spaced gold' }, `HEAD COACH · ${t.name.toUpperCase()}`),
+            h('h2', { class: 'display-md' }, u.coach.toUpperCase()),
+            h('div', { class: 'dy-coach-stats' }, [['RECORD', `${t.w}-${t.l}`], ['CAREER', `${cw}-${cl}`], ['TITLES', String(u.career.filter((c) => c.champion).length)], ['SECURITY', u.security]]
+              .map(([k, v]) => h('div', {}, h('p', { class: 'label-spaced' }, k), h('p', { class: 'heading' }, v))))),
+          h('dl', { class: 'dy-bio' }, [
+            ['Origin', qbio('origin')], ['Style', qbio('style')], ['Old career', qbio('career')], ['Favorite anime', qbio('anime')], ['Chasing', qbio('chasing')],
+            ['Rival', rivalLine], ['Expectation', R.EXPECT_LABEL[u.expect]],
+          ].map(([k, v]) => h('div', {}, h('dt', {}, k), h('dd', {}, v)))),
+          h('h3', { class: 'dy-h' }, 'PERKS'),
+          h('ul', { class: 'dy-perks' }, perks.map((p) => h('li', {}, p)))),
+        h('div', { class: 'dy-office-right' },
+          h('section', { class: 'dy-panel' },
+            h('h2', { class: 'dy-h' }, 'THE OFFICE WALL'),
+            h('p', { class: 'caption muted' }, 'Tap a frame to hang a picture from your phone. Pictures stay on this device, in this save.'),
+            h('ul', { class: 'dy-wall' }, ph.wall.map((src, i) => h('li', {}, h('button', { class: `dy-frame${src ? '' : ' is-empty'}`, onClick: () => editPhoto('wall', i), 'aria-label': src ? `Change picture ${i + 1}` : `Add picture ${i + 1}` },
+              src ? h('img', { src, alt: '' }) : h('span', { class: 'dy-add' }, '+ ADD')))))),
+          h('section', { class: 'dy-panel dy-shelf-panel' },
+            h('h2', { class: 'dy-h' }, 'TROPHY SHELF'),
+            shelf.length ? h('ul', { class: 'dy-shelf' }, shelf.map((x) => h('li', { class: x.big ? 'is-big' : '' }, trophy(x.name, x.big ? 130 : 96) || h('span', { class: 'dy-trophy-ph', 'aria-hidden': 'true' }, '★'), h('p', { class: 'caption' }, x.name), h('p', { class: 'caption muted' }, x.why))))
+              : h('p', { class: 'caption muted' }, 'Trophies you win land here on their own: division titles, rivalry trophies, your players\' awards and the Celestial Grail.')))),
+      h('section', { class: 'dy-panel' },
+        h('h2', { class: 'dy-h' }, 'CAREER'),
+        u.career.length ? h('table', { class: 'rec-table' },
+          h('thead', {}, h('tr', {}, ['Season', 'Team', 'Record', 'Result', 'Expectation'].map((x) => h('th', { scope: 'col' }, x)))),
+          h('tbody', {}, u.career.map((c) => h('tr', {}, h('td', {}, String(c.season)), h('td', {}, team(c.team).abbr), h('td', {}, `${c.w}-${c.l}`),
+            h('td', {}, c.champion ? 'Champion' : c.playoffs ? 'Playoffs' : 'Missed playoffs'), h('td', {}, c.met ? 'Met' : 'Missed')))))
+          : h('p', { class: 'caption muted' }, `First season with ${t.name}.`),
+        L.hireArticle ? h('article', { class: 'dy-article dy-article-sm' },
+          h('p', { class: 'label-spaced' }, 'THE DAY YOU WERE HIRED'),
+          h('p', { class: 'dy-article-title' }, L.hireArticle.title),
+          h('p', { class: 'dy-article-body' }, L.hireArticle.text)) : null)));
   }
 
   // ---------- Schedule ----------

@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.11.0",
+      "date": "2026-11-17",
+      "title": "Dynasty: Media and History",
+      "items": [
+        "OSM, the Otaku Sports Magazine, prints an issue every 3 weeks. Flip through it page by page (swipe, tap or use the arrow keys): the cover star, Players of the Month, the Power 10, the GPP race, a spotlight on your team, Rivalry Watch and the league news.",
+        "Being in OSM builds Aura: the cover star, your spotlight player and the Dojo's player to watch all gain it.",
+        "The Fight Night Dojo picks the 3 biggest games every week and keeps its record. Its picks show on the hub carousel too.",
+        "New Media tab: the magazine rack, the Dojo, the full GPP race, every role award race, the breakout and comeback races, and who holds each rivalry trophy.",
+        "New Museum: every champion by season, award winners, rivalry trophy records, the Generational Pantheon and the record book.",
+        "The Coach tab is now your office: add a coach photo and hang up to 6 pictures from your phone on the office wall. The trophy shelf fills itself with the trophies you win.",
+        "New trophy art: sharper role and rivalry trophies with real plaques, and four division trophies: the Sentinel Vanguard, the Northern Cross, the Golden Shore and the Sovereign Shield.",
+        "Saves stay small: long-retired cards nobody remembers are cleared out each off-season."
+      ]
+    },
+    {
       "version": "0.10.0",
       "date": "2026-11-17",
       "title": "Dynasty: The Off-season",

@@ -157,6 +157,7 @@ export function startOffseason(L) {
     t.tagged = null;
     t.upgrades = 0;
   }
+  prune(L);
   // Retirements: careers end on schedule; Iron Men last ~10 seasons.
   const retired = [];
   const inducted = [];
@@ -187,6 +188,22 @@ export function startOffseason(L) {
   if (big) news(L, { kind: 'RETIRED', team: big.team ?? 0, title: `${big.name} retires after ${big.seasons} seasons`, text: `${retired.length} cards called it a career this off-season.` });
   L.off = { step: L.user?.security === 'Fired' ? 'fired' : 'retire', retired, inducted, order: null, pick: 0, picks: [], fa: null };
   return L.off;
+}
+
+// Old retired cards nobody points at any more are dropped, so saves stay small.
+function prune(L) {
+  const keep = new Set();
+  for (const row of L.history) {
+    [row.prodigy, row.awakening, row.phoenix, ...Object.values(row.roleAwards || {})].forEach((pid) => pid != null && keep.add(pid));
+  }
+  for (const m of L.mags || []) {
+    keep.add(m.cover?.pid); m.potm?.forEach((x) => keep.add(x.pid)); m.race?.forEach((x) => keep.add(x.pid)); if (m.spotlight) keep.add(m.spotlight.pid);
+  }
+  L.trades = (L.trades || []).slice(-30);
+  for (const t of L.trades) [...t.aGot, ...t.bGot].forEach((pid) => keep.add(pid));
+  for (const p of Object.values(L.players)) {
+    if (p.retired && p.retiredSeason < L.season && !keep.has(p.pid)) delete L.players[p.pid];
+  }
 }
 
 export function nextStep(L) {
