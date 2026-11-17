@@ -17,6 +17,7 @@ import * as O from './dynasty-off.js';
 import * as MD from './dynasty-media.js';
 import * as LG from './dynasty-legacy.js';
 import * as WK from './dynasty-weekly.js';
+import * as MAP from './dynasty-map.js';
 import { sfx } from '../core/sfx.js';
 
 const help = howToPlay('dynasty', 'Dynasty', [
@@ -472,7 +473,7 @@ export async function render() {
       ticker,
       h('aside', { class: 'dy-hub-left dy-panel dy-panel-flush' },
         h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'AFL POWER 25'), h('p', { class: 'caption muted' }, 'AGN')),
-        ...tabbed('power', [['p25', 'POWER 25'], ['conf', conf.toUpperCase()]], powerList)),
+        powerList('p25')),
       h('div', { class: 'dy-hub-center' },
         carouselEl(),
         h('div', { class: 'dy-hub-pair' },
@@ -881,6 +882,168 @@ export async function render() {
       [null, ...R.ROLES].map((r) => h('button', { class: `dy-chip${board.role === r ? ' is-on' : ''}`, 'aria-pressed': board.role === r ? 'true' : 'false', onClick: () => { board.role = r; redrawBoard(); } }, r || 'All roles')));
   }
 
+  // ---------- The Draft Room: filters | region map | prospects (v0.15.0) ----------
+  const room = { region: null, q: '', role: '', stars: 0, scouted: 'any', watch: false, tab: 'all' };
+  const ROLE_SHORT = { Striker: 'STR', Tank: 'TNK', Speedster: 'SPD', Mystic: 'MYS', Tactician: 'TAC' };
+
+  function filtered(base = O.draftBoard(L)) {
+    let list = base;
+    if (room.q) { const q = room.q.toLowerCase(); list = list.filter((p) => p.name.toLowerCase().includes(q) || p.series.toLowerCase().includes(q)); }
+    if (room.role) list = list.filter((p) => p.role === room.role);
+    if (room.stars) list = list.filter((p) => p.stars >= room.stars);
+    if (room.scouted === 'yes') list = list.filter((p) => p.scout > 0); else if (room.scouted === 'no') list = list.filter((p) => !p.scout);
+    if (room.watch) list = list.filter((p) => p.watch);
+    return list;
+  }
+  const byBoard = (a, b) => (a.stock || 99) - (b.stock || 99) || b.stars - a.stars;
+
+  function prospectSheet(p, mode) {
+    const v = O.prospectView(p);
+    const onClock = mode === 'pick' && O.onTheClock(L) === L.user.team;
+    const pts = L.user.scoutPts || 0;
+    const rg = MAP.region(MAP.regionOf(p.series));
+    const s = sheet({
+      title: p.name.toUpperCase(),
+      content: h('div', { class: 'dy-psheet' },
+        h('div', { class: 'dy-psheet-top' }, pAvatar(p, 'lg'),
+          h('dl', { class: 'dy-bio' }, [
+            ['Role', `${p.role}${p.second ? ` / ${p.second}` : ''}`], ['World', p.series], ['Region', rg.name],
+            ['Board', p.stock ? `#${p.stock}${p.stockPrev && p.stockPrev !== p.stock ? ` (was #${p.stockPrev})` : ''}` : '–'],
+            ['Stars', '★'.repeat(v.stars) + '☆'.repeat(5 - v.stars)],
+            ['Power now', 'Hidden until drafted'],
+            ['Potential', v.potential != null ? String(v.potential) : 'Scout to find out'],
+            ['Scouting report', v.tag || (p.scout ? 'Deep scout to find out' : 'Not scouted')],
+          ].map(([k, val]) => h('div', {}, h('dt', {}, k), h('dd', {}, val))))),
+        h('p', { class: 'caption muted' }, `Scouting points: ${pts}. A report costs ${R.SCOUT_COST}.`),
+        h('div', { class: 'btn-row' },
+          h('button', { class: `btn btn-secondary dy-watch-btn${p.watch ? ' is-on' : ''}`, onClick: async () => { p.watch = !p.watch; await save(); s.close(); redrawBoard(); } }, p.watch ? '★ Watching' : '☆ Watch'),
+          p.scout < 2 ? h('button', { class: 'btn btn-secondary', disabled: pts < R.SCOUT_COST, onClick: async () => {
+            const r = O.scout(L, p.pid); if (!r.ok) { toast(r.why); return; }
+            await save(); s.close(); redrawBoard(); prospectSheet(p, mode);
+          } }, p.scout === 0 ? `Scout · ${R.SCOUT_COST}` : `Deep scout · ${R.SCOUT_COST}`) : null,
+          onClock ? h('button', { class: 'btn btn-primary', onClick: () => { s.close(); draftPlayer(p); } }, 'Draft') : null)),
+    });
+  }
+
+  function regionStats(list, id) {
+    const ps = id ? list.filter((p) => MAP.regionOf(p.series) === id) : list;
+    const score = {};
+    R.ROLES.forEach((r) => { score[r] = 0; });
+    ps.forEach((p) => { score[p.role] += p.stars; });
+    const ranked = R.ROLES.slice().sort((a, b) => score[b] - score[a]);
+    const strengths = ranked.filter((r) => score[r] > 0).slice(0, 3);
+    return { ps, strengths, weaknesses: ranked.slice().reverse().filter((r) => !strengths.includes(r)).slice(0, 3), top: ps.slice().sort(byBoard).slice(0, 5) };
+  }
+
+  function mapPanel(list, mode, rerender) {
+    const counts = {}; MAP.REGIONS.forEach((r) => { counts[r.id] = 0; });
+    list.forEach((p) => { counts[MAP.regionOf(p.series)] += 1 + (p.stars - 1) * 0.35; });
+    const max = Math.max(1, ...Object.values(counts));
+    const sel = room.region;
+    const shade = (id) => {
+      if (sel === id) return '#EBD94E';
+      const k = counts[id] / max;
+      const base = sel ? 0.45 : 1;
+      return `rgba(${Math.round(70 + 120 * k)}, ${Math.round(58 + 100 * k)}, ${Math.round(28 + 40 * k)}, ${base})`;
+    };
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', MAP.MAP_VIEW); svg.setAttribute('class', 'dy-map-svg'); svg.setAttribute('role', 'group'); svg.setAttribute('aria-label', 'Scouting regions');
+    for (const r of MAP.REGIONS) {
+      const path = document.createElementNS(svgNS, 'path');
+      path.setAttribute('d', r.d); path.setAttribute('fill', shade(r.id));
+      path.setAttribute('class', `dy-map-region${sel === r.id ? ' is-on' : ''}`);
+      path.setAttribute('tabindex', '0'); path.setAttribute('role', 'button'); path.setAttribute('aria-label', `${r.name}: ${list.filter((p) => MAP.regionOf(p.series) === r.id).length} prospects`);
+      const pick = () => { room.region = room.region === r.id ? null : r.id; redrawBoard(); };
+      path.addEventListener('click', pick); path.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+      svg.append(path);
+    }
+    for (const r of MAP.REGIONS) {
+      const t = document.createElementNS(svgNS, 'text');
+      t.setAttribute('x', r.label[0]); t.setAttribute('y', r.label[1]); t.setAttribute('class', `dy-map-label${sel === r.id ? ' is-on' : ''}`);
+      t.textContent = r.name.replace(/^THE /, '');
+      svg.append(t);
+    }
+    const st = regionStats(list, sel);
+    const rg = sel ? MAP.region(sel) : null;
+    const callout = h('div', { class: 'dy-map-callout' },
+      h('p', { class: 'dy-map-callout-title' }, rg ? rg.name : 'THE WHOLE AFL CLASS'),
+      h('p', { class: 'caption muted' }, rg ? `${rg.area} · ${st.ps.length} prospect${st.ps.length === 1 ? '' : 's'}${rg.series.length ? ` · ${rg.series.join(', ')}` : ' · one-off worlds'}` : `${list.length} prospects across ${MAP.REGIONS.length} regions`),
+      h('p', { class: 'dy-map-sub' }, 'STRENGTHS'), h('ul', {}, st.strengths.map((r) => h('li', { class: ROLE_CLASS(r) }, r))),
+      h('p', { class: 'dy-map-sub' }, 'WEAKNESSES'), h('ul', {}, st.weaknesses.map((r) => h('li', {}, r))),
+      h('p', { class: 'dy-map-sub' }, 'TOP PROSPECTS', h('span', { class: 'caption muted' }, 'Board')),
+      h('ul', { class: 'dy-map-top' }, st.top.map((p) => h('li', {}, h('button', { class: 'dy-map-tp', onClick: () => prospectSheet(p, mode) }, h('span', { class: `dy-num ${ROLE_CLASS(p.role)}` }, ROLE_SHORT[p.role]), h('span', {}, p.name), h('span', { class: 'dy-num' }, p.stock ? `#${p.stock}` : '–'))))));
+    return h('div', { class: 'dy-map' },
+      h('div', { class: 'dy-map-tabs', role: 'tablist', 'aria-label': 'Regions' },
+        [[null, 'NATIONAL'], ...MAP.REGIONS.map((r) => [r.id, r.area.toUpperCase()])].map(([id, label]) => h('button', { class: `dy-map-tab${room.region === id ? ' is-on' : ''}`, role: 'tab', 'aria-selected': room.region === id ? 'true' : 'false', onClick: () => { room.region = id; redrawBoard(); } }, label))),
+      h('div', { class: 'dy-map-stage' }, svg, callout),
+      h('div', { class: 'dy-map-legend' }, h('span', { class: 'caption muted' }, 'few'), h('span', { class: 'dy-map-ramp' }), h('span', { class: 'caption muted' }, 'many, and good · tap a region to scout it')));
+  }
+
+  function prospectList(list, mode) {
+    const mineCount = O.draftBoard(L).filter((p) => p.watch || p.scout > 0).length;
+    let show = room.tab === 'mine' ? list.filter((p) => p.watch || p.scout > 0) : list;
+    if (room.region) show = show.filter((p) => MAP.regionOf(p.series) === room.region);
+    show = show.slice().sort(byBoard);
+    return h('div', { class: 'dy-room-list' },
+      h('div', { class: 'dy-subtabs', role: 'tablist' }, [['all', 'PROSPECTS'], ['mine', `MY BOARD (${mineCount})`]].map(([id, label]) => h('button', { class: `dy-subtab${room.tab === id ? ' is-on' : ''}`, role: 'tab', 'aria-selected': room.tab === id ? 'true' : 'false', onClick: () => { room.tab = id; redrawBoard(); } }, label))),
+      h('p', { class: 'caption muted dy-pad' }, room.region ? `${MAP.region(room.region).name} · ${show.length}` : `THE WHOLE CLASS · ${show.length} PROSPECTS`),
+      show.length ? h('ol', { class: 'dy-room-rows' }, show.map((p, i) => {
+        const v = O.prospectView(p);
+        return h('li', {}, h('button', { class: `dy-room-row${p.watch ? ' is-watch' : ''}`, onClick: () => prospectSheet(p, mode) },
+          h('span', { class: 'dy-room-rank' }, String(p.stock || i + 1)),
+          pAvatar(p, 'md'),
+          h('span', { class: 'dy-list-text' },
+            h('span', { class: 'heading' }, p.name, p.watch ? h('span', { class: 'gold' }, ' ★') : null),
+            h('span', { class: 'caption' }, stars(v.stars), h('span', { class: ROLE_CLASS(p.role) }, ` ${ROLE_SHORT[p.role]}`), h('span', { class: 'muted' }, ` · ${p.series}`)),
+            v.potential != null || v.tag ? h('span', { class: `caption ${v.tag === 'Generational Talent' ? 'gold' : v.tag === 'Bust risk' ? 'loss' : 'muted'}` }, [v.potential != null ? `Potential ${v.potential}` : null, v.tag].filter(Boolean).join(' · ')) : null)));
+      })) : h('p', { class: 'caption muted dy-pad' }, room.tab === 'mine' ? 'Nobody on your board. Tap a prospect and Watch or Scout them.' : 'No prospects match these filters.'));
+  }
+
+  function newsFeed() {
+    const out = [];
+    const st = WK.draftStock(L);
+    st.risers.slice(0, 3).forEach((x) => { const p = L.players[x.pid]; if (p) out.push({ p, tag: 'RISING', cls: 'win', text: `${p.name} climbs from ${x.from} to ${x.to} on the board.` }); });
+    st.fallers.slice(0, 2).forEach((x) => { const p = L.players[x.pid]; if (p) out.push({ p, tag: 'FALLING', cls: 'loss', text: `${p.name} slides from ${x.from} to ${x.to}.` }); });
+    O.draftBoard(L).filter((p) => p.scout >= 2).forEach((p) => out.push({ p, tag: 'SCOUT REPORT', cls: p.gen ? 'gold' : p.bust ? 'loss' : 'muted', text: p.gen ? `${p.name} is a GENERATIONAL TALENT.` : p.bust ? `${p.name} carries bust risk.` : `${p.name} looks solid. Potential ${p.potential}.` }));
+    return out.slice(0, 8);
+  }
+
+  function draftRoomView(mode = 'scout') {
+    const all = O.draftBoard(L);
+    if (!all.length) return h('p', { class: 'body-text dy-pad' }, 'No draft class yet. It arrives with the new season.');
+    const feat = all.slice().sort(byBoard)[0];
+    const mapBox = h('div', { class: 'dy-room-map' });
+    const listBox = h('div', { class: 'dy-room-right dy-panel dy-panel-flush' });
+    const rerender = () => { const list = filtered(all); fill(mapBox, mapPanel(list, mode, rerender)); fill(listBox, prospectList(list, mode)); };
+    const sel = (label, key, opts) => h('label', { class: 'dy-field' }, h('span', { class: 'label-spaced' }, label),
+      h('select', { class: 'dy-select', onChange: (e) => { room[key] = e.target.value; if (key === 'region' && !room.region) room.region = null; rerender(); } }, opts.map(([v, t]) => h('option', { value: v, selected: String(room[key]) === String(v) }, t))));
+    const search = h('input', { class: 'input', type: 'search', placeholder: 'A prospect or a world…', value: room.q, 'aria-label': 'Search prospects' });
+    search.addEventListener('input', () => { room.q = search.value; rerender(); });
+    const fv = O.prospectView(feat);
+    const left = h('aside', { class: 'dy-room-left' },
+      h('button', { class: 'dy-room-feat', style: `--c1:${R.ROLES.indexOf(feat.role) % 2 ? '#3657B2' : '#8300C7'}`, onClick: () => prospectSheet(feat, mode) },
+        h('span', { class: 'dy-room-feat-pic' }, pAvatar(feat, 'card')),
+        h('span', { class: 'dy-room-feat-text' },
+          h('span', { class: 'label-spaced' }, 'TOP OF THE BOARD'),
+          h('span', { class: 'dy-room-feat-name' }, feat.name),
+          h('span', { class: 'caption' }, feat.series),
+          h('span', { class: 'caption' }, `${fv.stars}-star ${feat.role}`), stars(fv.stars))),
+      h('section', { class: 'dy-panel dy-room-scout' }, h('p', { class: 'label-spaced' }, 'SCOUTING POINTS'), h('p', { class: 'stat' }, String(L.user.scoutPts || 0)), h('p', { class: 'caption muted' }, `+${R.SCOUT_WEEKLY} a week · a report costs ${R.SCOUT_COST}. The first shows potential; a deep scout shows Generational Talent or Bust risk.`)),
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'DRAFT NEWS'),
+        (() => { const n = newsFeed(); return n.length ? h('ul', { class: 'dy-room-news' }, n.map((x) => h('li', {}, h('button', { class: 'dy-room-news-row', onClick: () => prospectSheet(x.p, mode) }, pAvatar(x.p), h('span', { class: 'dy-list-text' }, h('span', { class: `label-spaced ${x.cls}` }, x.tag), h('span', { class: 'caption' }, x.text)))))) : h('p', { class: 'caption muted' }, 'Board movement and your scouting reports show up here.'); })()),
+      h('section', { class: 'dy-panel dy-room-filters' }, h('h2', { class: 'dy-h' }, 'FILTERS'),
+        h('label', { class: 'dy-field' }, h('span', { class: 'label-spaced' }, 'SEARCH'), search),
+        sel('ROLE', 'role', [['', 'Any role'], ...R.ROLES.map((r) => [r, r])]),
+        h('div', { class: 'dy-field' }, h('span', { class: 'label-spaced' }, 'RATING'), h('div', { class: 'dy-chips' }, [[0, 'Any'], [3, '3★+'], [4, '4★+'], [5, '5★']].map(([v, t]) => h('button', { class: `dy-chip${room.stars === v ? ' is-on' : ''}`, 'aria-pressed': room.stars === v ? 'true' : 'false', onClick: () => { room.stars = v; redrawBoard(); } }, t)))),
+        sel('REGION', 'region', [['', 'Every region'], ...MAP.REGIONS.map((r) => [r.id, r.name])]),
+        sel('SCOUTING', 'scouted', [['any', 'Any'], ['yes', 'Scouted'], ['no', 'Not scouted yet']]),
+        h('label', { class: 'dy-wk-skip' }, h('input', { type: 'checkbox', checked: room.watch, onChange: (e) => { room.watch = e.target.checked; rerender(); } }), ' Watching only'),
+        h('button', { class: 'btn btn-secondary btn-sm', onClick: () => { Object.assign(room, { region: null, q: '', role: '', stars: 0, scouted: 'any', watch: false }); redrawBoard(); } }, 'Clear filters')));
+    rerender();
+    return h('div', { class: 'dy-room' }, left, h('div', { class: 'dy-room-center dy-panel dy-panel-flush' }, mapBox), listBox);
+  }
+
   function drawDraftTab() {
     if (L.phase === 'offseason' && L.off.step === 'draft') { drawOff(); return; }
     redrawBoard = drawDraftTab;
@@ -892,9 +1055,7 @@ export async function render() {
             h('p', { class: 'caption muted' }, `${n} prospects · one round in the off-season. The board shows stars, role and world. Scouting tells you the rest.`)),
           h('div', { class: 'dy-scout-pts' }, h('p', { class: 'label-spaced' }, 'SCOUTING POINTS'), h('p', { class: 'stat' }, String(L.user.scoutPts || 0)), h('p', { class: 'caption muted' }, `+${R.SCOUT_WEEKLY} a week`))),
         h('p', { class: 'caption muted' }, 'Newcomers wear the headshots of cards who retire this year, under new names from any culture. Any of them could be a Generational Talent.')),
-      n ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'THE WORLDS'), hexMap()) : null,
-      n ? boardFilters() : h('p', { class: 'caption muted' }, 'No draft class yet. It arrives with the new season.'),
-      n ? boardList('scout') : null));
+      draftRoomView('scout')));
   }
 
   async function draftPlayer(p) {
@@ -1060,9 +1221,7 @@ export async function render() {
         h('p', { class: 'caption muted' }, `Scouting points left: ${L.user.scoutPts || 0}. You can still scout now.`)),
       recent.length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'LATEST PICKS'),
         h('ul', { class: 'dy-list' }, recent.map((x) => { const p = L.players[x.pid]; return h('li', {}, h('span', { class: 'dy-num' }, `${x.pick}`), crest(team(x.team), 24), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${p.role} · ${p.series}`))); }))) : null,
-      done ? null : h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'THE WORLDS'), hexMap()),
-      done ? null : boardFilters(),
-      done ? null : boardList('pick')),
+      done ? null : draftRoomView('pick')),
     done || myPick < 0 || o.picks.some((x) => x.team === t.i)
       ? nextBtn(done ? 'On to free agency' : 'Finish the draft')
       : h('p', { class: 'caption muted' }, 'Make your pick from the board.'));
@@ -1233,7 +1392,7 @@ export async function render() {
   }
 
   // ---------- The OSM reader (page flip) ----------
-  function magPages(m) {
+  function magPages(m, photo = null) {
     const P = (pid) => L.players[pid];
     const cs = P(m.cover.pid); const ct = m.cover.team != null ? team(m.cover.team) : me();
     const page = (cls, ...kids) => h('article', { class: `osm-page ${cls}` }, ...kids);
@@ -1271,9 +1430,10 @@ export async function render() {
       pages.push(page('osm-spot', tinted(st, st, 'dy-arena osm-spot-bg'),
         h('p', { class: 'osm-section' }, 'OSM SPOTLIGHT'),
         h('h2', { class: 'osm-headline osm-headline-sm' }, `INSIDE THE ${st.name.toUpperCase()}`),
-        h('p', { class: 'osm-dek' }, `${sp.record} · No. ${sp.rank || '–'} in the Power 25 · Head coach ${L.user.coach}`),
-        sp1 ? h('div', { class: 'osm-spot-star' }, h('div', { class: 'osm-potm-pic' }, pAvatar(sp1, 'card')), h('blockquote', { class: 'osm-quote' }, sp.quote, h('cite', {}, `— ${sp1.name}`))) : null,
+        h('p', { class: 'osm-dek' }, `${sp.record} · No. ${sp.rank || '–'} in the Power 25 · ${/^coach\b/i.test(L.user.coach) ? L.user.coach : `Head coach ${L.user.coach}`}`),
+        h('div', { class: 'osm-spot-star' }, h('div', { class: 'osm-potm-pic osm-coach-pic' }, coachFace(photo, st)), h('blockquote', { class: 'osm-quote' }, sp.quote, h('cite', {}, `— ${L.user.coach}, head coach`))),
         h('p', { class: 'osm-body' }, sp.line),
+        sp1 ? h('div', { class: 'osm-spot-mini' }, pAvatar(sp1, 'md'), h('p', { class: 'osm-body' }, h('strong', {}, `The star: ${sp1.name}. `), `${sp1.role} · ${fmt(sp1.stats.dmg)} damage · ${sp1.stats.ko} KOs this season.`)) : null,
         folio(5)));
     }
     pages.push(page('', h('p', { class: 'osm-section' }, 'RIVALRY WATCH'),
@@ -1290,13 +1450,19 @@ export async function render() {
     return pages;
   }
 
+  // The coach's face: their photo, else their player icon, else the crest.
+  function coachFace(photo, t) {
+    if (photo) return h('img', { src: photo, alt: '', class: 'osm-coach-img' });
+    const ic = characters.get(profile.value.iconId);
+    return ic ? avatar(ic, characters, 'card') : crest(t, 140);
+  }
   async function openMag(m) {
     stopTimers();
     m.read = true; save();
     const pages = m.legacy ? [legacyCover(m.lg, (await loadPhotos()).coach), h('article', { class: 'osm-page osm-legacy-inner' }, h('p', { class: 'osm-section' }, 'THE CAREER'),
       h('ul', { class: 'osm-power' }, m.lg.teams.map((x) => h('li', {}, h('img', { src: `art/afl/crests/${x.crest}.webp`, alt: '', style: 'width:36px;height:36px' }), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, x.name), h('span', { class: 'caption muted' }, `${x.seasons} season${x.seasons === 1 ? '' : 's'}`))))),
       h('p', { class: 'osm-intro' }, `${m.lg.w}-${m.lg.l} · ${m.lg.titles} Grail${m.lg.titles === 1 ? '' : 's'} · ${m.lg.playoffs} playoff trips. The legends are gone. The New Era starts now.`),
-      h('p', { class: 'osm-mast osm-mast-sm' }, 'OSM'))] : magPages(m);
+      h('p', { class: 'osm-mast osm-mast-sm' }, 'OSM'))] : magPages(m, (await loadPhotos()).coach);
     const wide = () => window.innerWidth / (window.__uiZoom || 1) >= 1000;
     // Spreads: the cover alone, then pairs (on wide screens).
     const spreads = () => (wide() ? [[0], ...Array.from({ length: Math.ceil((pages.length - 1) / 2) }, (_, k) => [1 + k * 2, 2 + k * 2].filter((i) => i < pages.length))] : pages.map((_, i) => [i]));
@@ -1769,7 +1935,7 @@ export async function render() {
     fill(root, header('FIGHT NIGHT'), stage, after);
     const seed = Math.floor(R.nextRand(L) * 2 ** 31);
     fightView = playMatch(stage, {
-      teamA: mineCards, teamB: theirCards, seed, labels: { A: me().abbr, B: team(pd.opp).abbr },
+      teamA: mineCards, teamB: theirCards, seed, labels: { A: me().abbr, B: team(pd.opp).abbr }, names: { B: team(pd.opp).name },
       onDone: async (res) => {
         const r = userHome ? res : flip(res);
         const lineups = userHome ? { home: pd.mine, away: pd.final } : { home: pd.final, away: pd.mine };

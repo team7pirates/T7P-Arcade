@@ -2,7 +2,7 @@
 // When you publish an update, add a new entry at the top of that file with the
 // same version number as core/version.js and sw.js.
 
-import { h, sheet } from './ui.js';
+import { h, fill, sheet } from './ui.js';
 import { APP_VERSION } from './version.js';
 
 // fresh: true asks the server for the newest notes (used when an update is
@@ -49,4 +49,30 @@ export async function showUpdatePopup({ onUpdate, onClose }) {
     ),
   });
   return s;
+}
+
+// v0.15.0: updates install on their own. A loud, can't-miss banner says the
+// game is about to reload, counts down, and offers "Reload now" or "Finish
+// first" (it then reloads the next time you're back on the main menu).
+export async function showAutoUpdate({ seconds = 15, onReload, onWait }) {
+  const releases = await loadReleases({ fresh: true }).catch(() => []);
+  const next = releases[0] && releases[0].version !== APP_VERSION ? releases[0] : null;
+  let left = seconds; let timer = null;
+  const count = h('span', { class: 'au-count' }, String(left));
+  const close = () => { clearInterval(timer); el.remove(); };
+  const reload = () => { clearInterval(timer); fill(btns, h('p', { class: 'au-going' }, 'RELOADING…')); onReload(); };
+  const btns = h('div', { class: 'au-btns' },
+    h('button', { class: 'btn btn-primary au-now', onClick: reload }, 'Reload now'),
+    h('button', { class: 'btn btn-secondary', onClick: () => { close(); onWait(); } }, 'Finish what I\'m doing first'));
+  const el = h('div', { class: 'au', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'au-title', 'aria-describedby': 'au-msg' },
+    h('div', { class: 'au-box' },
+      h('p', { class: 'au-kicker' }, '⚠ UPDATE INSTALLED'),
+      h('h2', { class: 'au-title', id: 'au-title' }, 'THE GAME WILL RELOAD'),
+      h('p', { class: 'au-msg', id: 'au-msg' }, h('strong', {}, `T7P Arcade${next ? ` ${next.version}` : ''} downloaded in the background.`), ' The game reloads in ', count, ' seconds to finish updating. Your saves are safe.'),
+      next ? h('div', { class: 'au-notes' }, h('p', { class: 'label-spaced gold' }, next.title || "WHAT'S NEW"), releaseItems(next)) : null,
+      btns));
+  document.body.append(el);
+  el.querySelector('.au-now').focus();
+  timer = setInterval(() => { left -= 1; count.textContent = String(Math.max(0, left)); if (left <= 0) reload(); }, 1000);
+  return { close };
 }

@@ -235,6 +235,7 @@ export async function render() {
           })),
           chem.bonus ? h('p', { class: 'br-chem' }, `${chem.label} · +${chem.bonus} Power`) : null,
         ),
+        snakeBoard(g),
         g.recent.length ? h('details', { class: 'br-recent' },
           h('summary', { class: 'label-spaced' }, 'RECENT PICKS'),
           h('ol', { class: 'br-recent-list' }, g.recent.map((p) => h('li', {},
@@ -245,7 +246,9 @@ export async function render() {
           need.map((r) => h('button', { class: `br-filter role-${r.toLowerCase()}${roleFilter === r ? ' is-on' : ''}`, onClick: () => { roleFilter = r; drawDraft(); } }, r))),
         h('div', { class: 'search-wrap' }, icon('search', 18), search),
         list,
-        h('button', { class: 'btn btn-secondary br-auto', onClick: autoPick }, 'Auto-pick the best available'),
+        h('div', { class: 'br-auto-row' },
+          h('button', { class: 'btn btn-secondary br-auto', onClick: autoPick }, 'Auto-pick this spot'),
+          h('button', { class: 'btn btn-secondary br-auto', onClick: autoDraftRest }, 'Auto-draft the rest')),
       ),
     );
     drawList();
@@ -281,6 +284,44 @@ export async function render() {
     const taken = new Set(g.teams.flatMap((t) => t.roster));
     const c = aiPick(rosterOf(g.teams[g.userSeat]), pool().filter((x) => !taken.has(x.id)), Math.random, 0);
     if (c) confirmPick(c);
+  }
+
+  // The snake draft board: 8 teams across, 5 rounds down. The order flips
+  // every round; your column is highlighted and the pick on the clock glows.
+  function snakeBoard(g) {
+    const cell = (r, seat) => {
+      const id = g.teams[seat].roster[r];
+      const pickNo = r * TEAMS + (r % 2 ? TEAMS - 1 - seat : seat) + 1;
+      const now = !id && pickNo === g.pick + 1;
+      const c = id != null ? ch(id) : null;
+      return h('td', { class: `${seat === g.userSeat ? 'is-me' : ''}${now ? ' is-now' : ''}` },
+        h('span', { class: 'br-sn-no' }, String(pickNo)),
+        c ? h('span', { class: 'br-sn-pick' }, avatar(c, characters, 'sm'), h('span', { class: 'br-sn-name' }, c.name), h('span', { class: `br-sn-role role-${c.mainRole.toLowerCase()}` }, c.mainRole)) : h('span', { class: 'br-sn-empty' }, now ? 'ON THE CLOCK' : ''));
+    };
+    return h('details', { class: 'br-snake', open: true },
+      h('summary', { class: 'label-spaced' }, 'SNAKE DRAFT BOARD'),
+      h('div', { class: 'br-snake-wrap' }, h('table', { class: 'br-snake-table' },
+        h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'RD'), ...g.teams.map((t, seat) => h('th', { scope: 'col', class: seat === g.userSeat ? 'is-me' : '' }, t.name)))),
+        h('tbody', {}, Array.from({ length: PICKS }, (_, r) => h('tr', {}, h('th', { scope: 'row' }, `${r + 1} ${r % 2 ? '←' : '→'}`), ...g.teams.map((_, seat) => cell(r, seat))))))));
+  }
+
+  async function autoDraftRest() {
+    const ok = await confirmSheet({ title: 'AUTO-DRAFT THE REST?', message: 'Your GM fills every open spot with the best card left for each role you still need.', confirmLabel: 'Auto-draft' });
+    if (!ok) return;
+    const g = game;
+    while (g.phase === 'draft' && g.pick < g.order.length && g.order[g.pick] === g.userSeat) {
+      const taken = new Set(g.teams.flatMap((t) => t.roster));
+      const c = aiPick(rosterOf(g.teams[g.userSeat]), pool().filter((x) => !taken.has(x.id)), Math.random, 0);
+      if (!c) break;
+      g.teams[g.userSeat].roster.push(c.id);
+      g.recent.unshift({ seat: g.userSeat, id: c.id, pick: g.pick + 1 });
+      g.pick += 1;
+      advanceDraft(g);
+    }
+    searchText = '';
+    await save();
+    if (g.phase === 'bracket') toast('The draft is done. Here is your bracket.');
+    draw();
   }
 
   async function leave() {
@@ -476,7 +517,7 @@ export async function render() {
       teamA: fightCards(mine, bonusFor(g, g.userSeat, oppSeat)),
       teamB: fightCards(theirs, bonusFor(g, oppSeat, g.userSeat)),
       seed: L.seed,
-      labels: { A: 'YOU', B: 'THEY' },
+      labels: { A: 'YOU', B: 'THEY' }, names: { B: g.teams[oppSeat].name },
       onDone: async (result) => {
         const d = addDamage(g, mine, theirs, result.events);
         const won = result.winner === 'A';

@@ -202,3 +202,20 @@ legend.set-text + .segmented { clear: both; }
 .release-meta { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
 .release-title { margin: var(--space-1) 0 var(--space-2); }
 .release-card .whats-new-list { margin-bottom: 0; }
+
+/* v0.15.0: the automatic update banner */
+.au { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: var(--space-4); background: rgba(8, 4, 14, .86); backdrop-filter: blur(4px); animation: fade-in .2s ease-out; }
+.au-box { width: min(620px, 100%); max-height: 92dvh; overflow-y: auto; text-align: center; padding: var(--space-6) var(--space-4); border-radius: var(--radius-lg); border: 3px solid var(--brand-gold); background: linear-gradient(160deg, #2a1740, #120b1c 60%); box-shadow: 0 0 0 6px rgba(240, 192, 117, .18), 0 30px 80px rgba(0, 0, 0, .7); animation: au-pulse 1.6s ease-in-out infinite; }
+@keyframes au-pulse { 50% { box-shadow: 0 0 0 12px rgba(240, 192, 117, .08), 0 30px 80px rgba(0, 0, 0, .7); } }
+.reduce-motion .au-box { animation: none; }
+.au-kicker { margin: 0; font-family: var(--font-display); font-weight: 900; letter-spacing: 0.2em; color: var(--brand-gold); font-size: 1rem; }
+.au-title { margin: 6px 0 10px; font-family: var(--font-display); font-weight: 900; font-size: clamp(30px, 7vw, 48px); line-height: 1; color: #fff; text-shadow: 0 4px 18px rgba(248, 140, 183, .45); }
+.au-msg { margin: 0 auto; max-width: 480px; font-size: 1.05rem; line-height: 1.45; }
+.au-msg strong { color: var(--brand-gold); }
+.au-count { display: inline-block; min-width: 1.6em; padding: 0 6px; border-radius: 6px; background: var(--loss); color: #fff; font-family: var(--font-display); font-weight: 900; }
+.au-notes { margin: var(--space-4) 0 0; text-align: left; padding: var(--space-3); border-radius: var(--radius-md); background: rgba(255, 255, 255, .05); }
+.au-btns { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
+.au-now { font-size: 1.05rem; min-height: 54px; }
+.au-going { margin: 0; font-family: var(--font-display); font-weight: 900; letter-spacing: 0.2em; color: var(--brand-gold); }
+.win-text.is-long { font-size: clamp(28px, 6vw, 52px); text-align: center; line-height: 1; }
+.au-notes { max-height: 34dvh; overflow-y: auto; }

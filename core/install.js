@@ -1,7 +1,7 @@
 // "Get the App": installing the PWA to the home screen, and offline updates.
 
 import { toast } from './ui.js';
-import { showUpdatePopup } from './whats-new.js';
+import { showAutoUpdate } from './whats-new.js';
 
 let deferredPrompt = null;
 const listeners = new Set();
@@ -39,20 +39,26 @@ window.addEventListener('appinstalled', () => {
 
 // Offline support. The service worker (sw.js) keeps a copy of every file so
 // the game opens without internet. When a new version is published it
-// downloads in the background, and a pop-up shows what's new and offers to
-// update. The pop-up waits until the loading screen is done.
+// downloads in the background and installs on its own: a big banner says the
+// game is about to reload (after the loading screen is done). "Finish first"
+// waits until the player is back on the main menu.
 let appReady = false;
 let waitingWorker = null;
-let popupOpen = false;
+let shown = false;
+
+function applyNow(worker) { worker.postMessage('skip-waiting'); }
 
 function offerUpdate(worker) {
   waitingWorker = worker;
-  if (!appReady || popupOpen) return;
-  popupOpen = true;
-  showUpdatePopup({
-    onUpdate: () => worker.postMessage('skip-waiting'),
-    onClose: () => { popupOpen = false; },
-  }).catch(() => { popupOpen = false; });
+  if (!appReady || shown) return;
+  shown = true;
+  showAutoUpdate({
+    onReload: () => applyNow(worker),
+    onWait: () => {
+      const onMenu = () => { if (['', '#', '#/', '#/menu', '#menu'].includes(location.hash)) { window.removeEventListener('hashchange', onMenu); applyNow(worker); } };
+      window.addEventListener('hashchange', onMenu);
+    },
+  }).catch(() => applyNow(worker));
 }
 
 export function markAppReady() {

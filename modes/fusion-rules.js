@@ -16,6 +16,13 @@ export const GYM = {
   chaos: { min: 0, max: 100, step: 5, per: 0 },
 };
 export const START_BUDGET = 30;
+// Roles lock once your fighter is saved. Changing them costs Gym points,
+// paid for good out of your Bounty (v0.15.0).
+export const ROLE_CHANGE = { main: 10, second: 5 };
+export function roleChangeCost(saved, draft, locked) {
+  if (!locked || !saved) return 0;
+  return (draft.mainRole !== saved.mainRole ? ROLE_CHANGE.main : 0) + ((draft.secondRole || null) !== (saved.secondRole || null) ? ROLE_CHANGE.second : 0);
+}
 export const BOUNTY_PER_POINT = 100;  // every 100 Bounty earned adds 1 budget point
 export const MAX_BUDGET = cost({ powerLevel: 99, aura: 100, clutch: 100 }); // 69
 

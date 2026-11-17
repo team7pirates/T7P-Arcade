@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.15.0",
+      "date": "2026-11-17",
+      "title": "Draft Room map, auto-updates and fixes",
+      "items": [
+        "Updates now install on their own in the background. When one is ready, a big banner tells you the game will reload, with a countdown. Reload now, or finish what you're doing and it reloads when you're back on the main menu. Your saves are safe.",
+        "Dynasty Draft Room: filters and draft news on the left, a map of the AFL continent in the middle, and Prospects / My Board on the right. Tap a region (or its tab) to see its strengths, weaknesses and top prospects, like scouting in Madden. Tap any prospect for their card: watch, scout, deep scout or draft from there.",
+        "OSM Spotlight now features you, the head coach (your coach photo, or your player icon), with your team's star listed underneath.",
+        "The League screen shows just the Power 25.",
+        "Losing a fight now names the winner: \"OBSIDIAN DRAGONS WIN\" instead of \"THEY WIN\".",
+        "Brawl: a full snake draft board shows every team's picks, round by round, with the pick on the clock highlighted. New Auto-draft the rest button.",
+        "Forbidden Fusion: fights start at 2× speed. Roles lock once you save your fighter; changing them costs 10 points for the main role and 5 for the second, paid for good out of your Bounty."
+      ]
+    },
+    {
       "version": "0.14.0",
       "date": "2026-11-17",
       "title": "Dynasty: a new League screen and the weekly show",

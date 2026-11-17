@@ -23,7 +23,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // How long each event shows at 1× speed (ms).
 const TIMING = { 'round-start': 1100, enter: 450, turn: 120, attack: 520, damage: 380, clutch: 900, status: 300, stunned: 600, ko: 700, 'round-end': 1200, meter: 0, timeout: 800 };
 
-export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, bestOf = 3, startHp = null, labels = { A: 'YOU', B: 'THEY' }, onDone }) {
+export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, bestOf = 3, startHp = null, labels = { A: 'YOU', B: 'THEY' }, names = null, onDone }) {
   const result = runMatch(teamA, teamB, { seed: seed ?? Date.now(), bestOf, startHp });
   const need = Math.ceil(bestOf / 2);
   const chars = { A: teamA, B: teamB };
@@ -241,7 +241,7 @@ export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, be
     const won = result.winner === 'A';
     sfx.play(won ? 'win' : 'loss');
     const over = h('div', { class: `bt-result ${won ? 'is-win' : 'is-loss'}`, role: 'status' },
-      h('p', { class: 'display-lg win-text' }, won ? 'YOU WIN' : 'THEY WIN'),
+      h('p', { class: `display-lg win-text${names && names.B && !won ? ' is-long' : ''}` }, won ? 'YOU WIN' : `${names && names.B ? names.B.toUpperCase() : 'THEY'} WIN`),
       h('p', { class: 'label-spaced' }, need === 1 ? 'ONE-ROUND FIGHT' : `${result.score[0]} – ${result.score[1]} · ${result.rounds} ROUNDS`),
     );
     root.append(over);

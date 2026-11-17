@@ -1245,3 +1245,84 @@ button.dy-lu-card:hover:not(:disabled) { background: var(--surface-raised); }
   .dy-wk-foot { flex-direction: row; flex-wrap: wrap; padding: 8px var(--space-3); }
   .dy-wk-foot-right .caption { display: none; }
 }
+.osm-coach-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.osm-coach-pic .dy-crest { position: absolute; inset: 12%; width: 76% !important; height: 76% !important; }
+.osm-spot-mini { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 6px; background: rgba(10, 7, 16, .55); }
+.osm-spot-mini .osm-body { font-size: 0.85rem; }
+.ff-lock { margin: 6px 0; padding: 8px 10px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--brand-gold) 12%, transparent); border: 1px solid color-mix(in srgb, var(--brand-gold) 40%, transparent); font-size: 0.85rem; }
+/* Brawl snake draft board */
+.br-snake { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); padding: var(--space-2) var(--space-3); }
+.br-snake summary { cursor: pointer; padding: 4px 0; }
+.br-snake-wrap { overflow-x: auto; margin-top: 6px; }
+.br-snake-table { border-collapse: separate; border-spacing: 3px; min-width: 760px; width: 100%; table-layout: fixed; font-size: 0.72rem; }
+.br-snake-table th { font-family: var(--font-display); font-weight: 700; font-size: 0.66rem; color: var(--ink-muted); padding: 4px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.br-snake-table thead th:first-child, .br-snake-table tbody th { width: 42px; }
+.br-snake-table th.is-me { color: var(--brand-gold); }
+.br-snake-table td { position: relative; height: 62px; vertical-align: top; padding: 3px; border-radius: 6px; background: var(--surface-raised); }
+.br-snake-table td.is-me { background: color-mix(in srgb, var(--brand-gold) 14%, var(--surface-raised)); }
+.br-snake-table td.is-now { outline: 2px solid var(--brand-gold); box-shadow: 0 0 12px rgba(240, 192, 117, .5); }
+.br-sn-no { position: absolute; top: 2px; right: 4px; font-size: 0.58rem; color: var(--ink-muted); }
+.br-sn-pick { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1px; }
+.br-sn-pick .avatar { width: 28px; height: 28px; }
+.br-sn-name { font-weight: 600; line-height: 1.1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br-sn-role { font-size: 0.58rem; }
+.br-sn-empty { display: grid; place-items: center; height: 100%; font-family: var(--font-display); font-size: 0.6rem; color: var(--brand-gold); text-align: center; }
+.br-auto-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+
+/* v0.15.0: the Draft Room (filters | map | prospects) */
+.dy-room { display: grid; grid-template-columns: minmax(240px, 290px) minmax(0, 1fr) minmax(260px, 330px); gap: var(--space-3); align-items: start; }
+.dy-room-left { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.dy-room-feat { position: relative; display: grid; grid-template-columns: 46% 1fr; min-height: 170px; padding: 0; border: 0; border-radius: var(--radius-md); overflow: hidden; cursor: pointer; text-align: right; color: #fff; background: linear-gradient(120deg, var(--c1), #c99a2e); }
+.dy-room-feat-pic { position: relative; }
+.dy-room-feat-pic .avatar { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0; }
+.dy-room-feat-text { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 2px; padding: 10px 12px; background: linear-gradient(90deg, transparent, rgba(0,0,0,.35)); }
+.dy-room-feat-name { font-family: var(--font-display); font-weight: 900; font-size: 1.3rem; line-height: 1.05; }
+.dy-room-scout .stat { margin: 2px 0; }
+.dy-room-news { list-style: none; margin: 0; padding: 0; }
+.dy-room-news-row { display: flex; gap: 8px; align-items: center; width: 100%; padding: 6px 0; border: 0; border-bottom: 1px solid var(--border); background: none; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.dy-room-news-row .label-spaced { font-size: 0.6rem; }
+.dy-room-filters { display: flex; flex-direction: column; gap: var(--space-2); }
+.dy-room-filters .input { min-height: 40px; }
+.dy-room-center { min-width: 0; }
+.dy-map { display: flex; flex-direction: column; }
+.dy-map-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
+.dy-map-tab { min-height: 32px; padding: 0 10px; border: 0; background: none; color: var(--ink-muted); font-family: var(--font-display); font-weight: 800; font-size: 0.72rem; letter-spacing: 0.04em; cursor: pointer; border-radius: 3px; }
+.dy-map-tab.is-on { background: #EBD94E; color: #14110a; }
+.dy-map-stage { position: relative; padding: var(--space-3); background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.04) 1px, transparent 1px) 0 0 / 18px 18px, #0b0910; }
+.dy-map-svg { display: block; width: 100%; height: auto; max-height: 640px; }
+.dy-map-region { stroke: #0b0910; stroke-width: 3; cursor: pointer; transition: fill .2s, filter .2s; outline: none; }
+.dy-map-region:hover, .dy-map-region:focus-visible { filter: brightness(1.35); }
+.dy-map-region.is-on { stroke: #fff8c4; stroke-width: 4; filter: drop-shadow(0 0 12px rgba(235, 217, 78, .55)); }
+.dy-map-label { font-family: var(--font-display); font-weight: 800; font-size: 17px; fill: rgba(255,255,255,.85); text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: rgba(0,0,0,.65); stroke-width: 4px; letter-spacing: 0.04em; }
+.dy-map-label.is-on { fill: #14110a; stroke: none; }
+.dy-map-callout { position: absolute; top: var(--space-3); right: var(--space-3); width: min(260px, 42%); padding: 12px 14px; background: rgba(10, 8, 14, .92); border: 2px solid #fff; font-size: 0.85rem; }
+.dy-map-callout p { margin: 0; }
+.dy-map-callout ul { list-style: none; margin: 2px 0 0; padding: 0 0 0 12px; }
+.dy-map-callout li { padding: 1px 0; }
+.dy-map-callout-title { font-family: var(--font-display); font-weight: 900; font-style: italic; font-size: 1.1rem; line-height: 1.1; }
+.dy-map-sub { font-family: var(--font-display); font-weight: 800; font-size: 0.78rem; letter-spacing: 0.06em; margin-top: 8px !important; display: flex; justify-content: space-between; }
+.dy-map-top { padding-left: 0 !important; }
+.dy-map-tp { display: grid; grid-template-columns: 36px 1fr auto; gap: 6px; width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: 2px 0; }
+.dy-map-tp:hover { color: var(--brand-gold); }
+.dy-map-legend { display: flex; gap: 8px; align-items: center; padding: 8px var(--space-3); }
+.dy-map-ramp { width: 120px; height: 8px; border-radius: 2px; background: linear-gradient(90deg, rgb(70,58,28), rgb(190,158,68)); }
+.dy-room-right { min-width: 0; }
+.dy-room-rows { list-style: none; margin: 0; padding: 0 var(--space-2) var(--space-2); max-height: 820px; overflow-y: auto; }
+.dy-room-row { display: grid; grid-template-columns: 30px 48px minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; padding: 8px; margin-bottom: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-raised); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dy-room-row:hover { border-color: var(--brand-gold); }
+.dy-room-row.is-watch { border-color: color-mix(in srgb, var(--brand-gold) 60%, transparent); }
+.dy-room-row .avatar { width: 48px; height: 48px; }
+.dy-room-rank { font-family: var(--font-display); font-weight: 900; font-size: 1.15rem; text-align: center; }
+.dy-room-row .heading { font-size: 0.92rem; }
+@media (max-width: 1280px) {
+  .dy-room { grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); }
+  .dy-room-left { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+}
+@media (max-width: 860px) {
+  .dy-room { grid-template-columns: 1fr; }
+  .dy-room-left { display: flex; }
+  .dy-map-callout { position: static; width: auto; margin-top: var(--space-2); border-width: 1px; }
+  .dy-map-label { font-size: 22px; }
+}
+.br-snake-table { min-width: 560px; }
+@media (min-width: 1000px) { .mode.brawl:has(.br-draft) { max-width: 980px; } }

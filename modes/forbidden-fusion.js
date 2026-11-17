@@ -22,7 +22,7 @@ import { shareText } from '../core/grid-board.js';
 import { ROLES, SPECIALS, BEATS, fighterStats } from '../core/combat.js';
 import { playMatch } from '../core/battle-view.js';
 import {
-  GYM, MAX_BUDGET, BOUNTY_PER_POINT, cost, budgetFor, starterBuild, fighterFrom,
+  GYM, MAX_BUDGET, BOUNTY_PER_POINT, ROLE_CHANGE, roleChangeCost, cost, budgetFor, starterBuild, fighterFrom,
   floorFoes, swarmSize, isBoss, bountyFor, healAfter, titleFor, HEAL_FLOOR, HEAL_BOSS,
 } from './fusion-rules.js';
 
@@ -39,6 +39,7 @@ const help = howToPlay('forbidden-fusion', 'Forbidden Fusion', [
   'Climb the Tower: one fight per floor. A fused fighter has 3.5 times a normal card\'s health, and it carries over. You get 20% back after each floor and 25% after a boss.',
   'Every 5th floor is a boss. Past floor 10 the Omega swarms send two, then three cards at you.',
   'Clearing floors earns Bounty: more as you climb, half again for an underdog win, and double on Hard. Every 100 Bounty adds a Gym point for good.',
+  'Roles lock when you save your fighter. Changing the main role later costs 10 Gym points and the second role 5, paid for good out of your Bounty.',
   'Lose a fight and the climb ends. Your best climbs go into the Hall of Fame.',
 ]);
 
@@ -64,7 +65,9 @@ const saveRun = () => (run ? store.set(RUN_KEY, run) : store.remove(RUN_KEY));
 
 const faceOf = (build) => (build.faceId != null ? characters.get(build.faceId) : null);
 const fighterOf = (build) => fighterFrom(build, faceOf(build));
-const budget = () => budgetFor(data.lifetimeBounty);
+// Bounty spent on role changes comes off what counts toward the Gym budget.
+const budget = () => budgetFor((data.lifetimeBounty || 0) - (data.spentBounty || 0));
+const rolesLocked = () => data.locked ?? ((data.lifetimeBounty || 0) > 0 || (data.hof || []).length > 0);
 
 function shuffleSeed() { return Math.floor(Math.random() * 2 ** 31); }
 
@@ -101,7 +104,8 @@ export async function render() {
     const spent = cost(b);
     const unspent = total - spent;
     const rec = records.get('forbidden-fusion');
-    const nextAt = total >= MAX_BUDGET ? null : (Math.floor(data.lifetimeBounty / BOUNTY_PER_POINT) + 1) * BOUNTY_PER_POINT;
+    const paid = data.spentBounty || 0;
+    const nextAt = total >= MAX_BUDGET ? null : (Math.floor((data.lifetimeBounty - paid) / BOUNTY_PER_POINT) + 1) * BOUNTY_PER_POINT + paid;
     const best = Math.max(rec.normal?.bestFloor || 0, rec.hard?.bestFloor || 0);
 
     fill(root,
@@ -185,7 +189,8 @@ export async function render() {
 
     function draw() {
       if (document.activeElement !== nameInput) nameInput.value = draft.name;
-      const left = total - cost(draft);
+      const charge = roleChangeCost(data.build, draft, rolesLocked());
+      const left = total - cost(draft) - charge;
       pointsEl.textContent = String(left);
       preview.replaceChildren(characterCard(fighterOf(draft), { size: 'md' }));
       const face = faceOf(draft);
@@ -207,6 +212,8 @@ export async function render() {
         h('section', { class: 'panel ff-sec' },
           h('h3', { class: 'label-spaced set-title' }, 'MAIN ROLE'),
           h('p', { class: 'caption muted' }, 'Sets your special move. The role wheel gives +16% damage against the roles yours beats.'),
+          rolesLocked() ? h('p', { class: 'ff-lock' }, `🔒 Roles are locked. Changing your main role costs ${ROLE_CHANGE.main} points and your second role ${ROLE_CHANGE.second}, paid for good out of your Bounty.${charge ? ` This change: ${charge} points.` : ''}`)
+            : h('p', { class: 'ff-lock' }, `Pick carefully: roles lock when you save. After that, changes cost ${ROLE_CHANGE.main} points (main) and ${ROLE_CHANGE.second} (second).`),
           h('div', { class: 'ff-roles', role: 'radiogroup', 'aria-label': 'Main role' }, ROLES.map((r) => h('button', {
             class: `ff-role role-${r.toLowerCase()}${draft.mainRole === r ? ' is-on' : ''}`,
             role: 'radio', 'aria-checked': draft.mainRole === r ? 'true' : 'false',
@@ -214,7 +221,7 @@ export async function render() {
           }, h('span', { class: 'ff-role-name' }, r), h('span', { class: 'ff-role-move' }, SPECIALS[r].name)))),
           h('p', { class: 'caption' }, `${SPECIALS[draft.mainRole].name}: ${SPECIALS[draft.mainRole].text} Beats ${BEATS[draft.mainRole].join(' and ')}.`),
           h('h3', { class: 'label-spaced set-title ff-gap' }, 'SECOND ROLE'),
-          h('p', { class: 'caption muted' }, 'Free. Adds +8% damage against the roles it beats.'),
+          h('p', { class: 'caption muted' }, 'Adds +8% damage against the roles it beats.'),
           h('div', { class: 'ff-roles is-second', role: 'radiogroup', 'aria-label': 'Second role' },
             [null, ...ROLES.filter((r) => r !== draft.mainRole)].map((r) => h('button', {
               class: `ff-role${r ? ` role-${r.toLowerCase()}` : ''}${draft.secondRole === r ? ' is-on' : ''}`,
@@ -245,7 +252,14 @@ export async function render() {
 
     async function save() {
       draft.name = (draft.name || '').trim().replace(/\s+/g, ' ').slice(0, NAME_MAX) || 'THE FORBIDDEN ONE';
-      if (cost(draft) > total) { toast('That build costs more points than you have.'); return; }
+      const charge = roleChangeCost(data.build, draft, rolesLocked());
+      if (cost(draft) + charge > total) { toast(charge ? `That build plus the ${charge}-point role change costs more points than you have.` : 'That build costs more points than you have.'); return; }
+      if (charge) {
+        const ok = await confirmSheet({ title: 'CHANGE ROLES?', message: `This costs ${charge} Gym points for good (${fmt(charge * BOUNTY_PER_POINT)} Bounty). Your budget drops from ${total} to ${total - charge} until you earn it back.`, confirmLabel: `Pay ${charge} points` });
+        if (!ok) return;
+        data.spentBounty = (data.spentBounty || 0) + charge * BOUNTY_PER_POINT;
+      }
+      data.locked = true;
       data.build = draft;
       await saveData();
       toast(`${draft.name} is ready.`);
@@ -393,7 +407,8 @@ export async function render() {
     const after = h('div', { class: 'ff-after', hidden: true });
     fill(root, header(`FLOOR ${fl}${r.hard ? ' · HARD' : ''}`, () => drawTower()), stage, after);
     fightView = playMatch(stage, {
-      teamA: [me], teamB: foes, seed: r.next.seed, bestOf: 1, startHp: [r.hp],
+      teamA: [me], teamB: foes, seed: r.next.seed, bestOf: 1, startHp: [r.hp], speed: 2,
+      names: { B: foes.length === 1 ? foes[0].name : isBoss(fl) ? 'THE BOSS SQUAD' : 'THE SWARM' },
       labels: { A: 'YOU', B: isBoss(fl) ? 'BOSS' : `FLOOR ${fl}` },
       onDone: async (result) => {
         const won = result.winner === 'A';
