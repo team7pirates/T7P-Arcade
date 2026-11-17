@@ -14,9 +14,9 @@ export const MODES = [
     blurb: 'Forge one fighter in the Gym, then climb the Tower floor by floor.',
   },
   {
-    id: 'dynasty', loadingLine: 'SETTING UP THE FRONT OFFICE', name: 'Dynasty', sub: 'Build · Simulate · Dynasty',
-    flagship: true, wave: 5, ready: false,
-    blurb: 'Run a franchise for up to 10 seasons: draft, trade, develop and chase the Hall of Fame.',
+    id: 'dynasty', loadingLine: 'SETTING UP THE FRONT OFFICE', name: 'Dynasty', sub: 'Coach · Fight · Dynasty',
+    flagship: true, wave: 5, ready: true, load: loader('dynasty'),
+    blurb: 'Coach an Anime Fighting League team: set your lineup every week, outthink the rival coach and chase the Celestial Grail.',
   },
   {
     id: 'brawl', loadingLine: 'DRAWING UP THE BRACKET', name: 'Brawl', sub: 'Draft · Bracket · Champion',

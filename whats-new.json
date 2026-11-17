@@ -1,6 +1,22 @@
 {
   "releases": [
     {
+      "version": "0.9.0",
+      "date": "2026-11-17",
+      "title": "Dynasty: The Season",
+      "items": [
+        "Dynasty is here: coach a team in the Anime Fighting League. 32 teams, 4 divisions, a 12-week season, three save slots.",
+        "Every new dynasty simulates last season first. Take over any team that missed the playoffs, and the league news reacts to your hire.",
+        "A 5-question coach quiz sets your style and perks. Your favorite anime gives its cards on your roster +1 Power.",
+        "Every week, open the Game Plan: keys to the game, availability, tale of the tape, and their lineup. Set your order to beat it, then the rival coach gets one final swap.",
+        "Cards wear down and can get hurt, so rotate your bench. Young cards grow every 3 weeks; veterans slow down.",
+        "Hype comes from winning fights. Aura comes from OSM picks and awards. Both carry over.",
+        "Win your division to make the playoffs, then win the semifinal and the Zenith Clash for the Celestial Grail.",
+        "Season awards: the Generational Prodigy Award, the five role awards and Coach of the Year. Miss the front office's expectation and your job security drops.",
+        "The off-season (retirements, the draft, free agency, trades) is next."
+      ]
+    },
+    {
       "version": "0.8.0",
       "date": "2026-11-16",
       "title": "Brawl is here",
