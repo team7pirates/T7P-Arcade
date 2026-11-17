@@ -1462,3 +1462,59 @@ button.dy-lu-card:hover:not(:disabled) { background: var(--surface-raised); }
 }
 .ph-home { z-index: 3; }
 @media (max-width: 640px) { .ph-root:has(.ph-frame:not([hidden])) .ph-open { display: none; } .ph-root:has(.ph-frame:not([hidden])) .ph-toast { position: fixed; top: 70px; left: 16px; right: 16px; max-width: none; z-index: 5; } }
+/* v0.18.0: mobile League screen no longer stretches the page */
+html, body { overflow-x: hidden; }
+.dy-ticker, .dy-ticker-window, .dy-carousel { overflow: hidden; max-width: 100%; }
+.dy-hub3 > *, .dy-hub-center > *, .dy-hub-right > * { min-width: 0; max-width: 100%; }
+@media (max-width: 860px) {
+  .dy-hub3 { gap: var(--space-3); }
+  .dy-hub-left { order: 3; }
+  .dy-hub-center { order: 1; }
+  .dy-hub-right { order: 0; }
+  .dy-hub-right > .dy-panel-flush { display: none; }
+  .dy-hub-center .dy-gw-carousel { order: -1; }
+  .dy-mobile-extra { display: flex !important; flex-direction: column; gap: var(--space-3); }
+  .dy-slide.dy-gw { height: 330px; }
+  .dy-gw-mid { width: 64%; top: 34px; }
+  .dy-gw-crest { width: 24%; top: 44%; }
+  .dy-gw-crest .dy-crest { width: 84px !important; }
+  .dy-gw-brand { font-size: 0.95rem; }
+  .dy-gw-team { font-size: 1.05rem; }
+  .dy-gw-when, .dy-gw-boxes { font-size: 0.75rem; }
+  .dy-gw-tag { font-size: 0.62rem; top: 6px; }
+  .dy-p25 li { grid-template-columns: 26px 30px 26px minmax(0, 1fr) auto; padding: 7px 10px; }
+}
+.dy-mobile-extra { display: none; }
+@media (max-width: 860px) {
+  .dy-slide.dy-gw { height: 380px; }
+  .dy-gw-trophy .dy-trophy { height: 64px !important; }
+  .dy-gw-kicker { font-size: 0.58rem; letter-spacing: 0.14em; }
+  .dy-gw-kicker::before, .dy-gw-kicker::after { width: 14px; }
+}
+@media (max-width:860px){ .dy-gw-mid{ top: 46px; } }
+/* v0.18.0: the shared phone: close on the home screen, Matchup, new reply tones */
+.ph-dock { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.ph-app-icon.is-dating { background: #d63a7a; }
+.ph-lock { position: relative; }
+.ph-x-home { position: absolute; top: 12px; right: 14px; z-index: 3; width: 40px; height: 40px; font-size: 1rem; background: rgba(255,255,255,.14); }
+.ph-opt.is-accept, .ph-opt.is-respect, .ph-opt.is-focus { border-color: rgba(76,201,128,.65); }
+.ph-opt.is-decline, .ph-opt.is-later { border-color: rgba(255,255,255,.3); }
+.ph-opt.is-flirt, .ph-opt.is-date { border-color: rgba(214,58,122,.75); }
+.ph-opt.is-funny, .ph-opt.is-hype { border-color: rgba(240,192,96,.7); }
+.ph-opt.is-gloat, .ph-opt.is-loose { border-color: rgba(255,92,122,.6); }
+.ph-dating { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 6px 12px 30px; }
+.ph-dcard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 12px; border-radius: 22px; background: linear-gradient(160deg, rgba(214,58,122,.35), rgba(60,30,90,.6)); text-align: center; }
+.ph-dcard.is-empty { background: rgba(255,255,255,.06); }
+.ph-dpic { display: grid; place-items: center; width: 108px; height: 108px; border-radius: 50%; background: rgba(255,255,255,.12); font-size: 3.4rem; }
+.ph-dname { margin: 4px 0 0; font-family: var(--font-display); font-weight: 800; font-size: 1.15rem; }
+.ph-djob { margin: 0; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: .8; }
+.ph-dbio { margin: 2px 0 6px; font-size: 0.82rem; opacity: .9; }
+.ph-dbtns { display: flex; gap: 22px; }
+.ph-dbtn { width: 58px; height: 58px; border-radius: 50%; border: 0; font-size: 1.5rem; cursor: pointer; color: #fff; }
+.ph-dbtn.is-pass { background: #4a4258; } .ph-dbtn.is-like { background: #d63a7a; }
+.ph-pad { padding: 0 2px; margin: 0; }
+.ph-thread-who .ph-ava { width: 34px; height: 34px; font-size: 1rem; }
+.dy-boost.is-phone { background: color-mix(in srgb, #1fa855 22%, transparent); color: #6fe0a0; }
+.ph-dock { grid-auto-columns: minmax(0, 1fr); gap: 2px; padding-left: 6px; padding-right: 6px; }
+.ph-app-icon { width: min(46px, 100%); aspect-ratio: 1; height: auto; }
+.ph-app-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }

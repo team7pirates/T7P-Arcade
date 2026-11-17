@@ -16,6 +16,12 @@
 //   - Your trainer checks in when you're hurt: rest (heal 12% now, next floor
 //     pays 20% less) or push on.
 //   - Fans and haters DM you; replies move your followers.
+//   - v0.18.0: the people you beat text you after the fight. GLOAT for
+//     followers, but they want a rematch 3 floors later (a revenge callout:
+//     +3 Power, Bounty ×1.5). Show RESPECT and they send you a tip: +4 Aura
+//     for your next floor.
+//   - v0.18.0: Matchup (core/phone-dating.js): a good date is +5 Aura for
+//     your next floor.
 // Followers stay with you between climbs. Every 2,500 gives +1 Aura in the
 // Tower (up to +10).
 
@@ -45,6 +51,7 @@ export function thread(ph, who) {
 }
 function say(ph, who, text, floor) {
   const t = thread(ph, who);
+  if (who.icon) t.icon = who.icon;
   t.msgs.push({ from: 'them', text, floor });
   t.unread += 1; ph.unread += 1;
   note(ph, who.name, text, 'msg', t.key);
@@ -86,15 +93,29 @@ const BOSS_SNUB = ['Floor {boss}? You\'re not worth my time. My crew will handle
 const FANS = ['Been with you since floor 1! 🔥', 'You\'re the reason I watch the Tower now.', 'Can you shout me out after your next win?? 🙏'];
 const HATERS = ['Overrated. Floor {floor} is where you fold.', 'Bandwagon fighter with a borrowed face.', 'I\'ll be laughing when you lose.'];
 const TRAINER_HURT = ['You took a beating on floor {floor}. I can patch you up if you sit out a round of promo work. Your call.', 'You\'re running hot and hurt. Rest up a bit before the next one?'];
+// Each sponsor's task fits what they sell (v0.18.0).
 const SPONSORS = [
-  { brand: 'Kiai Energy', task: 'clear3', label: 'Clear the next 3 floors', pay: 1.0 },
-  { brand: 'Shinobi Wear', task: 'healthy', label: 'Clear a floor with more than half your health left', pay: 0.8 },
-  { brand: 'Ramen Rush', task: 'callout', label: 'Accept a callout and win it', pay: 1.3 },
-  { brand: 'Zenith Gloves', task: 'boss', label: 'Beat the next boss', pay: 1.5 },
+  { brand: 'Kiai Energy', icon: '⚡', rep: 'Tomo at Kiai Energy', task: 'clear3', label: 'Clear the next 3 floors', pay: 1.0,
+    pitch: 'Kiai Energy is about stamina. Show the Tower you don\'t run out: clear the next 3 floors in a row' },
+  { brand: 'Shinobi Wear', icon: '🥷', rep: 'Ren at Shinobi Wear', task: 'healthy', label: 'Clear a floor with more than half your health left', pay: 0.8,
+    pitch: 'Shinobi Wear is clean and untouchable. Win a floor without getting roughed up (more than half your health left)' },
+  { brand: 'Callout Cola', icon: '🥤', rep: 'Jess at Callout Cola', task: 'callout', label: 'Accept a callout and win it', pay: 1.3,
+    pitch: 'Callout Cola: for people who answer back. Accept a callout and win it' },
+  { brand: 'Zenith Gloves', icon: '🥊', rep: 'Hiro at Zenith Gloves', task: 'boss', label: 'Beat the next boss', pay: 1.5,
+    pitch: 'Zenith Gloves are made for knockouts. Put them on and beat the next boss' },
 ];
 const FEED_WIN = ['{me} just cleared floor {floor} and didn\'t even look tired.', 'Floor {floor} down. This climb is different.', 'Somebody check on {foe}. {me} is not playing.', 'The Tower is shaking. {me} on floor {floor}!!'];
 const FEED_HATE = ['{me} is a fraud, wait for the boss.', 'Floor {floor} was a gift. Next one\'s real.'];
-const FAN_NAMES = ['@TowerWatcher', '@ForbiddenFan99', '@OmegaSwarmSZN', '@BountyHunterX', '@GymRatTV', '@FloorByFloor', '@AGN_Fan', '@KiaiKid'];
+const FAN_NAMES = ['@TowerWatcher', '@ForbiddenFan99', '@OmegaSwarmSZN', '@BountyHunterX', '@GymRatTV', '@FloorByFloor', '@AGN_Fan', '@TopFloorTalk'];
+// After you beat them.
+const BEATEN_SALTY = ['That was luck. Run it back.', 'I slipped. Don\'t get comfortable.', 'Enjoy it while it lasts.', 'Everybody saw that. Next time is different.'];
+const BEATEN_GOOD = ['GG. You\'re the real thing.', 'Respect. I didn\'t think you had that in you.', 'Good fight. My body hurts. 😂', 'Okay. You earned that one.'];
+const GLOAT = ['Sit down. Floor {floor} belongs to me.', 'Tell everybody who did that to you.', 'That\'s what happens when you get in my way.'];
+const RESPECT = ['Good fight. You pushed me.', 'Respect. You made me work for it.', 'GG. Heal up.'];
+const REVENGE = ['Remember me? Floor {floor}. Me and you. Again.', 'I trained for this. Rematch on floor {floor}.', 'You talked a lot after last time. Floor {floor}.'];
+export const BEATEN_TIP = 4;       // Aura for your next floor after a respectful reply
+export const REVENGE_GAP = 3;      // floors until a gloated foe comes back
+export const DATE_AURA = 5;        // Aura for your next floor after a date
 
 // ---------- After floor 1 onward: plan the next event ----------
 // Called after a floor is cleared, before the next floor is planned.
@@ -114,9 +135,13 @@ export function afterFloor(r, ctx) {
   else if (ctx.callout) headline(ph, `${ctx.me} answers the callout`, `${foeName} talked. ${ctx.me} answered on floor ${floor}.`, floor);
   else if (floor % 3 === 0) headline(ph, `${ctx.me} reaches floor ${next}`, `${floor} floors cleared on this climb${ctx.hard ? ' (Hard)' : ''}.`, floor);
 
+  // The fighter you just beat has something to say.
+  beatenEvent(r, ctx);
   // One main event: what decides the next floor.
   const bossNext = isBoss(next);
   const bossAfter = isBoss(next + 1);
+  // A rematch you earned by gloating comes first.
+  if (r.revenge && next >= r.revenge.floor && !bossNext && !bossAfter && !r.plan[next]) revengeEvent(r, ctx, next);
   if (bossAfter && !r.plan[next]) { bossEvent(r, ctx, next); }
   else if (!bossNext && !r.plan[next]) { trashEvent(r, ctx, next); }
   // Side events.
@@ -168,6 +193,28 @@ function bossEvent(r, ctx, next) {
   }
 }
 
+function beatenEvent(r, ctx) {
+  const foe = ctx.foes[0]; if (!foe) return;
+  const big = ctx.callout || ctx.boss || ctx.type === 'lieutenant' || ctx.type === 'revenge';
+  if (!big && ctx.rand() > 0.55) return;
+  const who = { key: `c${foe.id}`, name: foe.name, cid: foe.id, kind: ctx.boss ? 'boss' : 'rival' };
+  const salty = ctx.rand() < (ctx.callout || ctx.type === 'revenge' ? 0.75 : 0.5);
+  const t = say(r.phone, who, pick(salty ? BEATEN_SALTY : BEATEN_GOOD, ctx.rand), ctx.floor);
+  const canRevenge = !ctx.boss && !r.revenge;
+  t.pending = { type: 'beaten', cid: foe.id, floor: ctx.floor, options: [
+    { id: 'gloat', tone: 'gloat', text: fill(pick(GLOAT, ctx.rand), { floor: ctx.floor }), hint: canRevenge ? `+250 followers · ${short(foe.name)} wants a rematch in ${REVENGE_GAP} floors (+3 Power, Bounty ×${CALLOUT_BOUNTY})` : '+250 followers' },
+    { id: 'respect', tone: 'respect', text: pick(RESPECT, ctx.rand), hint: `+80 followers · they send you a tip: +${BEATEN_TIP} Aura next floor` },
+  ] };
+}
+
+function revengeEvent(r, ctx, next) {
+  const rv = r.revenge; r.revenge = null;
+  r.plan[next] = { type: 'revenge', ids: [rv.cid], mod: 3, mult: CALLOUT_BOUNTY };
+  const t = say(r.phone, { key: `c${rv.cid}`, name: rv.name, cid: rv.cid, kind: 'rival' }, fill(pick(REVENGE, ctx.rand), { floor: next }), ctx.floor);
+  sys(t, `REMATCH: ${rv.name} is your floor ${next} opponent (+3 Power) · Bounty ×${CALLOUT_BOUNTY}.`);
+  headline(r.phone, `${rv.name} wants revenge`, `After the trash talk, ${rv.name} called for a rematch on floor ${next}.`, ctx.floor);
+}
+
 function trainerEvent(r, ctx) {
   if (r.phone.threads.find((t) => t.key === 'trainer')?.pending) return;
   const who = { key: 'trainer', name: 'Coach Daichi (your trainer)', kind: 'trainer' };
@@ -183,8 +230,9 @@ function dealEvent(r, ctx) {
   const pay = Math.round((20 + ctx.floor * 3) * d.pay);
   const deal = { id: r.phone.seq++, brand: d.brand, task: d.task, label: d.label, pay, followers: 250 + ctx.floor * 20, status: 'offer', start: ctx.floor, progress: 0 };
   r.phone.deals.unshift(deal);
-  const who = { key: `deal-${deal.id}`, name: d.brand, kind: 'sponsor' };
-  const t = say(r.phone, who, `We love what you're doing in the Tower. Deal: ${d.label.toLowerCase()} and we pay ${pay} Bounty plus a shout-out to our followers. In?`, ctx.floor);
+  deal.icon = d.icon;
+  const who = { key: `deal-${deal.id}`, name: d.brand, kind: 'sponsor', icon: d.icon };
+  const t = say(r.phone, who, `Hey, it's ${d.rep}. ${d.pitch}, and we pay ${pay} Bounty plus a shout-out to our followers. In?`, ctx.floor);
   t.pending = { type: 'deal', deal: deal.id, options: [
     { id: 'accept', tone: 'humble', text: 'Let\'s get it. Deal.', hint: `Pays ${pay} Bounty when done` },
     { id: 'decline', tone: 'hostile', text: 'Not interested.', hint: 'No deal' },
@@ -257,6 +305,18 @@ export function reply(r, key, optionId, ctx) {
     if (d) d.status = o.id === 'accept' ? 'active' : 'declined';
     back(o.id === 'accept' ? 'Contract\'s in your Deals app. Get it done.' : 'Your loss.');
     line = o.id === 'accept' ? `Deal signed with ${t.name}.` : 'Deal declined.';
+  } else if (p.type === 'beaten') {
+    if (o.id === 'gloat') {
+      gainFollowers(ph, 250);
+      if (!r.revenge && t.kind !== 'boss') { r.revenge = { cid: p.cid, name: t.name, floor: p.floor + REVENGE_GAP }; back('Bet. I\'ll find you.'); sys(t, `${t.name} wants a rematch around floor ${p.floor + REVENGE_GAP}.`); line = `+250 followers. ${short(t.name)} wants a rematch.`; }
+      else { back('...'); line = '+250 followers.'; }
+      post(ph, pick(FAN_NAMES, ctx.rand), `${ctx.me} is NOT letting ${t.name} live that one down 😭`, 500 + Math.floor(ctx.rand() * 800), p.floor);
+    } else {
+      gainFollowers(ph, 80);
+      r.tip = { floor: r.floor + 1, aura: BEATEN_TIP };
+      back(`Respect. Tip: watch their first move on floor ${r.floor + 1}. You'll see it coming.`);
+      line = `+${BEATEN_TIP} Aura for your next floor.`;
+    }
   } else if (p.type === 'fan' || p.type === 'hater') {
     if (o.id === 'clap') {
       if (ctx.rand() < 0.2) { gainFollowers(ph, -120); back('LOL screenshot taken. Everybody saw that.'); line = 'That backfired. −120 followers.'; }
@@ -294,7 +354,7 @@ function settleDeals(r, ctx) {
       d.status = 'done';
       r.runBounty += d.pay; r.dealBounty = (r.dealBounty || 0) + d.pay;
       gainFollowers(r.phone, d.followers);
-      const t = thread(r.phone, { key: `deal-${d.id}`, name: d.brand, kind: 'sponsor' });
+      const t = thread(r.phone, { key: `deal-${d.id}`, name: d.brand, kind: 'sponsor', icon: d.icon });
       t.msgs.push({ from: 'them', text: `Deal done! ${d.pay} Bounty sent. Our followers love you.` }); t.unread += 1; r.phone.unread += 1;
       note(r.phone, d.brand, `Deal paid: +${d.pay} Bounty`, 'deals');
     }
@@ -304,6 +364,14 @@ function settleDeals(r, ctx) {
 // Pending decisions still waiting before the given floor's fight.
 export function waiting(r) {
   return (r.phone?.threads || []).filter((t) => t.pending && ['trash', 'boss-test', 'boss-snub'].includes(t.pending.type));
+}
+// Aura from the phone for this floor: a beaten rival's tip and a good date.
+export function phoneAura(r) {
+  if (!r?.next) return 0;
+  let n = 0;
+  if (r.tip && r.tip.floor === r.next.floor) n += r.tip.aura;
+  if (r.dateBoost && r.dateBoost.floor === r.next.floor) n += DATE_AURA;
+  return n;
 }
 export function markRead(r, key) {
   const t = r.phone.threads.find((x) => x.key === key);

@@ -323,7 +323,7 @@ export function fightCard(league, p, ctx = {}) {
   const big = ctx.big && p.hype >= 80 ? 1 : 0;
   return {
     id: p.cid, pid: p.pid, name: p.name, powerLevel: effPower(league, p, ctx), mainRole: p.role, secondRole: p.second,
-    aura: Math.min(100, p.aura + boost(league, p, 'aura')), clutch: Math.min(100, p.clutch + big * 8), chaos: Math.min(100, p.chaos + boost(league, p, 'chaos')), franchise: p.franchise, portrait: p.portrait,
+    aura: Math.min(100, p.aura + boost(league, p, 'aura') + phoneBoost(league, p, 'aura')), clutch: Math.min(100, p.clutch + big * 8 + phoneBoost(league, p, 'clutch')), chaos: Math.min(100, p.chaos + boost(league, p, 'chaos') + phoneBoost(league, p, 'chaos')), franchise: p.franchise, portrait: p.portrait,
   };
 }
 // The OSM spotlight quote: +5 Aura or Chaos for the user's roster for 3 weeks.
@@ -332,6 +332,21 @@ function boost(league, p, stat) {
   if (!b || b.stat !== stat || b.season !== league.season || p.team !== league.user.team) return 0;
   const wk = league.phase === 'playoffs' ? WEEKS + 1 : league.week;
   return wk >= b.from && wk <= b.to ? 5 : 0;
+}
+
+// v0.18.0: the phone (team texts, a rival coach's reply, a good date) adds a
+// little to the user's roster for the next game only. Capped at +5 a stat.
+export const PHONE_BOOST_MAX = 5;
+export const gameWeek = (league) => (league.phase === 'playoffs' ? WEEKS + (league.playoffs?.final ? 2 : 1) : league.week);
+export function phoneBoostNow(league) {
+  const b = league.user?.phoneBoost;
+  if (!b || b.season !== league.season || b.week !== gameWeek(league)) return null;
+  return b;
+}
+function phoneBoost(league, p, stat) {
+  if (!league.user || p.team !== league.user.team) return 0;
+  const b = phoneBoostNow(league);
+  return b ? Math.min(PHONE_BOOST_MAX, b[stat] || 0) : 0;
 }
 
 export const available = (p) => p.injury <= 0;
@@ -497,6 +512,7 @@ export function endWeek(league) {
   if (league.week % MAG_EVERY === 0 && hooks.issue) hooks.issue(league);
   league.week += 1;
   if (league.week > WEEKS) startPlayoffs(league);
+  if (hooks.afterWeekPhone) hooks.afterWeekPhone(league, games);
 }
 
 function growthTick(league, rand) {
@@ -573,7 +589,7 @@ function weekNews(league, games) {
   const streaker = league.teams.slice().sort((a, b) => b.streak - a.streak)[0];
   if (streaker.streak >= 4) out.push({ week: wk, kind: 'STREAK', team: streaker.i, title: `${streaker.name} win ${streaker.streak} straight`, text: 'The longest run in the AFL right now.' });
   for (const p of Object.values(league.players)) {
-    if (league.hurtWeek?.pids.includes(p.pid) && p.team != null) out.push({ week: wk, kind: 'INJURY', team: p.team, title: `${p.name} hurt`, text: `${league.teams[p.team].name} will be without their ${p.role} for ${p.injury} week${p.injury > 1 ? 's' : ''}.` });
+    if (league.hurtWeek?.pids.includes(p.pid) && p.team != null && p.injury > 0) out.push({ week: wk, kind: 'INJURY', team: p.team, title: `${p.name} hurt`, text: `${league.teams[p.team].name} will be without their ${p.role} for ${Math.max(1, p.injury)} week${Math.max(1, p.injury) > 1 ? 's' : ''}.` });
   }
   return out.slice(0, 6);
 }

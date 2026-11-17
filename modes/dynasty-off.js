@@ -352,9 +352,17 @@ export function setDraftOrder(L) {
   const order = [...rest, ...semisLost, runner, champ];
   const forfeit = order.filter((i) => L.teams[i].forfeitPick);
   forfeit.forEach((i) => news(L, { kind: 'CAP', team: i, title: `${L.teams[i].name} lose their draft pick`, text: 'Over the soft cap two seasons running. The league takes the pick.' }));
-  L.off.order = order.filter((i) => !L.teams[i].forfeitPick);
+  // v0.18.0: picks traded on the phone go to their new owner.
+  const kept = order.filter((i) => !L.teams[i].forfeitPick);
+  L.off.from = kept.slice();
+  L.off.order = kept.map((i) => pickOwner(L, i));
+  kept.forEach((i) => { const o = pickOwner(L, i); if (o !== i) news(L, { kind: 'DRAFT', team: o, title: `${L.teams[o].name} pick for ${L.teams[i].name}`, text: `The pick came over in a trade during the season.` }); });
+  L.pickOwner = {};
   L.off.pick = 0; L.off.picks = [];
 }
+// Who owns each team's pick in the next draft (team index -> owner index).
+export const pickOwner = (L, ti) => (L.pickOwner && L.pickOwner[ti] != null ? L.pickOwner[ti] : ti);
+export const picksOwnedBy = (L, owner) => L.teams.map((t) => t.i).filter((i) => pickOwner(L, i) === owner);
 export const onTheClock = (L) => (L.off.order ? L.off.order[L.off.pick] : null);
 export const draftBoard = (L) => (L.draftClass || []).map((pid) => L.players[pid]).filter((p) => p.prospect);
 

@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.18.0",
+      "date": "2026-11-17",
+      "title": "Phones everywhere, five save files and a better League on phones",
+      "items": [
+        "Dynasty on phones: the League screen no longer shrinks to a quarter of the screen. On a phone it now goes Next Game, Games of the Week, League News, Draft Room, Leaders, GPP Race, then the Power 25.",
+        "Forbidden Fusion has five save files, like Dynasty. Each one keeps its own fighter, Bounty, Hall of Fame, followers and phone. Your old save is in File 1.",
+        "Forbidden Fusion: the people you beat now text you. Gloat for followers, but they come back 3 floors later for a rematch (+3 Power, 1.5× Bounty). Show respect and they send a tip: +4 Aura on your next floor.",
+        "The phone closes on mobile: tap the ✕ on the home screen, or tap the bar at the bottom of the home screen.",
+        "Sponsors make sense now: each brand's deal fits what it sells (Kiai Energy wants stamina, Shinobi Wear wants you untouched, Callout Cola wants you to answer callouts, Zenith Gloves want a boss knockout), and each one has its own icon.",
+        "Dynasty has a phone too. GMs call with trade offers until the deadline, and some offers move draft picks: a contender may give you its pick, or a rebuild may want yours. Text the League Office to shop your pick.",
+        "Dynasty team chat: text your squad before each game for +3 Aura, Clutch or Chaos. After a win the other coach texts you: gloat (+2 Chaos) or show respect (+2 Aura). Phone boosts last one game.",
+        "Matchup, a dating app, in both modes: like profiles, chat, and ask your matches out. A date is +5 Aura for your next floor in Fusion and +2 Aura for your next game in Dynasty."
+      ]
+    },
+    {
       "version": "0.17.0",
       "date": "2026-11-17",
       "title": "Forbidden Fusion: your phone",

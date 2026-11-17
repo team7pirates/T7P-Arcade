@@ -5,7 +5,7 @@
 // RELEASING AN UPDATE: bump CACHE_VERSION (and APP_VERSION in core/version.js)
 // to the same number, and add any new files to APP_FILES.
 
-const CACHE_VERSION = '0.17.0';
+const CACHE_VERSION = '0.18.0';
 const APP_CACHE = `t7p-app-${CACHE_VERSION}`;
 const ART_CACHE = 't7p-art'; // portraits, models and music: kept across versions
 
@@ -75,7 +75,10 @@ const APP_FILES = [
   'modes/dynasty-map.js',
   'modes/fusion-rules.js',
   'modes/fusion-phone.js',
-  'modes/fusion-phone-ui.js',
+  'core/phone-ui.js',
+  'core/phone-core.js',
+  'core/phone-dating.js',
+  'modes/dynasty-phone.js',
   'data/roster.json',
   'fonts/poppins-600.woff2',
   'fonts/poppins-700.woff2',

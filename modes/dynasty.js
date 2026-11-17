@@ -19,11 +19,14 @@ import * as LG from './dynasty-legacy.js';
 import * as WK from './dynasty-weekly.js';
 import * as MAP from './dynasty-map.js';
 import { sfx } from '../core/sfx.js';
+import * as DP from './dynasty-phone.js';
+import { createPhone } from '../core/phone-ui.js';
 
 const help = howToPlay('dynasty', 'Dynasty', [
   'You are the new head coach of an Anime Fighting League team. Pick any team that missed last season\'s playoffs.',
   'Every week, open the Game Plan. You can see the other team\'s lineup: set your five in order so your roles beat theirs.',
   'When you lock in, the rival coach sees your order and gets one final swap. Think one step ahead.',
+  'Your phone (Open phone button, or P): GMs call with trade offers until the deadline, some with draft picks. Text your squad before each game for +3 Aura, Clutch or Chaos. After a win the other coach texts you. Matchup is the dating app: a date is +2 Aura next game. Phone boosts last one game and stack to +5.',
   'Cards wear down. Tired cards fight weaker and can get hurt, so rotate your bench.',
   'Win your division to make the playoffs. Win two more and you lift the Celestial Grail at the Zenith Clash.',
   'Hype comes from winning fights. Aura comes from being seen: magazine picks and awards. Both carry over.',
@@ -83,7 +86,28 @@ export async function render() {
   const root = h('section', { class: 'screen mode dynasty' });
   let fightView = null;
   let carouselTimer = null;
-  root._cleanup = () => { clearInterval(carouselTimer); if (fightView) fightView.stop(); };
+  // v0.18.0: the phone (GM trade calls, team chat, Matchup).
+  const phone = createPhone({
+    apps: ['messages', 'dating', 'settings'],
+    shortcutWhere: 'Dynasty',
+    getPhone: () => (L && L.user ? DP.ensure(L) : null),
+    save: () => save(),
+    getKey: () => L?.user?.phoneKey || 'p',
+    setKey: (k) => { if (L?.user) { L.user.phoneKey = k; save(); } },
+    widgets: () => (L?.user ? [[`${me().w}-${me().l}`, 'RECORD'], [L.phase === 'season' ? `WK ${L.week}` : L.phase === 'playoffs' ? 'PLAYOFFS' : 'OFF', 'SEASON ' + L.season], [String(O.picksOwnedBy(L, L.user.team).length), 'DRAFT PICKS']] : []),
+    empty: () => (L ? 'GMs, your squad and the league office text you here every week.' : 'Pick a save first.'),
+    dateCtx: () => (L?.user && (L.phase === 'season' || L.phase === 'playoffs') ? DP.dateCtx(L) : null),
+    onDate: () => { DP.onDate(L); save(); if (tab === 'coach' || tab === 'league') drawHub(); },
+    onReply: (key, optionId) => {
+      if (!L) return null;
+      const line = DP.reply(L, key, optionId);
+      save();
+      if (document.querySelector('.dy-hub3, .dy-next')) drawHub();
+      return line;
+    },
+  });
+  phone.show(false);
+  root._cleanup = () => { clearInterval(carouselTimer); if (fightView) fightView.stop(); phone.destroy(); };
   const header = (sub, onBack) => modeHeader({ title: 'Dynasty', sub, onHelp: () => help.show(), onBack });
   const stopTimers = () => { clearInterval(carouselTimer); carouselTimer = null; };
 
@@ -91,6 +115,7 @@ export async function render() {
   async function drawSlots() {
     stopTimers();
     L = null; slot = null;
+    phone.show(false);
     const saves = await Promise.all([1, 2, 3].map((n) => store.get(slotKey(n), null)));
     const hallCount = ((await store.get(LG.ARCHIVE_KEY, null)) || []).length;
     fill(root,
@@ -267,6 +292,7 @@ export async function render() {
   }
 
   function drawHub() {
+    if (L?.user) phone.show(true);
     stopTimers();
     ({ coach: drawCoach, league: drawLeague, roster: drawRoster, office: drawOffice, draft: drawDraftTab, media: drawMedia, museum: drawMuseum, schedule: drawSchedule, standings: drawStandings }[tab] || drawLeague)();
   }
@@ -284,6 +310,7 @@ export async function render() {
           h('p', { class: 'caption muted' }, `${opp.w}-${opp.l} · ${team(g.home).arena}`))),
         rv ? h('p', { class: 'dy-trophy-line' }, `RIVALRY · ${rv[2].toUpperCase()} IS ON THE LINE`) : null,
         (() => { const b = MD.boostNow(L); return b ? h('p', { class: `dy-boost is-${b.stat}` }, `OSM QUOTE: +${MD.QUOTE_BOOST} ${b.stat.toUpperCase()} · THROUGH WEEK ${Math.min(b.to, R.WEEKS)}`) : null; })(),
+        (() => { const b = DP.boostText(L); return b ? h('p', { class: 'dy-boost is-phone' }, `📱 FROM YOUR PHONE: ${b} · THIS GAME`) : null; })(),
         h('button', { class: 'btn btn-primary btn-wide', onClick: () => openGamePlan() }, '📋 Game Plan'),
         h('div', { class: 'btn-row dy-next-links' },
           h('button', { class: 'btn btn-secondary btn-sm', onClick: autoWeek }, 'Auto-play week'),
@@ -457,6 +484,16 @@ export async function render() {
       h('span', { class: 'dy-big-num' }, kind === 'dmg' ? fmt(p.stats.dmg) : String(key(p))))));
   }
 
+  function leadersPanel() {
+    return h('section', { class: 'dy-panel dy-panel-flush' },
+      h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'FIGHTER LEADERS'), h('p', { class: 'caption muted' }, 'SEASON LEADERS')),
+      ...tabbed('lead', [['dmg', 'DAMAGE'], ['ko', 'KOS'], ['sp', 'SPECIALS']], leaderList));
+  }
+  function gppPanel(race) {
+    return h('section', { class: 'dy-panel dy-panel-flush' },
+      h('div', { class: 'dy-panel-head' }, h('div', { class: 'dy-h-trophy' }, trophy(R.AWARDS.prodigy, 48), h('h2', { class: 'dy-h gold' }, 'GPP RACE'))),
+      race.length ? h('ol', { class: 'dy-leaders' }, race.map(({ p, s }, i) => h('li', {}, h('span', { class: 'dy-num' }, String(i + 1)), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name.toUpperCase()), h('span', { class: 'caption muted' }, team(p.team).name)), h('span', { class: 'dy-num gold' }, R.oddsFor(i, s, race[0].s))))) : h('p', { class: 'caption muted dy-pad' }, 'The race starts after Week 1.'));
+  }
   function drawLeague() {
     const scores = L.lastWeekScores || [];
     const ticker = scores.length ? h('div', { class: 'dy-ticker', 'aria-label': 'Last week\'s scores' },
@@ -483,16 +520,13 @@ export async function render() {
             ...tabbed('news', [['league', 'LEAGUE NEWS'], ['conf', 'CONFERENCE'], ['fa', 'FREE AGENTS']], (v) => (v === 'league' ? newsList(L.news, 'Nothing yet. Play a week.') : v === 'conf' ? newsList(confNews, `Quiet in the ${conf} Conference.`) : faUpdates()))),
           h('section', { class: 'dy-panel dy-panel-flush' },
             h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'DRAFT ROOM'), h('button', { class: 'dy-link', onClick: () => { tab = 'draft'; drawHub(); } }, 'VIEW ALL ›')),
-            ...tabbed('draft', [['top', 'TOP PROSPECTS'], ['mine', 'MY BOARD']], draftRoom)))),
+            ...tabbed('draft', [['top', 'TOP PROSPECTS'], ['mine', 'MY BOARD']], draftRoom))),
+        h('div', { class: 'dy-mobile-extra' }, leadersPanel(), gppPanel(race))),
       h('aside', { class: 'dy-hub-right' },
         nextAction(),
         magBanner(),
-        h('section', { class: 'dy-panel dy-panel-flush' },
-          h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'FIGHTER LEADERS'), h('p', { class: 'caption muted' }, 'SEASON LEADERS')),
-          ...tabbed('lead', [['dmg', 'DAMAGE'], ['ko', 'KOS'], ['sp', 'SPECIALS']], leaderList)),
-        h('section', { class: 'dy-panel dy-panel-flush' },
-          h('div', { class: 'dy-panel-head' }, h('div', { class: 'dy-h-trophy' }, trophy(R.AWARDS.prodigy, 48), h('h2', { class: 'dy-h gold' }, 'GPP RACE'))),
-          race.length ? h('ol', { class: 'dy-leaders' }, race.map(({ p, s }, i) => h('li', {}, h('span', { class: 'dy-num' }, String(i + 1)), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name.toUpperCase()), h('span', { class: 'caption muted' }, team(p.team).name)), h('span', { class: 'dy-num gold' }, R.oddsFor(i, s, race[0].s))))) : h('p', { class: 'caption muted dy-pad' }, 'The race starts after Week 1.')))));
+        leadersPanel(),
+        gppPanel(race))));
   }
 
   // ---------- Weekly Recap and Weekly Preview ----------
@@ -644,6 +678,7 @@ export async function render() {
 
   // On load: recap of last week, then the preview, then the hub.
   function enterDynasty() {
+    DP.ensure(L); phone.show(true); phone.refresh();
     const toHub = () => { tab = 'league'; drawHub(); };
     const seen = L.weeklySeen && L.weeklySeen.season === L.season && L.weeklySeen.week === L.week;
     if (L.phase !== 'season' || seen) { toHub(); return; }
@@ -1216,23 +1251,26 @@ export async function render() {
   function offDraft() {
     redrawBoard = offDraft;
     const o = L.off; const t = me();
-    if (O.onTheClock(L) != null && O.onTheClock(L) !== t.i && !o.picks.some((x) => x.team === t.i) && o.order.includes(t.i)) { O.simDraft(L, true); }
+    const myPicks = o.order.map((x, k) => (x === t.i ? k : -1)).filter((k) => k >= 0);
+    const left = () => myPicks.filter((k) => k >= o.pick);
+    if (O.onTheClock(L) != null && O.onTheClock(L) !== t.i && left().length) { O.simDraft(L, true); }
     const clock = O.onTheClock(L);
     const mine = clock === t.i;
-    const myPick = o.order.indexOf(t.i);
+    const myPick = myPicks.length ? myPicks[0] : -1;
     const done = clock == null;
     const recent = o.picks.slice(-6).reverse();
     const strip = h('ol', { class: 'dy-order' }, o.order.slice(o.pick, o.pick + 8).map((i, k) => h('li', { class: i === t.i ? 'is-me' : '' }, h('span', { class: 'caption' }, `${o.pick + k + 1}`), crest(team(i), 28))));
     offFrame('THE DRAFT', h('div', { class: 'dy-off-body' },
       h('section', { class: 'dy-panel' },
         h('p', { class: 'label-spaced gold' }, done ? 'THE DRAFT IS OVER' : mine ? 'YOU ARE ON THE CLOCK' : `PICK ${o.pick + 1}: ${team(clock).name.toUpperCase()}`),
-        myPick < 0 ? h('p', { class: 'body-text loss' }, 'You lost your pick: over the soft cap two seasons running.') : h('p', { class: 'caption muted' }, `Your pick: No. ${myPick + 1}. One round. Rookie deals run 3 seasons.`),
+        myPick < 0 ? h('p', { class: 'body-text loss' }, t.forfeitPick ? 'You lost your pick: over the soft cap two seasons running.' : 'You traded your pick away.')
+          : h('p', { class: 'caption muted' }, `Your pick${myPicks.length > 1 ? 's' : ''}: ${myPicks.map((k) => `No. ${k + 1}${o.from && o.from[k] !== t.i ? ` (from ${team(o.from[k]).abbr})` : ''}`).join(', ')}. One round. Rookie deals run 3 seasons.`),
         done ? null : strip,
         h('p', { class: 'caption muted' }, `Scouting points left: ${L.user.scoutPts || 0}. You can still scout now.`)),
       recent.length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'LATEST PICKS'),
         h('ul', { class: 'dy-list' }, recent.map((x) => { const p = L.players[x.pid]; return h('li', {}, h('span', { class: 'dy-num' }, `${x.pick}`), crest(team(x.team), 24), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${p.role} · ${p.series}`))); }))) : null,
       done ? null : draftRoomView('pick')),
-    done || myPick < 0 || o.picks.some((x) => x.team === t.i)
+    done || !left().length
       ? nextBtn(done ? 'On to free agency' : 'Finish the draft')
       : h('p', { class: 'caption muted' }, 'Make your pick from the board.'));
   }
@@ -2038,6 +2076,7 @@ export async function render() {
           recap = { kind: 'week', week, g, won, before };
         } else {
           R.simPlayoffs(L, true);
+          DP.afterPlayoffGame(L, g);
           recap = { kind: 'playoff', g, won, before };
         }
         await save();
@@ -2068,6 +2107,7 @@ export async function render() {
 
   function drawRecap(rc) {
     fightView = null;
+    setTimeout(() => phone.ping(), 500);
     const g = rc.g; const r = g.result; const userHome = g.home === L.user.team;
     const opp = team(userHome ? g.away : g.home);
     const s = userHome ? r.score : [r.score[1], r.score[0]];

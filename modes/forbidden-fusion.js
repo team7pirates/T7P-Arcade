@@ -26,10 +26,14 @@ import {
   floorFoes, floorPower, swarmSize, isBoss, bountyFor, healAfter, titleFor, HEAL_FLOOR, HEAL_BOSS,
 } from './fusion-rules.js';
 import * as FP from './fusion-phone.js';
-import { createPhone } from './fusion-phone-ui.js';
+import { createPhone } from '../core/phone-ui.js';
+import * as PD from '../core/phone-dating.js';
 
-const DATA_KEY = 'fusion';                 // the build, lifetime Bounty, Hall of Fame
-const RUN_KEY = 'save:forbidden-fusion';   // the climb in progress
+const OLD_DATA_KEY = 'fusion';                 // before save slots (moved into slot 1)
+const OLD_RUN_KEY = 'save:forbidden-fusion';
+const SLOTS = 5;
+const dataKey = (n) => `fusion:slot${n}`;      // the build, lifetime Bounty, Hall of Fame, phone
+const runKey = (n) => `fusion:run:slot${n}`;   // the climb in progress
 const NAME_MAX = 20;
 const HOF_SIZE = 10;
 const fmt = (n) => Math.round(n).toLocaleString();
@@ -43,29 +47,45 @@ const help = howToPlay('forbidden-fusion', 'Forbidden Fusion', [
   'Clearing floors earns Bounty: more as you climb, half again for an underdog win, and double on Hard. Every 100 Bounty adds a Gym point for good.',
   'Roles lock when you save your fighter. Changing the main role later costs 10 Gym points and the second role 5, paid for good out of your Bounty.',
   'Your phone: after floor 1, people text you. Trash talkers you answer hostile become your next opponent (a callout, Bounty ×1.5); answer humble and the climb goes on as normal. Bosses test you or send their crew, sponsors offer deals, and your trainer checks in when you\'re hurt. Open it with the Open phone button or the P key (change the key in the phone\'s Settings).',
+  'After you beat someone, they may text you. Gloat for followers, but they come back for a rematch 3 floors later (+3 Power, Bounty ×1.5). Show respect and they send a tip: +4 Aura next floor.',
+  'Matchup, the dating app: like profiles, chat, and ask your matches out. A date is +5 Aura for your next floor (one per floor).',
   'Followers stay with you between climbs: every 2,500 is +1 Aura in the Tower, up to +10.',
+  'Five save files: each has its own fighter, Bounty, Hall of Fame, followers and phone.',
   'Lose a fight and the climb ends. Your best climbs go into the Hall of Fame.',
 ]);
 
 let data = null;     // { build, lifetimeBounty, hof }
 let run = null;      // the climb in progress, or null
 let lastRun = null;  // the climb that just ended (for the result screen)
-let view = 'lab';
+let view = 'slots';
+let slot = null;     // which save slot (1-5)
 
-async function loadData() {
-  if (!data) {
-    data = await store.get(DATA_KEY, null);
-    if (!data) {
-      const face = characters.get(profile.value.iconId);
-      data = { build: starterBuild(face), lifetimeBounty: 0, hof: [] };
-      await store.set(DATA_KEY, data);
-    }
+// The one save from before slots becomes slot 1.
+async function migrateOld() {
+  const old = await store.get(OLD_DATA_KEY, null);
+  if (!old) return;
+  if (!(await store.get(dataKey(1), null))) {
+    await store.set(dataKey(1), old);
+    const oldRun = await store.get(OLD_RUN_KEY, null);
+    if (oldRun) await store.set(runKey(1), oldRun);
   }
-  if (run === null) run = await store.get(RUN_KEY, null);
+  await store.remove(OLD_DATA_KEY); await store.remove(OLD_RUN_KEY);
+}
+async function loadSlot(n) {
+  slot = n;
+  data = await store.get(dataKey(n), null);
+  if (!data) {
+    const face = characters.get(profile.value.iconId);
+    data = { build: starterBuild(face), lifetimeBounty: 0, hof: [], createdAt: Date.now() };
+    await store.set(dataKey(n), data);
+  }
+  run = await store.get(runKey(n), null);
+  lastRun = null;
   return data;
 }
-const saveData = () => store.set(DATA_KEY, data);
-const saveRun = () => (run ? store.set(RUN_KEY, run) : store.remove(RUN_KEY));
+const saveData = () => (slot ? store.set(dataKey(slot), data) : null);
+const saveRun = () => (!slot ? null : run ? store.set(runKey(slot), run) : store.remove(runKey(slot)));
+const bestFloor = (d) => Math.max(0, ...((d?.hof || []).map((e) => e.floor || 0)), d?.best || 0);
 
 const faceOf = (build) => (build.faceId != null ? characters.get(build.faceId) : null);
 const fighterOf = (build) => fighterFrom(build, faceOf(build));
@@ -97,7 +117,11 @@ function planFloor(r) {
 }
 // Foe cards with the phone's Power changes (a lieutenant +4, a rattled boss -5).
 const foeCards = (r) => r.next.foeIds.map((id) => characters.get(id)).filter(Boolean).map((c) => (r.next.mod ? { ...c, powerLevel: Math.max(20, Math.min(99, c.powerLevel + r.next.mod)) } : c));
-const withFollowers = (f, r) => ({ ...f, aura: Math.min(100, (f.aura || 0) + FP.followerAura(r?.phone?.followers ?? data.followers ?? 0)) });
+const withFollowers = (f, r) => ({ ...f, aura: Math.min(100, (f.aura || 0) + FP.followerAura(r?.phone?.followers ?? data.followers ?? 0) + FP.phoneAura(r)) });
+
+const fmtN = (n) => (n >= 10000 ? `${(n / 1000).toFixed(1)}k` : Math.round(n).toLocaleString());
+// Matchup: one date per floor; a date is +5 Aura for the next fight.
+const dateCtx = (r) => ({ rand: Math.random, turn: `f${r.next?.floor ?? r.floor}`, turnLabel: 'floor', where: `floor ${r.floor || 1} of the Tower`, when: 'fight', perk: `+${FP.DATE_AURA} Aura for your next floor` });
 
 function newRun(hard) {
   const build = structuredClone(data.build);
@@ -109,14 +133,20 @@ function newRun(hard) {
 
 export async function render() {
   await profile.update({ lastMode: 'forbidden-fusion' });
-  await loadData();
+  await migrateOld();
   const root = h('section', { class: 'screen mode fusion' });
   let fightView = null;
   const phone = createPhone({
-    getPhone: () => run?.phone || data.lastPhone || null,
-    getRun: () => run,
-    getKey: () => data.phoneKey || 'p',
-    setKey: (k) => { data.phoneKey = k; saveData(); },
+    apps: ['messages', 'dating', 'buzz', 'news', 'deals', 'settings'],
+    shortcutWhere: 'Forbidden Fusion',
+    getPhone: () => (!data ? null : run?.phone || data.lastPhone || null),
+    save: () => { if (run) saveRun(); else if (data) saveData(); },
+    widgets: (ph) => [[run ? `F${run.next?.floor ?? run.floor}` : '—', 'FLOOR'], [fmtN(ph?.followers || 0), 'FOLLOWERS'], [`+${FP.followerAura(ph?.followers || 0) + (run ? FP.phoneAura(run) : 0)}`, 'AURA']],
+    empty: () => (!data ? 'Pick a save file first.' : run ? 'Clear a floor and your phone lights up.' : 'Start a climb. People will be watching.'),
+    dateCtx: () => (run ? dateCtx(run) : null),
+    onDate: () => { if (run) { run.dateBoost = { floor: run.next.floor }; saveRun(); if (view === 'tower') drawTower(); } },
+    getKey: () => data?.phoneKey || 'p',
+    setKey: (k) => { if (data) { data.phoneKey = k; saveData(); } },
     onReply: (key, optionId) => {
       if (!run) return null;
       const line = FP.reply(run, key, optionId, { rand: Math.random, me: run.build.name });
@@ -132,20 +162,60 @@ export async function render() {
 
   const header = (sub, onBack) => modeHeader({ title: 'Forbidden Fusion', sub, onHelp: () => help.show(), onBack });
 
+  // ---------- Save slots ----------
+  async function drawSlots() {
+    view = 'slots';
+    data = null; run = null; slot = null; lastRun = null;
+    phone.show(false);
+    const saves = await Promise.all(Array.from({ length: SLOTS }, (_, k) => Promise.all([store.get(dataKey(k + 1), null), store.get(runKey(k + 1), null)])));
+    fill(root,
+      header('FORGE · TOWER · LEGEND'),
+      h('div', { class: 'ff-slots-wrap' },
+        h('p', { class: 'body-text muted' }, `Five save files. Each one has its own fighter, Bounty, Hall of Fame, followers and phone.`),
+        h('div', { class: 'dy-slots' }, saves.map(([d, r], k) => {
+          const n = k + 1;
+          if (!d) {
+            return h('div', { class: 'dy-slot dy-panel ff-slot' },
+              h('p', { class: 'label-spaced' }, `FILE ${n}`),
+              h('p', { class: 'heading' }, 'Empty'),
+              h('button', { class: 'btn btn-primary', onClick: async () => { await loadSlot(n); drawLab(); } }, 'New fighter'));
+          }
+          const f = fighterOf(d.build);
+          const best = bestFloor(d);
+          return h('div', { class: 'dy-slot dy-panel ff-slot' },
+            h('p', { class: 'label-spaced' }, `FILE ${n}`),
+            h('div', { class: 'dy-slot-team' }, avatar(f, characters, 'md'), h('div', {},
+              h('p', { class: 'heading' }, f.name),
+              h('p', { class: 'caption muted' }, `${d.build.mainRole}${d.build.secondRole ? ` / ${d.build.secondRole}` : ''} · ${fmt(d.lifetimeBounty || 0)} Bounty`),
+              h('p', { class: 'caption muted' }, `${best ? `Best floor ${best}` : 'No climbs yet'} · ${fmt(d.followers || 0)} followers`),
+              r ? h('p', { class: 'caption gold' }, `CLIMB IN PROGRESS · FLOOR ${r.floor + 1}${r.hard ? ' · HARD' : ''}`) : null)),
+            h('div', { class: 'btn-row' },
+              h('button', { class: 'btn btn-primary', onClick: async () => { await loadSlot(n); drawLab(); } }, 'Continue'),
+              h('button', { class: 'btn btn-secondary', onClick: async () => {
+                const ok = await confirmSheet({ title: 'DELETE THIS FILE?', message: `${f.name}, ${fmt(d.lifetimeBounty || 0)} Bounty. This can't be undone.`, confirmLabel: 'Delete', danger: true });
+                if (ok) { await store.remove(dataKey(n)); await store.remove(runKey(n)); toast('File deleted.'); }
+                drawSlots();
+              } }, 'Delete')));
+        })),
+      ),
+    );
+  }
+
   // ---------- The Lab (home) ----------
   function drawLab() {
     view = 'lab';
+    phone.show(true); phone.refresh();
     const b = data.build;
     const total = budget();
     const spent = cost(b);
     const unspent = total - spent;
-    const rec = records.get('forbidden-fusion');
+
     const paid = data.spentBounty || 0;
     const nextAt = total >= MAX_BUDGET ? null : (Math.floor((data.lifetimeBounty - paid) / BOUNTY_PER_POINT) + 1) * BOUNTY_PER_POINT + paid;
-    const best = Math.max(rec.normal?.bestFloor || 0, rec.hard?.bestFloor || 0);
+    const best = bestFloor(data);
 
     fill(root,
-      header('FORGE · TOWER · LEGEND'),
+      header(`FILE ${slot} · FORGE · TOWER · LEGEND`, drawSlots),
       h('div', { class: 'ff-lab' },
         h('div', { class: 'ff-hero' },
           characterCard(fighterOf(b), { size: 'lg', highlight: ['powerLevel'] }),
@@ -390,10 +460,10 @@ export async function render() {
     const foes = foeCards(r);
     const me = withFollowers(fighterOf(r.build), r);
     const boss = isBoss(fl);
-    const story = { callout: 'CALLOUT', lieutenant: 'THE BOSS\'S TEST (+4 POWER)', crew: 'THE BOSS\'S CREW', boss: r.next.mod < 0 ? 'BOSS · RATTLED (−5 POWER)' : null }[r.next.type] || null;
+    const story = { callout: 'CALLOUT', revenge: 'REMATCH (+3 POWER)', lieutenant: 'THE BOSS\'S TEST (+4 POWER)', crew: 'THE BOSS\'S CREW', boss: r.next.mod < 0 ? 'BOSS · RATTLED (−5 POWER)' : null }[r.next.type] || null;
     const waitingNow = r.phone ? FP.waiting(r) : [];
     const swarm = swarmSize(fl) > 1;
-    const tags = [story, boss && r.next.type !== 'crew' ? 'BOSS' : null, swarm && !boss ? `OMEGA SWARM ×${foes.length}` : null, boss && foes.length > 1 ? `BOSS SQUAD ×${foes.length}` : null, r.hard ? 'HARD' : null].filter(Boolean);
+    const tags = [story, boss && r.next.type !== 'crew' ? 'BOSS' : null, swarm && !boss ? `OMEGA SWARM ×${foes.length}` : null, boss && foes.length > 1 ? `BOSS SQUAD ×${foes.length}` : null, FP.phoneAura(r) ? `+${FP.phoneAura(r)} AURA FROM YOUR PHONE` : null, r.hard ? 'HARD' : null].filter(Boolean);
     const foePower = foes.reduce((n, c) => n + c.powerLevel, 0);
 
     fill(root,
@@ -497,7 +567,8 @@ export async function render() {
     if (r.phone) {
       FP.onCleared(r, fl);
       const runBefore = r.runBounty;
-      FP.afterFloor(r, { floor: fl, hp, hpBefore: before, maxHp: r.maxHp, foes, roster: characters.list.filter((c) => !c.retired), rand: Math.random, me: me.name, hard: r.hard, underdog, callout: type === 'callout', boss: isBoss(fl) && type !== 'lieutenant' });
+      FP.afterFloor(r, { floor: fl, hp, hpBefore: before, maxHp: r.maxHp, foes, roster: characters.list.filter((c) => !c.retired), rand: Math.random, me: me.name, hard: r.hard, underdog, callout: type === 'callout' || type === 'revenge', type, boss: isBoss(fl) && type !== 'lieutenant' });
+      if (PD.dating(r.phone).matches.length) PD.refreshPrompts(r.phone, dateCtx(r));
       data.lifetimeBounty += r.runBounty - runBefore;
       data.followers = r.phone.followers;
     }
@@ -537,11 +608,13 @@ export async function render() {
     const r = run;
     if (r.phone) { data.lastPhone = r.phone; data.followers = r.phone.followers; }
     const key = r.hard ? 'hard' : 'normal';
-    let newBest = false;
+    const prevBest = bestFloor(data);
+    const newBest = r.floor > 0 && r.floor > prevBest;
+    data.best = Math.max(prevBest, r.floor);
     await records.update('forbidden-fusion', (rec) => {
       const x = rec[key] || { runs: 0, bestFloor: 0, bestBounty: 0 };
       x.runs += 1;
-      if (r.floor > x.bestFloor) { x.bestFloor = r.floor; newBest = r.floor > 0; }
+      if (r.floor > x.bestFloor) x.bestFloor = r.floor;
       x.bestBounty = Math.max(x.bestBounty || 0, r.runBounty);
       rec[key] = x;
       rec.lifetimeBounty = data.lifetimeBounty;
@@ -622,9 +695,10 @@ export async function render() {
     });
   }
 
-  if (view === 'over' && lastRun) drawOver();
-  else if (run && (view === 'tower' || view === 'fight' || view === 'cleared')) drawTower();
-  else drawLab();
+  if (slot && data && view === 'over' && lastRun) drawOver();
+  else if (slot && data && run && (view === 'tower' || view === 'fight' || view === 'cleared')) drawTower();
+  else if (slot && data && view !== 'slots') drawLab();
+  else await drawSlots();
   help.showFirstTime();
   return root;
 }
