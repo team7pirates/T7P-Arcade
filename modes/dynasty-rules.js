@@ -91,6 +91,7 @@ export const TROPHY_ART = {
   'The Celestial Grail': 'grail', 'The Generational Prodigy Player': 'prodigy', 'The Generational Prodigy Award': 'prodigy',
   'The Vanguard Blade': 'vanguard', 'The Obsidian Shield': 'obsidian', 'The Phantom Step Award': 'phantom',
   'The Aether Eye': 'aether', 'The Cipher Scroll': 'cipher',
+  "The Grandmaster's Cloak": 'cloak', 'The Awakening Award': 'awakening', 'The Phoenix Rebirth Trophy': 'phoenix',
   'The Sentinel Vanguard': 'div-east', 'The Northern Cross': 'div-north', 'The Golden Shore': 'div-west', 'The Sovereign Shield': 'div-south',
 };
 export const trophyFile = (name) => (TROPHY_ART[name] ? `art/afl/trophies/${TROPHY_ART[name]}.webp` : null);

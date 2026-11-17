@@ -1020,3 +1020,13 @@ button.dy-lu-card:hover:not(:disabled) { background: var(--surface-raised); }
   .dy-wall { grid-template-columns: repeat(2, 1fr); }
 }
 .dy-trophy-ph { display: grid; place-items: center; width: 64px; height: 96px; font-size: 44px; color: var(--brand-gold); background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--brand-gold) 25%, transparent), transparent 70%); }
+
+/* v0.11.1: player card portrait stays in its box; Dynasty uses wide PC screens */
+.dy-psheet-top .avatar { position: relative; inset: auto; width: 140px; height: 140px; border-radius: var(--radius-md); }
+#app:has(.mode.dynasty) { max-width: min(2400px, 100%); }
+.mode.dynasty, .mode.dynasty .dy-wrap, .mode.dynasty .dy-bar, .mode.dynasty .dy-tabs, .mode.dynasty .dy-content { max-width: 2360px; }
+@media (min-width: 1900px) { .mode.dynasty .dy-grid { grid-template-columns: minmax(0, 1fr) 460px; } .mode.dynasty .dy-tab { font-size: 0.9rem; padding: 0 var(--space-4); } }
+@media (min-width: 1400px) {
+  .mode.dynasty .dy-grid { grid-template-columns: minmax(0, 1fr) 400px; }
+  .mode.dynasty .dy-board { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+}

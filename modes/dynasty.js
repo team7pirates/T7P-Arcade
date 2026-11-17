@@ -419,7 +419,7 @@ export async function render() {
 
   function playerSheet(p) {
     const own = p.team === L.user.team;
-    const potLow = Math.max(p.power, p.potential - 3); const potHigh = p.potential + 2;
+    const potLow = Math.min(99, Math.max(p.power, p.potential - 3)); const potHigh = Math.min(99, p.potential + 2);
     sheet({
       title: p.name.toUpperCase(),
       content: h('div', { class: 'dy-psheet' },
@@ -694,7 +694,7 @@ export async function render() {
     const award = (pid) => (pid ? L.players[pid] : null);
     const gpp = award(row.prodigy);
     const special = [['awakening', 'Breakout season'], ['phoenix', 'Comeback season']].filter(([k]) => row[k]).map(([k, why]) => {
-      const p = award(row[k]); return h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${R.AWARDS[k]} · ${why}`)));
+      const p = award(row[k]); return h('li', {}, trophy(R.AWARDS[k], 64), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${R.AWARDS[k]} · ${why}`)));
     });
     offFrame('AWARDS NIGHT', h('div', { class: 'dy-off-body' },
       h('section', { class: 'dy-panel dy-awards-hero' },
@@ -705,7 +705,7 @@ export async function render() {
         h('ul', { class: 'dy-awards-grid' }, R.ROLES.map((r) => { const p = award(row.roleAwards[r]); return p ? h('li', {}, trophy(R.AWARDS[r], 96), pAvatar(p), h('p', { class: 'heading' }, p.name), h('p', { class: 'caption muted' }, `${R.AWARDS[r]} · ${team(p.team ?? row.prodigyTeam)?.abbr || ''}`)) : null; }))),
       h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'SPECIALTY AWARDS'),
         h('ul', { class: 'dy-list' }, special,
-          h('li', {}, crest(team(row.coachOfYear), 32), h('span', { class: 'dy-list-text' }, h('span', {}, team(row.coachOfYear).coachName), h('span', { class: 'caption muted' }, `${R.AWARDS.coach} · Coach of the Year, ${team(row.coachOfYear).name}`)))))),
+          h('li', {}, trophy(R.AWARDS.coach, 64), crest(team(row.coachOfYear), 32), h('span', { class: 'dy-list-text' }, h('span', {}, team(row.coachOfYear).coachName), h('span', { class: 'caption muted' }, `${R.AWARDS.coach} · Coach of the Year, ${team(row.coachOfYear).name}`)))))),
     nextBtn('On to re-signing'));
   }
 
@@ -947,9 +947,9 @@ export async function render() {
         h('ul', { class: 'dy-awards-grid dy-role-races' }, roles.map((r) => h('li', {}, trophy(r.award, 84), h('p', { class: 'label-spaced' }, r.role.toUpperCase()),
           r.top.length ? h('ol', { class: 'dy-mini-race' }, r.top.map(({ p }) => h('li', {}, pAvatar(p), h('span', {}, p.name)))) : h('p', { class: 'caption muted' }, '–'))))),
       h('div', { class: 'dy-media-grid' },
-        h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, `${R.AWARDS.awakening.toUpperCase()} · BREAKOUT`),
+        h('section', { class: 'dy-panel' }, h('div', { class: 'dy-h-trophy' }, trophy(R.AWARDS.awakening, 64), h('h2', { class: 'dy-h' }, `${R.AWARDS.awakening.toUpperCase()} · BREAKOUT`)),
           wake.length ? h('ul', { class: 'dy-list' }, wake.map((p) => pLine(p, h('span', { class: 'dy-num win' }, `+${p.power - p.startPower}`), `${team(p.team).abbr} · season ${p.career} · Power ${p.power}`))) : h('p', { class: 'caption muted' }, 'Young cards who grow the most this season.')),
-        h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, `${R.AWARDS.phoenix.toUpperCase()} · COMEBACK`),
+        h('section', { class: 'dy-panel' }, h('div', { class: 'dy-h-trophy' }, trophy(R.AWARDS.phoenix, 64), h('h2', { class: 'dy-h' }, `${R.AWARDS.phoenix.toUpperCase()} · COMEBACK`)),
           phoenix.length ? h('ul', { class: 'dy-list' }, phoenix.map((p) => pLine(p, h('span', { class: 'dy-num win' }, `+${Math.round(p.hype - p.startHype)}`), `${team(p.team).abbr} · Hype ${Math.round(p.startHype)} → ${Math.round(p.hype)}`))) : h('p', { class: 'caption muted' }, 'Cards who started the season under 45 Hype and fought their way back.')))));
   }
 
@@ -1081,7 +1081,7 @@ export async function render() {
         h('span', { class: 'dy-mseason' }, h('span', { class: 'label-spaced' }, 'SEASON'), h('span', { class: 'stat' }, String(r.season))),
         h('ul', { class: 'dy-mawards-list' }, [['prodigy', r.prodigy], ...R.ROLES.map((x) => [x, r.roleAwards?.[x]]), ['awakening', r.awakening], ['phoenix', r.phoenix]].filter(([, pid]) => pid != null).map(([k, pid]) => {
           const p = P(pid); return h('li', {}, trophy(R.AWARDS[k], 40), p ? pAvatar(p) : null, h('span', { class: 'dy-list-text' }, h('span', {}, p ? p.name : '—'), h('span', { class: 'caption muted' }, R.AWARDS[k])));
-        }), h('li', {}, crest(team(r.coachOfYear), 32), h('span', { class: 'dy-list-text' }, h('span', {}, team(r.coachOfYear).coachName), h('span', { class: 'caption muted' }, R.AWARDS.coach)))))));
+        }), h('li', {}, trophy(R.AWARDS.coach, 40), crest(team(r.coachOfYear), 32), h('span', { class: 'dy-list-text' }, h('span', {}, team(r.coachOfYear).coachName), h('span', { class: 'caption muted' }, R.AWARDS.coach)))))));
     } else if (museum.view === 'rivalries') {
       body = h('ul', { class: 'dy-awards-grid dy-mrivals' }, MD.rivalryBook(L).map((r) => h('li', {}, trophy(r.name, 120),
         h('p', { class: 'heading' }, r.name),

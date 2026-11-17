@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.11.1",
+      "date": "2026-11-17",
+      "title": "Dynasty fixes and the last trophies",
+      "items": [
+        "Fixed: a card's picture no longer jumps to the top-left corner of the screen when you open its details, and the details aren't squeezed into a thin column any more.",
+        "Dynasty now uses more of a wide PC screen instead of a narrow strip in the middle.",
+        "New trophy art for the Grandmaster's Cloak, the Awakening Award and the Phoenix Rebirth Trophy. Every AFL trophy now has its own picture."
+      ]
+    },
+    {
       "version": "0.11.0",
       "date": "2026-11-17",
       "title": "Dynasty: Media and History",
