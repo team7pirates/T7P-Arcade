@@ -9,9 +9,9 @@ const loader = (id) => () => import(`../modes/${id}.js`)
 
 export const MODES = [
   {
-    id: 'forbidden-fusion', loadingLine: 'FIRING UP THE FUSION LAB', name: 'Forbidden Fusion', sub: 'Forge · Ladder · Legend',
-    flagship: true, wave: 3, ready: false,
-    blurb: 'Fuse characters into one fighter, train it in the Gym, and climb the Tower.',
+    id: 'forbidden-fusion', loadingLine: 'FIRING UP THE FUSION LAB', name: 'Forbidden Fusion', sub: 'Forge · Tower · Legend',
+    flagship: true, wave: 3, ready: true, load: loader('forbidden-fusion'),
+    blurb: 'Forge one fighter in the Gym, then climb the Tower floor by floor.',
   },
   {
     id: 'dynasty', loadingLine: 'SETTING UP THE FRONT OFFICE', name: 'Dynasty', sub: 'Build · Simulate · Dynasty',

@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.7.0",
+      "date": "2026-11-16",
+      "title": "Forbidden Fusion is here",
+      "items": [
+        "New flagship mode, Forbidden Fusion: forge one fighter in the Gym, then climb the Tower floor by floor.",
+        "The Gym: pick any character as your face, choose a main and second role, and spend points on Power, Aura and Clutch. Chaos is free.",
+        "The Tower: health carries from floor to floor, every 5th floor is a boss, and past floor 10 the Omega swarms send more cards at once.",
+        "Earn Bounty on every floor (double on Hard, half again for underdog wins). Every 100 Bounty adds a Gym point for good. Your ten best climbs go in the Hall of Fame.",
+        "The role wheel matters more: a full role advantage is now worth about 10 Power.",
+        "Team fights now start at 2× speed. You can still switch to 1× during the fight."
+      ]
+    },
+    {
       "version": "0.6.3",
       "date": "2026-11-16",
       "title": "Every character has a portrait",

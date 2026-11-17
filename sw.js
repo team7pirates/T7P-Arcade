@@ -5,7 +5,7 @@
 // RELEASING AN UPDATE: bump CACHE_VERSION (and APP_VERSION in core/version.js)
 // to the same number, and add any new files to APP_FILES.
 
-const CACHE_VERSION = '0.6.3';
+const CACHE_VERSION = '0.7.0';
 const APP_CACHE = `t7p-app-${CACHE_VERSION}`;
 const ART_CACHE = 't7p-art'; // portraits, models and music: kept across versions
 
@@ -61,6 +61,8 @@ const APP_FILES = [
   'modes/gauntlet.js',
   'modes/tier-target.js',
   'modes/blind-tier-list.js',
+  'modes/forbidden-fusion.js',
+  'modes/fusion-rules.js',
   'data/roster.json',
   'fonts/poppins-600.woff2',
   'fonts/poppins-700.woff2',

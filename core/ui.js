@@ -45,6 +45,7 @@ const ICONS = {
   download: 'M12 3v12M7 10l5 5 5-5M5 21h14',
   search: 'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3',
   plus: 'M12 5v14M5 12h14',
+  minus: 'M5 12h14',
   edit: 'M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z',
 };
 

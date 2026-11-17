@@ -12,14 +12,32 @@ export function openRecords() {
   const ga = records.get('gauntlet');
   const tt = records.get('tier-target');
   const bl = records.get('blind-tier-list');
+  const ff = records.get('forbidden-fusion');
   const levels = [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']];
-  const played = levels.some(([k]) => g[k]) || ga.runs || tt.normal || tt.hard || bl.lists;
+  const played = levels.some(([k]) => g[k]) || ga.runs || tt.normal || tt.hard || bl.lists || ff.normal || ff.hard;
   const fmt = (n) => Math.round(n).toLocaleString();
 
   sheet({
     title: 'MY RECORDS',
     content: played
       ? h('div', { class: 'records' },
+        h('section', { class: 'rec-block' },
+          h('h3', { class: 'label-spaced set-title' }, 'FORBIDDEN FUSION'),
+          ff.normal || ff.hard
+            ? h('table', { class: 'rec-table' },
+              h('thead', {}, h('tr', {}, ['', 'Best floor', 'Best Bounty', 'Climbs'].map((t) => h('th', { scope: 'col' }, t)))),
+              h('tbody', {}, [['normal', 'Normal'], ['hard', 'Hard']].map(([k, label]) => {
+                const r = ff[k];
+                return h('tr', {},
+                  h('th', { scope: 'row' }, label),
+                  h('td', {}, r ? String(r.bestFloor) : '–'),
+                  h('td', {}, r ? fmt(r.bestBounty) : '–'),
+                  h('td', {}, r ? String(r.runs) : '0'),
+                );
+              })))
+            : h('p', { class: 'caption muted' }, 'No climbs yet.'),
+          ff.lifetimeBounty ? h('p', { class: 'caption muted' }, `Lifetime Bounty ${fmt(ff.lifetimeBounty)}`) : null,
+        ),
         h('section', { class: 'rec-block' },
           h('h3', { class: 'label-spaced set-title' }, 'GRIDS'),
           h('table', { class: 'rec-table' },

@@ -9,7 +9,8 @@
 // What each rating does:
 //   Power Level  → health and attack (+10 Power ≈ a 10% edge overall)
 //   Roles        → the role wheel: main role beating the target's main role
-//                  = +10% damage, second role beating it = +5%
+//                  = +16% damage, second role beating it = +8%
+//                  (main + second together ≈ +10 Power)
 //   Aura         → fills the special-move meter faster, and up to +10% damage
 //                  (+15% in the deciding round)
 //   Clutch       → chance to survive a knockout hit with 1 health: up to 15%
@@ -53,8 +54,8 @@ export const TUNING = {
   blitz: 0.7,
   tacticianStunChance: 0.9, // Counterplay stuns 90% of the time
   chaosSpread: 0.08,      // Chaos 100 adds up to ±8% more
-  mainAdv: 0.10,
-  secondAdv: 0.05,
+  mainAdv: 0.16,          // full role edge (main + second) ≈ +10 Power
+  secondAdv: 0.08,
   auraDmg: 0.10, auraDmgDeciding: 0.15,
   clutch: 0.15, clutchDeciding: 0.20,
   meterPerAttack: 26,     // + Aura × meterAura
@@ -88,8 +89,10 @@ export function fighterStats(c) {
     aura: c.aura ?? 50,
     clutch: c.clutch ?? 50,
     chaos: c.chaos ?? 50,
-    maxHp: Math.round(TUNING.baseHp * Math.sqrt(scale) * (c.mainRole === 'Tank' ? TUNING.tankHp : 1)),
+    // hpMult: extra health for special fighters (the Forbidden Fusion fighter)
+    maxHp: Math.round(TUNING.baseHp * Math.sqrt(scale) * (c.mainRole === 'Tank' ? TUNING.tankHp : 1) * (c.hpMult || 1)),
     atk: TUNING.baseAtk * Math.sqrt(scale),
+    hpMult: c.hpMult || 1,
   };
 }
 
@@ -101,8 +104,12 @@ function roleBonus(att, def) {
 }
 
 // Run a full match. teamA / teamB: arrays of characters (1–5 each).
-// Returns { winner: 'A' | 'B', rounds: [...], events: [...], score: [a, b] }.
-export function runMatch(teamA, teamB, { seed = Date.now() } = {}) {
+// Options: bestOf (3 by default; 1 for a single round, used by the Tower),
+// startHp (health each of side A's cards starts the first round with, so
+// damage can carry from one fight to the next).
+// Returns { winner: 'A' | 'B', rounds, events, score: [a, b], endHp }, where
+// endHp is side A's health per card when the last round ended.
+export function runMatch(teamA, teamB, { seed = Date.now(), bestOf = 3, startHp = null } = {}) {
   const rand = rng(seed);
   const sides = {
     A: teamA.map(fighterStats),
@@ -112,28 +119,36 @@ export function runMatch(teamA, teamB, { seed = Date.now() } = {}) {
   const score = { A: 0, B: 0 };
   let round = 0;
 
-  events.push({ t: 'match-start', teamA: sides.A, teamB: sides.B, seed });
+  const need = Math.ceil(bestOf / 2);
+  events.push({ t: 'match-start', teamA: sides.A, teamB: sides.B, seed, bestOf });
 
-  while (score.A < 2 && score.B < 2) {
+  let endHp = sides.A.map((f) => f.maxHp);
+  while (score.A < need && score.B < need) {
     round += 1;
-    const deciding = score.A === 1 || score.B === 1;
-    const winner = runRound(sides, round, deciding, rand, events);
+    const deciding = score.A === need - 1 || score.B === need - 1;
+    const hp = round === 1 && startHp ? startHp : null;
+    const { winner, state } = runRound(sides, round, deciding, rand, events, hp);
+    endHp = state.A.lineup.map((f) => f.hp);
     score[winner] += 1;
     events.push({ t: 'round-end', round, winner, score: [score.A, score.B] });
   }
-  const winner = score.A === 2 ? 'A' : 'B';
+  const winner = score.A === need ? 'A' : 'B';
   events.push({ t: 'match-end', winner, score: [score.A, score.B] });
-  return { winner, score: [score.A, score.B], rounds: round, events };
+  return { winner, score: [score.A, score.B], rounds: round, events, endHp };
 }
 
-function runRound(sides, round, deciding, rand, events) {
+function runRound(sides, round, deciding, rand, events, startHp) {
   const state = {};
   for (const s of ['A', 'B']) {
     state[s] = {
-      lineup: sides[s].map((f) => ({ ...f, hp: f.maxHp, meter: 0, burn: 0, guard: false, stunned: false, clutchUsed: false, out: false })),
+      lineup: sides[s].map((f, i) => {
+        const hp = s === 'A' && startHp && startHp[i] != null ? Math.max(1, Math.min(f.maxHp, Math.round(startHp[i]))) : f.maxHp;
+        return { ...f, hp, meter: 0, burn: 0, guard: false, stunned: false, clutchUsed: false, out: false };
+      }),
       idx: 0,
     };
   }
+  const done = (w) => ({ winner: w, state });
   events.push({ t: 'round-start', round, deciding });
   events.push({ t: 'enter', side: 'A', idx: 0, hp: state.A.lineup[0].hp, maxHp: state.A.lineup[0].maxHp });
   events.push({ t: 'enter', side: 'B', idx: 0, hp: state.B.lineup[0].hp, maxHp: state.B.lineup[0].maxHp });
@@ -158,10 +173,10 @@ function runRound(sides, round, deciding, rand, events) {
 
     // Burn ticks at the start of the burned card's turn.
     if (me.burn > 0) {
-      const dmg = Math.round(me.maxHp * TUNING.burn);
+      const dmg = Math.round((me.maxHp / (me.hpMult || 1)) * TUNING.burn);
       me.burn -= 1;
       if (applyDamage(state, side, me, dmg, deciding, rand, events, 'burn')) {
-        if (nextCard(state, side, events)) return foeSide;
+        if (nextCard(state, side, events)) return done(foeSide);
         turnSide = foeSide;
         continue;
       }
@@ -206,7 +221,8 @@ function runRound(sides, round, deciding, rand, events) {
         ko = hit(1.2);
         if (!ko && rand() < TUNING.tacticianStunChance) { foe.stunned = true; events.push({ t: 'status', side: foeSide, status: 'stun', turns: 1 }); }
       } else if (me.mainRole === 'Tank') {
-        const heal = Math.min(me.maxHp - me.hp, Math.round(me.maxHp * 0.15));
+        // 15% of a normal card's health (extra health from hpMult doesn't grow the heal)
+        const heal = Math.min(me.maxHp - me.hp, Math.round((me.maxHp / (me.hpMult || 1)) * 0.15));
         me.hp += heal;
         me.guard = true;
         events.push({ t: 'attack', side, move: special.name, special: true, role: 'Tank', adv: false, dmg: 0, heal, hp: me.hp });
@@ -215,14 +231,14 @@ function runRound(sides, round, deciding, rand, events) {
       if (!foe.out) foe.meter = Math.min(100, foe.meter + TUNING.meterPerHit);
       events.push({ t: 'meter', side, value: Math.round(me.meter) });
 
-      if (ko && nextCard(state, foeSide, events)) return side;
+      if (ko && nextCard(state, foeSide, events)) return done(side);
     }
 
     if (turn >= TUNING.maxTurns) {
       const pct = (s) => state[s].lineup.reduce((n, f) => n + (f.out ? 0 : f.hp / f.maxHp), 0);
       const w = pct('A') >= pct('B') ? 'A' : 'B';
       events.push({ t: 'timeout', winner: w });
-      return w;
+      return done(w);
     }
     turnSide = foeSide;
   }

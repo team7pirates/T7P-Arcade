@@ -5,6 +5,9 @@
 //
 //   const view = playMatch(el, { teamA, teamB, onDone })
 //   view.setSpeed(2); view.skip();
+//
+// Squad fights (more than one card a side) start at 2× because they run
+// about 90 turns; one-on-one fights start at 1×. Pass { speed } to override.
 
 import { h, avatar } from './ui.js';
 import { characters } from './characters.js';
@@ -19,10 +22,11 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // How long each event shows at 1× speed (ms).
 const TIMING = { 'round-start': 1100, enter: 450, turn: 120, attack: 520, damage: 380, clutch: 900, status: 300, stunned: 600, ko: 700, 'round-end': 1200, meter: 0, timeout: 800 };
 
-export function playMatch(container, { teamA, teamB, seed, labels = { A: 'YOU', B: 'THEY' }, onDone }) {
-  const result = runMatch(teamA, teamB, { seed: seed ?? Date.now() });
+export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, bestOf = 3, startHp = null, labels = { A: 'YOU', B: 'THEY' }, onDone }) {
+  const result = runMatch(teamA, teamB, { seed: seed ?? Date.now(), bestOf, startHp });
+  const need = Math.ceil(bestOf / 2);
   const chars = { A: teamA, B: teamB };
-  let speed = 1;
+  let speed = startSpeed ?? (teamA.length > 1 || teamB.length > 1 ? 2 : 1);
   let skipping = !!settings.value.skipFightScenes;
   let stopped = false;
 
@@ -37,14 +41,14 @@ export function playMatch(container, { teamA, teamB, seed, labels = { A: 'YOU', 
   }
 
   // ---- layout ----
-  const turnEl = h('span', { class: 'bt-turn' }, 'ROUND 1');
+  const turnEl = h('span', { class: 'bt-turn' }, need === 1 ? 'TURN 1' : 'ROUND 1');
   const scoreEl = h('div', { class: 'bt-score', 'aria-live': 'polite' });
   const banner = h('div', { class: 'bt-banner', hidden: true });
   const lineupB = h('div', { class: 'bt-lineup is-foe', 'aria-label': `${labels.B} lineup` });
   const lineupA = h('div', { class: 'bt-lineup', 'aria-label': `${labels.A} lineup` });
   const slotA = h('div', { class: 'bt-slot is-you' });
   const slotB = h('div', { class: 'bt-slot is-foe' });
-  const speedBtn = h('button', { class: 'btn btn-secondary bt-speed', onClick: () => setSpeed(speed === 1 ? 2 : 1), 'aria-label': 'Change speed' }, '1×');
+  const speedBtn = h('button', { class: 'btn btn-secondary bt-speed', onClick: () => setSpeed(speed === 1 ? 2 : 1), 'aria-label': 'Change speed' }, `${speed}×`);
   const skipBtn = h('button', { class: 'btn btn-secondary bt-speed', onClick: () => skip() }, 'Skip');
   const root = h('section', { class: 'battle', 'aria-label': 'Fight' },
     h('div', { class: 'bt-top' }, turnEl, scoreEl, h('div', { class: 'bt-controls' }, speedBtn, skipBtn)),
@@ -57,7 +61,7 @@ export function playMatch(container, { teamA, teamB, seed, labels = { A: 'YOU', 
   const cardEls = { A: null, B: null };
 
   function drawScore() {
-    const pips = (n) => [0, 1].map((i) => h('span', { class: `bt-pip${i < n ? ' on' : ''}` }));
+    const pips = (n) => Array.from({ length: need }, (_, i) => h('span', { class: `bt-pip${i < n ? ' on' : ''}` }));
     scoreEl.replaceChildren(
       h('span', { class: 'bt-side' }, labels.A), ...pips(live.score[0]),
       h('span', { class: 'bt-dash' }, '–'),
@@ -100,7 +104,7 @@ export function playMatch(container, { teamA, teamB, seed, labels = { A: 'YOU', 
   }
 
   function drawAll() {
-    turnEl.textContent = live.turn ? `ROUND ${live.round} · TURN ${live.turn}` : `ROUND ${live.round}`;
+    turnEl.textContent = need === 1 ? `TURN ${live.turn || 1}` : live.turn ? `ROUND ${live.round} · TURN ${live.turn}` : `ROUND ${live.round}`;
     drawScore();
     drawLineup('A');
     drawLineup('B');
@@ -154,9 +158,12 @@ export function playMatch(container, { teamA, teamB, seed, labels = { A: 'YOU', 
         for (const s of ['A', 'B']) {
           live[s].idx = 0; live[s].ko.clear(); live[s].status = {}; live[s].meter = 0;
           live[s].hp = live[s].max.slice();
+          // Health carried in from an earlier fight (the Tower)
+          if (s === 'A' && ev.round === 1 && startHp) startHp.forEach((v, i) => { if (v != null) live.A.hp[i] = Math.max(1, Math.min(live.A.max[i], Math.round(v))); });
         }
         drawAll();
-        showBanner(ev.deciding ? 'MATCH POINT' : `ROUND ${ev.round}`, ev.deciding ? 'is-match' : '');
+        if (need === 1) showBanner('FIGHT!', 'is-match');
+        else showBanner(ev.deciding ? 'MATCH POINT' : `ROUND ${ev.round}`, ev.deciding ? 'is-match' : '');
         break;
       case 'enter':
         live[ev.side].idx = ev.idx;
@@ -169,7 +176,7 @@ export function playMatch(container, { teamA, teamB, seed, labels = { A: 'YOU', 
         break;
       case 'turn':
         live.turn += 1;
-        turnEl.textContent = `ROUND ${live.round} · TURN ${live.turn}`;
+        turnEl.textContent = need === 1 ? `TURN ${live.turn}` : `ROUND ${live.round} · TURN ${live.turn}`;
         break;
       case 'attack':
         flash(ev.side, ev.side === 'A' ? 'anim-lunge-r' : 'anim-lunge-l');
@@ -212,7 +219,7 @@ export function playMatch(container, { teamA, teamB, seed, labels = { A: 'YOU', 
       case 'round-end':
         live.score = ev.score;
         drawScore();
-        showBanner(`${ev.winner === 'A' ? labels.A : labels.B} TAKE ROUND ${ev.round}`, ev.winner === 'A' ? 'is-win' : 'is-loss');
+        if (need > 1) showBanner(`${ev.winner === 'A' ? labels.A : labels.B} TAKE ROUND ${ev.round}`, ev.winner === 'A' ? 'is-win' : 'is-loss');
         break;
       default:
         break;
@@ -227,7 +234,7 @@ export function playMatch(container, { teamA, teamB, seed, labels = { A: 'YOU', 
     const won = result.winner === 'A';
     const over = h('div', { class: `bt-result ${won ? 'is-win' : 'is-loss'}`, role: 'status' },
       h('p', { class: 'display-lg win-text' }, won ? 'YOU WIN' : 'THEY WIN'),
-      h('p', { class: 'label-spaced' }, `${result.score[0]} – ${result.score[1]} · ${result.rounds} ROUNDS`),
+      h('p', { class: 'label-spaced' }, need === 1 ? 'ONE-ROUND FIGHT' : `${result.score[0]} – ${result.score[1]} · ${result.rounds} ROUNDS`),
     );
     root.append(over);
     speedBtn.disabled = true;
