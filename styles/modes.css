@@ -777,3 +777,97 @@ button.dy-lu-card:hover:not(:disabled) { background: var(--surface-raised); }
   .dy-psheet-top { grid-template-columns: 1fr; }
   .dy-cap .stat { font-size: 1.5rem; }
 }
+
+/* Dynasty trophies */
+.dy-trophy { width: auto; display: block; object-fit: contain; filter: drop-shadow(0 4px 10px rgba(0,0,0,.55)); }
+.dy-news-trophy { flex: 0 0 36px; width: 36px; height: 40px; }
+.dy-trophy-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.dy-trophy-row .dy-trophy-line { margin: 0; }
+.dy-plan-trophy { margin: 6px auto 0; }
+.dy-recap-trophy { margin: 10px auto 0; }
+.dy-recap-trophy.is-lost { filter: grayscale(1) brightness(.55) drop-shadow(0 4px 10px rgba(0,0,0,.55)); }
+.dy-champ-art { display: flex; align-items: flex-end; justify-content: center; gap: 14px; margin-bottom: 8px; }
+.dy-grail { filter: drop-shadow(0 0 18px rgba(240,200,90,.45)) drop-shadow(0 6px 12px rgba(0,0,0,.6)); }
+.dy-gpp { align-items: center; gap: 14px; }
+.dy-award-list li { align-items: center; }
+.dy-award-list .dy-trophy { flex: 0 0 auto; }
+.dy-h-trophy { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.dy-h-trophy .dy-h { margin: 0; }
+
+/* Dynasty release 2: Front Office, Draft, off-season */
+.btn-sm { min-height: 36px; padding: 0 12px; font-size: 0.78rem; }
+.dy-pline { display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0; background: none; border: 0; color: inherit; text-align: left; padding: 0; cursor: pointer; font: inherit; }
+.dy-pline:hover .dy-list-text > span:first-child { color: var(--brand-gold); }
+.dy-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; counter-reset: st; }
+.dy-steps li { counter-increment: st; font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 10px; border-radius: var(--radius-pill); border: 1px solid var(--border); color: var(--ink-muted); }
+.dy-steps li::before { content: counter(st) ' · '; opacity: .7; }
+.dy-steps li.is-done { color: var(--win); border-color: color-mix(in srgb, var(--win) 40%, transparent); }
+.dy-steps li.is-on { color: #1a1206; background: var(--brand-gold); border-color: var(--brand-gold); font-weight: 700; }
+.dy-off-body { display: flex; flex-direction: column; gap: var(--space-4); }
+.dy-chips, .dy-yrs { display: flex; flex-wrap: wrap; gap: 6px; }
+.dy-chip { min-height: 36px; min-width: 36px; padding: 0 12px; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; font-size: 0.8rem; }
+.dy-chip.is-on { background: var(--brand-gold); color: #1a1206; border-color: var(--brand-gold); font-weight: 700; }
+.dy-field { display: flex; flex-direction: column; gap: 6px; }
+.dy-field input[type=range] { width: 100%; accent-color: var(--brand-gold); }
+.dy-select { min-height: 44px; padding: 0 10px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--surface-raised); color: var(--ink); font: inherit; }
+.dy-trade { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin: var(--space-3) 0; }
+.dy-check { display: flex; align-items: center; gap: var(--space-2); padding: 6px; border-radius: var(--radius-md); cursor: pointer; border: 1px solid transparent; }
+.dy-check.is-on { border-color: var(--brand-gold); background: color-mix(in srgb, var(--brand-gold) 10%, transparent); }
+.dy-check input { accent-color: var(--brand-gold); width: 18px; height: 18px; }
+.dy-pickable li { padding: 2px 0; }
+.dy-meter-wrap { display: flex; flex-direction: column; gap: 4px; margin: var(--space-2) 0; }
+.dy-meter { position: relative; height: 14px; border-radius: var(--radius-pill); background: var(--surface-raised); border: 1px solid var(--border); overflow: hidden; }
+.dy-meter-fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; transition: width .2s; }
+.dy-meter-bar { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); }
+.dy-parts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; }
+.dy-parts li { display: contents; }
+.dy-part { height: 8px; border-radius: var(--radius-pill); background: var(--surface-raised); overflow: hidden; }
+.dy-part span { display: block; height: 100%; background: var(--brand-gold); }
+.dy-offer { display: flex; flex-direction: column; gap: var(--space-3); }
+.dy-offer-top { display: flex; gap: var(--space-3); align-items: center; }
+.dy-stars { color: var(--brand-gold); letter-spacing: 1px; font-size: 0.9rem; }
+.dy-stars-off { color: var(--border); }
+.dy-board { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-2); }
+.dy-prospect { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--border); }
+.dy-prospect .dy-list-text { flex: 1; min-width: 0; }
+.dy-prospect-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dy-prospect-btns { display: flex; flex-direction: column; gap: 6px; }
+.dy-scout-head { display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; flex-wrap: wrap; }
+.dy-scout-pts { text-align: right; }
+.dy-hexmap { display: flex; flex-wrap: wrap; gap: 4px 2px; padding: 6px 0 14px 0; }
+.dy-hex { --h: 200; width: 96px; height: 84px; margin-bottom: -10px; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); background: hsl(var(--h) 45% 26%); border: 0; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 14px; cursor: pointer; text-align: center; font: inherit; }
+
+.dy-hex:hover, .dy-hex:focus-visible { background: hsl(var(--h) 55% 34%); }
+.dy-hex.is-on { background: var(--brand-gold); color: #1a1206; }
+.dy-hex-name { font-size: 0.62rem; line-height: 1.1; max-height: 2.3em; overflow: hidden; }
+.dy-hex-n { font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; }
+.dy-hexmap { flex-direction: column; flex-wrap: nowrap; gap: 0; padding: 4px 0; }
+.dy-hexrow { display: flex; gap: 4px; margin-bottom: -14px; }
+.dy-hexrow.is-odd { margin-left: 50px; }
+.dy-hex { margin-bottom: 0; }
+.dy-order { list-style: none; margin: var(--space-2) 0; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.dy-order li { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 6px; border-radius: var(--radius-md); border: 1px solid var(--border); }
+.dy-order li:first-child { border-color: var(--brand-gold); }
+.dy-order li.is-me { background: color-mix(in srgb, var(--brand-gold) 18%, transparent); }
+.dy-resign-row { flex-wrap: wrap; }
+.dy-resign-row .dy-list-text { flex: 1; min-width: 200px; }
+.dy-resign-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.dy-why { text-align: right; max-width: 160px; }
+.dy-awards-hero { text-align: center; }
+.dy-gpp-hero { display: flex; justify-content: center; align-items: center; gap: var(--space-5, 24px); flex-wrap: wrap; }
+.dy-gpp-hero > div { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.dy-awards-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-3); }
+.dy-awards-grid li { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: var(--space-3); border-radius: var(--radius-md); background: var(--surface-raised); }
+.dy-pantheon { border-color: var(--brand-gold); }
+@media (max-width: 640px) {
+  .dy-trade { grid-template-columns: 1fr; }
+  .dy-board { grid-template-columns: 1fr; }
+  .dy-hex { width: 78px; height: 68px; }
+  .dy-hexrow.is-odd { margin-left: 41px; }
+  .dy-prospect-btns .btn { white-space: nowrap; }
+}
+.dy-cap { grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); }
+@media (max-width: 640px) {
+  .dy-steps { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .dy-steps li { flex: none; }
+}

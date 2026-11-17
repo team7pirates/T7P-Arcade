@@ -5,7 +5,7 @@
 // RELEASING AN UPDATE: bump CACHE_VERSION (and APP_VERSION in core/version.js)
 // to the same number, and add any new files to APP_FILES.
 
-const CACHE_VERSION = '0.9.0';
+const CACHE_VERSION = '0.10.0';
 const APP_CACHE = `t7p-app-${CACHE_VERSION}`;
 const ART_CACHE = 't7p-art'; // portraits, models and music: kept across versions
 
@@ -66,6 +66,7 @@ const APP_FILES = [
   'modes/brawl-rules.js',
   'modes/dynasty.js',
   'modes/dynasty-rules.js',
+  'modes/dynasty-off.js',
   'modes/fusion-rules.js',
   'data/roster.json',
   'fonts/poppins-600.woff2',

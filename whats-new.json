@@ -1,6 +1,22 @@
 {
   "releases": [
     {
+      "version": "0.10.0",
+      "date": "2026-11-17",
+      "title": "Dynasty: The Off-season",
+      "items": [
+        "The AFL now runs season after season. After the Zenith Clash comes the off-season: retirements, awards night, re-signing, upgrades, the draft and free agency.",
+        "Real trophies: the Celestial Grail, the GPP glass, the role awards and all six rivalry trophies now show in the news, the Game Plan, recaps and the ceremony.",
+        "Retirement is final. Big names at 95+ Power enter the Generational Pantheon, and every retired headshot returns in a draft class under a brand-new name.",
+        "New Draft tab: earn 8 scouting points a week. Scouting a prospect (6 points) reveals potential; a second report shows Generational Talent or Bust risk. A hex map shows which worlds the class comes from.",
+        "Re-sign your expiring cards for 1 to 4 seasons, or use your one Franchise Tag. Then spend up to 2 development upgrades (Normal → Star → Superstar).",
+        "Free agency runs 3 rounds. Every player has an interest meter: money, winning, playing time, teammates from their world, your style and the spotlight.",
+        "New Front Office tab: cap and contracts, trades with AI teams that think like rebuilds, contenders or teams a few pieces away (deadline after Week 8), and emergency pickups.",
+        "The soft cap bites: going over comes off next season's cap, and two seasons running costs your draft pick.",
+        "Get fired after three missed expectations and you pick a new job from the teams that missed the playoffs. The news covers it."
+      ]
+    },
+    {
       "version": "0.9.0",
       "date": "2026-11-17",
       "title": "Dynasty: The Season",

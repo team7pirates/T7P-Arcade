@@ -6,8 +6,7 @@
 // coach quiz, 12-week schedule, weekly lineups with the rival's final swap,
 // fatigue + injuries, growth every 3 weeks, Hype (combat) and Aura (media),
 // division-winner playoffs, the Zenith Clash, awards and job security.
-// The off-season (contracts expiring, retirements, draft, free agency,
-// trades) arrives in release 2; contracts and careers are already tracked.
+// Release 2 ("The Off-season") lives in dynasty-off.js.
 
 import { runMatch, rng, beats, ROLES } from '../core/combat.js';
 import { aiLineup, rivalSwap, damageDealt, shuffle, matchup } from './brawl-rules.js';
@@ -21,6 +20,11 @@ export const WEEKS = 12;
 export const TRADE_DEADLINE = 8;
 export const CAP = 150;
 export const MAG_EVERY = 3;
+export const SCOUT_WEEKLY = 8;   // scouting points a week
+export const SCOUT_COST = 6;     // 3/4 of a week's points
+// Filled in by dynasty-off.js so the season loop can call off-season pieces
+// (AI trades, the draft class) without a circular import.
+export const hooks = {};
 
 export const DIVISIONS = ['Origin', 'Elemental', 'Cyber-Martial', 'Mythic'];
 export const CONFERENCES = ['Eastern', 'Western'];
@@ -73,11 +77,21 @@ export const RIVALRIES = [
 ];
 
 export const AWARDS = {
-  prodigy: 'The Generational Prodigy Award',
+  prodigy: 'The Generational Prodigy Player',
   Striker: 'The Vanguard Blade', Tank: 'The Obsidian Shield', Speedster: 'The Phantom Step Award',
   Mystic: 'The Aether Eye', Tactician: 'The Cipher Scroll',
-  coach: "The Grandmaster's Cloak",
+  coach: "The Grandmaster's Cloak", awakening: 'The Awakening Award', phoenix: 'The Phoenix Rebirth Trophy',
 };
+
+// Trophy art in art/afl/trophies/<file>.webp. Missing ones (division trophies, coach award) fall back to the crest.
+export const TROPHY_ART = {
+  "The Pirate's Bounty": 'pirates-bounty', 'The Silent Dagger': 'silent-dagger', 'The Blood Moon Mask': 'blood-moon',
+  'The Silicon Katana': 'silicon-katana', 'The Eclipse Relic': 'eclipse-relic', 'The Shattered Prism': 'shattered-prism',
+  'The Celestial Grail': 'grail', 'The Generational Prodigy Player': 'prodigy', 'The Generational Prodigy Award': 'prodigy',
+  'The Vanguard Blade': 'vanguard', 'The Obsidian Shield': 'obsidian', 'The Phantom Step Award': 'phantom',
+  'The Aether Eye': 'aether', 'The Cipher Scroll': 'cipher',
+};
+export const trophyFile = (name) => (TROPHY_ART[name] ? `art/afl/trophies/${TROPHY_ART[name]}.webp` : null);
 
 // Rookie coach names: any culture for any team (Khalil's rule for newcomers).
 const FIRST = ['Haku', 'Marcus', 'Ren', 'Elena', 'Kenji', 'Darius', 'Aiko', 'Viktor', 'Sora', 'Imani', 'Tobias', 'Mei', 'Rafael', 'Yuki', 'Andre', 'Lena',
@@ -119,16 +133,18 @@ export function payFor(power, hype = 50, lowKey = false) {
   const mood = lowKey ? 1 : 1 + Math.max(-0.2, Math.min(0.2, (hype - 50) / 250));
   return Math.max(1, Math.round(base * mood * 10) / 10);
 }
-export const capHit = (p) => (p.contract ? Math.round((p.contract.total / p.contract.years) * 10) / 10 : 0);
-export const payroll = (league, team) => Math.round(team.roster.reduce((n, pid) => n + capHit(league.players[pid]), 0) * 10) / 10;
+export const capHit = (p) => (p.contract && p.contract.left > 0 ? Math.round((p.contract.total / p.contract.years) * 10) / 10 : 0);
+export const payroll = (league, team) => Math.round((team.roster.reduce((n, pid) => n + capHit(league.players[pid]), 0) + (team.dead || 0)) * 10) / 10;
+// This season's cap: the soft cap minus last season's overage.
+export const capOf = (team) => Math.round((CAP - (team.capPenalty || 0)) * 10) / 10;
 
 // ---------- Setup ----------
 const DEV = [1, 2, 3]; // Normal, Star, Superstar growth speed
 
 function makePlayer(c, rand, pid) {
-  const career = 1 + Math.floor(rand() * 6);                // season of their career, 1–6
   const iron = rand() < 0.05;
   const careerLen = iron ? 9 + Math.floor(rand() * 2) : 4 + Math.floor(rand() * 3);
+  const career = 1 + Math.floor(rand() * careerLen);        // where they are in it right now
   const dev = rand() < 0.62 ? 0 : rand() < 0.75 ? 1 : 2;
   const room = career <= 2 ? 3 + Math.floor(rand() * 7) : career <= 4 ? Math.floor(rand() * 4) : 0;
   return {
@@ -136,7 +152,7 @@ function makePlayer(c, rand, pid) {
     role: c.mainRole, second: c.secondRole || null,
     power: c.powerLevel, potential: Math.min(99, c.powerLevel + room),
     aura: c.aura ?? 50, clutch: c.clutch ?? 50, chaos: c.chaos ?? 50,
-    dev, iron, career, careerLen: Math.max(careerLen, career + 1),
+    dev, iron, career, careerLen,
     lowKey: rand() < 0.25,
     hype: 50, fatigue: 0, injury: 0, mileage: career * 8,
     team: null, contract: null, growth: 0,
@@ -237,6 +253,7 @@ export function newLeague(chars, seed = Date.now()) {
       prevRank: null, rank: null, titles: 0, hype: 50,
     })),
     players: {}, nextPid: 1, schedule: [], news: [], history: [], user: null, playoffs: null, lastWeekScores: [],
+    pantheon: [], headshots: [], trades: [], careersFixed: true,
   };
   const used = new Set();
   league.teams.forEach((t) => { t.coachName = pickName(rand, used); });
@@ -433,6 +450,8 @@ export function endWeek(league) {
     p.injuredNow = false;
   }
   league.news = weekNews(league, games).concat(league.news).slice(0, 30);
+  if (league.user) league.user.scoutPts = (league.user.scoutPts || 0) + SCOUT_WEEKLY;
+  if (league.week <= TRADE_DEADLINE && hooks.aiTrade) hooks.aiTrade(league, rand);
   // Growth and Aura every 3 weeks.
   if (league.week % MAG_EVERY === 0) growthTick(league, rand);
   rankPower(league);
@@ -471,7 +490,7 @@ function growthTick(league, rand) {
   // The award race top 4 also gain Aura.
   awardRace(league).slice(0, 4).forEach(({ p }) => { p.aura = Math.min(100, p.aura + 2); });
   league.potm = { week: league.week, pids: potm };
-  league.news.unshift({ week: league.week, kind: 'OSM', team: league.players[potm[0]]?.team ?? 0, title: 'OSM names its Players of the Month',
+  league.news.unshift({ week: league.week, kind: 'OSM', trophy: null, team: league.players[potm[0]]?.team ?? 0, title: 'OSM names its Players of the Month',
     text: potm.map((pid) => league.players[pid].name).join(', ') + '.' });
 }
 
@@ -508,7 +527,7 @@ function weekNews(league, games) {
   for (const g of games) {
     const r = g.result; const win = league.teams[r.winner]; const lose = league.teams[r.winner === g.home ? g.away : g.home];
     const riv = isRivalry(g.home, g.away, league);
-    if (riv) out.push({ week: wk, kind: 'RIVALRY', team: win.i, title: `${win.name} take ${riv[2]}`, text: `${win.name} beat ${lose.name} ${Math.max(...r.score)}–${Math.min(...r.score)}. ${league.players[r.mvp].name} led the way.` });
+    if (riv) out.push({ week: wk, kind: 'RIVALRY', team: win.i, trophy: riv[2], title: `${win.name} take ${riv[2]}`, text: `${win.name} beat ${lose.name} ${Math.max(...r.score)}–${Math.min(...r.score)}. ${league.players[r.mvp].name} led the way.` });
     else if (lose.rank && win.rank && win.rank - lose.rank >= 10) out.push({ week: wk, kind: 'UPSET', team: win.i, title: `${win.name} stun No. ${lose.rank} ${lose.name}`, text: `${league.players[r.mvp].name} carried the night as ${win.name} won ${Math.max(...r.score)}–${Math.min(...r.score)}.` });
   }
   const streaker = league.teams.slice().sort((a, b) => b.streak - a.streak)[0];
@@ -575,6 +594,12 @@ export function endSeason(league) {
     roleAwards: roleAward,
     standings: standings(league).map((t) => ({ i: t.i, w: t.w, l: t.l })),
   };
+  // Specialty awards (when we know where the season started).
+  const active = Object.values(league.players).filter((p) => p.team != null && p.stats.gp > 0);
+  const wake = active.filter((p) => p.startPower != null && p.career <= 3).sort((a, b) => (b.power - b.startPower) - (a.power - a.startPower))[0];
+  if (wake && wake.power > wake.startPower) { row.awakening = wake.pid; wake.aura = Math.min(100, wake.aura + 3); }
+  const phoenix = active.filter((p) => p.startHype != null && p.startHype < 45).sort((a, b) => (b.hype - b.startHype) - (a.hype - a.startHype))[0];
+  if (phoenix && phoenix.hype > phoenix.startHype + 5) { row.phoenix = phoenix.pid; phoenix.aura = Math.min(100, phoenix.aura + 3); }
   // Coach of the year: most wins above expectation.
   const coy = league.teams.slice().sort((a, b) => (b.w - expectedWins(b)) - (a.w - expectedWins(a)))[0];
   row.coachOfYear = coy.i;
@@ -614,14 +639,18 @@ export function simulateFullSeason(league) {
 export function resetForSeason(league) {
   league.season += 1; league.week = 1; league.phase = 'season'; league.playoffs = null;
   const rand = randOf(league);
+  if (league.user) league.user.lastWins = league.teams[league.user.team].w;
   league.teams.forEach((t) => {
     t.lastW = t.w; t.lastL = t.l;
     t.w = 0; t.l = 0; t.rw = 0; t.rl = 0; t.streak = 0; t.last = [];
     t.stage = stageOf(league, t); t.expect = t.stage;
   });
-  for (const p of Object.values(league.players)) { p.stats = blankStats(); p.lastStats = null; p.fatigue = 0; p.injury = 0; }
+  for (const p of Object.values(league.players)) { p.stats = blankStats(); p.lastStats = null; p.fatigue = 0; p.injury = 0; p.startPower = p.power; p.startHype = p.hype; }
   league.schedule = makeSchedule(rand);
-  league.news = [];
+  league.news = (league.news || []).filter((n) => n.off).slice(0, 10);
+  league.off = null;
+  if (league.user) league.user.expect = league.teams[league.user.team].stage;
+  if (hooks.buildDraftClass) hooks.buildDraftClass(league);
   league.lastWeekScores = [];
   rankPower(league);
   league.teams.forEach((t) => { t.prevRank = null; });

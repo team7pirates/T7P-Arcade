@@ -1,8 +1,8 @@
-// DYNASTY: The Anime Fighting League (release 1, "The Season").
+// DYNASTY: The Anime Fighting League (release 1 "The Season", release 2 "The Off-season").
 // Take over a team that missed last season's playoffs, set a lineup every
 // week against the rival coach (who gets one final swap), fight through a
 // 12-week season, win your division and chase the Zenith Clash.
-// Rules live in dynasty-rules.js.
+// Rules live in dynasty-rules.js; the off-season, trades and the draft in dynasty-off.js.
 
 import { h, fill, toast, avatar, sheet, confirmSheet } from '../core/ui.js';
 import { profile } from '../core/profile.js';
@@ -13,6 +13,7 @@ import { modeHeader, howToPlay } from '../core/mode-kit.js';
 import { SPECIALS } from '../core/combat.js';
 import { playMatch } from '../core/battle-view.js';
 import * as R from './dynasty-rules.js';
+import * as O from './dynasty-off.js';
 
 const help = howToPlay('dynasty', 'Dynasty', [
   'You are the new head coach of an Anime Fighting League team. Pick any team that missed last season\'s playoffs.',
@@ -22,7 +23,9 @@ const help = howToPlay('dynasty', 'Dynasty', [
   'Win your division to make the playoffs. Win two more and you lift the Celestial Grail at the Zenith Clash.',
   'Hype comes from winning fights. Aura comes from being seen: magazine picks and awards. Both carry over.',
   'Meet the front office\'s expectation or your job security drops. Miss it three seasons running and you\'re fired.',
-  'Retirements, the draft, free agency and trades arrive with the off-season update.',
+  'Front Office: trade until the Week 8 deadline, sign emergency pickups, and watch the soft cap (150). Going over comes off next season\'s cap.',
+  'Draft: you earn 8 scouting points a week. 6 points reveals a prospect\'s potential; a second report shows Generational Talent or Bust risk.',
+  'Off-season: retirements, awards night, re-sign (one Franchise Tag), up to 2 development upgrades, a one-round draft, then 3 rounds of free agency.',
 ]);
 
 const slotKey = (n) => `dynasty:slot${n}`;
@@ -40,6 +43,17 @@ const save = () => (L ? store.set(slotKey(slot), L) : null);
 
 function crest(t, size = 32) {
   return h('img', { class: 'dy-crest', src: crestUrl(t), alt: '', width: String(size), height: String(size), style: `width:${size}px;height:${size}px` });
+}
+// A trophy picture, or null when we have no art for that trophy.
+function trophy(name, size = 40, cls = 'dy-trophy') {
+  const src = R.trophyFile(name);
+  return src ? h('img', { class: cls, src, alt: name, title: name, style: `height:${size}px` }) : null;
+}
+// News items: rivalry stories show the rivalry trophy, everything else the team crest.
+function newsIcon(n) {
+  let name = n.trophy;
+  if (!name && n.kind === 'RIVALRY') name = (R.RIVALRIES.find((r) => n.title.includes(r[2])) || [])[2];
+  return (name && trophy(name, 40, 'dy-trophy dy-news-trophy')) || crest(team(n.team), 36);
 }
 function pAvatar(p, size = 'sm') {
   return avatar({ id: p.cid, portrait: p.portrait, franchise: p.franchise, name: p.name }, characters, size);
@@ -85,9 +99,9 @@ export async function render() {
             h('p', { class: 'label-spaced' }, `SLOT ${n}`),
             h('div', { class: 'dy-slot-team' }, crest(t, 48), h('div', {},
               h('p', { class: 'heading' }, t.name),
-              h('p', { class: 'caption muted' }, `${s.user.coach} · Season ${s.season} · ${s.phase === 'done' ? 'season complete' : s.phase === 'playoffs' ? 'playoffs' : `week ${s.week}`} · ${t.w}-${t.l}`))),
+              h('p', { class: 'caption muted' }, `${s.user.coach} · Season ${s.season} · ${s.phase === 'done' ? 'season complete' : s.phase === 'offseason' ? 'off-season' : s.phase === 'playoffs' ? 'playoffs' : `week ${s.week}`} · ${t.w}-${t.l}`))),
             h('div', { class: 'btn-row' },
-              h('button', { class: 'btn btn-primary', onClick: () => { L = s; slot = n; tab = 'league'; drawHub(); } }, 'Continue'),
+              h('button', { class: 'btn btn-primary', onClick: () => { L = O.migrate(s); slot = n; tab = 'league'; drawHub(); } }, 'Continue'),
               h('button', { class: 'btn btn-secondary', onClick: async () => {
                 const ok = await confirmSheet({ title: 'DELETE THIS DYNASTY?', message: `${t.name}, season ${s.season}. This can't be undone.`, confirmLabel: 'Delete', danger: true });
                 if (ok) { await store.remove(slotKey(n)); toast('Save deleted.'); }
@@ -217,14 +231,14 @@ export async function render() {
   }
 
   // ---------- The hub ----------
-  const TABS = [['coach', 'COACH'], ['league', 'LEAGUE'], ['roster', 'ROSTER'], ['schedule', 'SCHEDULE'], ['standings', 'STANDINGS']];
+  const TABS = [['coach', 'COACH'], ['league', 'LEAGUE'], ['roster', 'ROSTER'], ['office', 'FRONT OFFICE'], ['draft', 'DRAFT'], ['schedule', 'SCHEDULE'], ['standings', 'STANDINGS']];
 
   function shell(content) {
     const t = me();
     const nav = h('nav', { class: 'dy-tabs', 'aria-label': 'Dynasty sections' }, TABS.map(([id, label]) => h('button', {
       class: `dy-tab${tab === id ? ' is-on' : ''}`, 'aria-current': tab === id ? 'page' : null, onClick: () => { tab = id; drawHub(); },
     }, label)));
-    const status = L.phase === 'done' ? 'SEASON COMPLETE' : L.phase === 'playoffs' ? 'PLAYOFFS' : `WEEK ${L.week} OF ${R.WEEKS}`;
+    const status = L.phase === 'done' ? 'SEASON COMPLETE' : L.phase === 'offseason' ? 'OFF-SEASON' : L.phase === 'playoffs' ? 'PLAYOFFS' : `WEEK ${L.week} OF ${R.WEEKS}`;
     fill(root,
       header(`SEASON ${L.season} · ${status}`, () => { save(); drawSlots(); }),
       h('div', { class: 'dy-bar', style: `--c1:${t.c1};--c2:${t.c2}` },
@@ -237,7 +251,7 @@ export async function render() {
 
   function drawHub() {
     stopTimers();
-    ({ coach: drawCoach, league: drawLeague, roster: drawRoster, schedule: drawSchedule, standings: drawStandings }[tab] || drawLeague)();
+    ({ coach: drawCoach, league: drawLeague, roster: drawRoster, office: drawOffice, draft: drawDraftTab, schedule: drawSchedule, standings: drawStandings }[tab] || drawLeague)();
   }
 
   function nextAction() {
@@ -251,7 +265,7 @@ export async function render() {
           h('p', { class: 'caption muted' }, g.home === L.user.team ? 'VS' : 'AT'),
           h('p', { class: 'heading' }, `${opp.rank ? `#${opp.rank} ` : ''}${opp.name}`),
           h('p', { class: 'caption muted' }, `${opp.w}-${opp.l} · ${team(g.home).arena}`))),
-        rv ? h('p', { class: 'dy-trophy-line' }, `RIVALRY · ${rv[2].toUpperCase()} IS ON THE LINE`) : null,
+        rv ? h('div', { class: 'dy-trophy-row' }, trophy(rv[2], 56), h('p', { class: 'dy-trophy-line' }, `RIVALRY · ${rv[2].toUpperCase()} IS ON THE LINE`)) : null,
         h('div', { class: 'btn-row' },
           h('button', { class: 'btn btn-primary', onClick: () => openGamePlan() }, 'Game Plan'),
           h('button', { class: 'btn btn-secondary', onClick: autoWeek }, 'Auto-play week')));
@@ -271,11 +285,19 @@ export async function render() {
         h('button', { class: 'btn btn-primary btn-wide', onClick: finishPlayoffs }, 'Play out the playoffs'));
     }
     const last = L.history[0];
+    if (L.phase === 'offseason') {
+      return h('section', { class: 'dy-next dy-panel' },
+        h('p', { class: 'label-spaced gold' }, `THE OFF-SEASON · ${O.OFF_LABEL[L.off.step].toUpperCase()}`),
+        h('p', { class: 'heading' }, `${team(last.champion).name} hold the Celestial Grail.`),
+        offSteps(),
+        h('button', { class: 'btn btn-primary btn-wide', onClick: drawOff }, 'Continue the off-season'));
+    }
     return h('section', { class: 'dy-next dy-panel' },
       h('p', { class: 'label-spaced gold' }, `SEASON ${last.season} COMPLETE`),
       h('p', { class: 'heading' }, `${team(last.champion).name} won the Celestial Grail.`),
-      h('p', { class: 'body-text' }, 'Retirements, the draft, free agency and trades arrive with the off-season update. Your save is kept and will pick up right here.'),
-      h('button', { class: 'btn btn-secondary btn-wide', onClick: () => drawSeasonEnd(last) }, 'Season summary'));
+      h('div', { class: 'btn-row' },
+        h('button', { class: 'btn btn-primary', onClick: beginOffseason }, 'Start the off-season'),
+        h('button', { class: 'btn btn-secondary', onClick: () => drawSeasonEnd(last) }, 'Season summary')));
   }
 
   function drawLeague() {
@@ -335,7 +357,7 @@ export async function render() {
         h('section', { class: 'dy-panel' },
           h('h2', { class: 'dy-h' }, 'AROUND THE LEAGUE'),
           L.news.length ? h('ul', { class: 'dy-news' }, L.news.slice(0, 8).map((n) => h('li', {},
-            crest(team(n.team), 36),
+            newsIcon(n),
             h('div', {}, h('p', { class: 'dy-news-kind' }, `${n.kind}${n.week ? ` · WEEK ${n.week}` : ''}`), h('p', { class: 'dy-news-title' }, n.title), h('p', { class: 'caption muted' }, n.text))))) : h('p', { class: 'caption muted' }, 'Nothing yet. Play a week.'))),
       h('div', { class: 'dy-col-side' },
         h('section', { class: 'dy-panel' },
@@ -348,7 +370,7 @@ export async function render() {
               crest(t, 26), h('span', { class: 'dy-power-name' }, t.name), h('span', { class: 'dy-num' }, `${t.w}-${t.l}`));
           }))),
         h('section', { class: 'dy-panel dy-race' },
-          h('h2', { class: 'dy-h gold' }, 'GENERATIONAL PRODIGY RACE'),
+          h('div', { class: 'dy-h-trophy' }, trophy(R.AWARDS.prodigy, 64), h('h2', { class: 'dy-h gold' }, 'GPP RACE · GENERATIONAL PRODIGY PLAYER')),
           race.length ? h('ol', { class: 'dy-list' }, race.map(({ p, s }, i) => h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, team(p.team).name)), h('span', { class: 'dy-num' }, R.oddsFor(i, s, race[0].s))))) : h('p', { class: 'caption muted' }, 'The race starts after Week 1.')),
         h('section', { class: 'dy-panel' },
           h('h2', { class: 'dy-h' }, 'DAMAGE LEADERS'),
@@ -437,16 +459,460 @@ export async function render() {
       content: h('div', { class: 'dy-psheet' },
         h('div', { class: 'dy-psheet-top' }, pAvatar(p, 'card'),
           h('dl', { class: 'dy-bio' }, [
-            ['Team', team(p.team).name], ['Role', `${p.role}${p.second ? ` / ${p.second}` : ''}`], ['Series', p.series],
+            ['Team', p.team != null ? team(p.team).name : 'Free agent'], ['Role', `${p.role}${p.second ? ` / ${p.second}` : ''}`], ['Series', p.series],
             ['Power', `${R.effPower(L, p)} (base ${p.power})`], own ? ['Potential', `about ${potLow}–${potHigh}`] : null,
             ['Dev trait', DEV_LABEL[p.dev]], ['Career', `Season ${p.career}`],
+            p.revealed && (p.gen || p.bust) ? ['Scouting', p.gen ? 'Generational Talent' : 'Bust risk'] : null,
+            p.draftPick ? ['Drafted', `No. ${p.draftPick}, season ${p.draftSeason}`] : null,
             ['Hype', String(Math.round(p.hype))], ['Aura', String(p.aura)], ['Clutch', String(p.clutch)],
             ['Fatigue', `${Math.round(p.fatigue)}${p.injury ? ` · injured ${p.injury} wk` : ''}`],
-            ['Contract', `${p.contract.total} over ${p.contract.years} (cap hit ${R.capHit(p)})`],
+            ['Contract', p.contract ? `${p.contract.total} over ${p.contract.years} (cap hit ${R.capHit(p)}, ${p.contract.left} left)${p.tagged === L.season ? ' · franchise tag' : ''}` : `None · asks about ${O.asking(p)} a season`],
             p.lowKey ? ['Personality', 'Low-key: doesn\'t chase the spotlight'] : null,
           ].filter(Boolean).map(([k, v]) => h('div', {}, h('dt', {}, k), h('dd', {}, v))))),
         h('p', { class: 'caption muted' }, `This season: ${p.stats.gp} games · ${fmt(p.stats.dmg)} damage · ${p.stats.ko} KOs · ${p.stats.sp} specials. Special move: ${SPECIALS[p.role].name}.`)),
     });
+  }
+
+  // ---------- Shared bits for the Front Office, Draft and off-season ----------
+  const stars = (n) => h('span', { class: 'dy-stars', 'aria-label': `${n} of 5 stars` }, '★'.repeat(n), h('span', { class: 'dy-stars-off' }, '★'.repeat(5 - n)));
+  const hue = (str) => { let x = 0; for (const c of String(str)) x = (x * 31 + c.charCodeAt(0)) % 360; return x; };
+
+  function capPanel(t = me()) {
+    const pay = R.payroll(L, t); const cap = R.capOf(t); const over = pay > cap;
+    return h('div', { class: 'dy-cap dy-panel' },
+      h('div', {}, h('p', { class: 'label-spaced' }, 'PAYROLL'), h('p', { class: 'stat' }, String(pay))),
+      h('div', {}, h('p', { class: 'label-spaced' }, t.capPenalty ? 'CAP (PENALTY)' : 'SOFT CAP'), h('p', { class: 'stat' }, String(cap))),
+      h('div', {}, h('p', { class: 'label-spaced' }, over ? 'OVER BY' : 'CAP SPACE'), h('p', { class: `stat ${over ? 'loss' : 'win'}` }, String(Math.abs(Math.round((cap - pay) * 10) / 10)))),
+      t.dead ? h('div', {}, h('p', { class: 'label-spaced' }, 'DEAD MONEY'), h('p', { class: 'stat loss' }, String(t.dead))) : null);
+  }
+
+  function pLine(p, right, sub) {
+    return h('li', {}, h('button', { class: 'dy-pline', onClick: () => playerSheet(p) }, pAvatar(p),
+      h('span', { class: 'dy-list-text' }, h('span', {}, p.name),
+        h('span', { class: 'caption muted' }, sub || `${p.role} · ${p.series} · ${DEV_LABEL[p.dev]} · season ${p.career}`))),
+    right);
+  }
+
+  function offSteps() {
+    const steps = (L.off?.step === 'fired' ? ['fired'] : []).concat(O.OFF_STEPS);
+    const at = steps.indexOf(L.off?.step);
+    return h('ol', { class: 'dy-steps', 'aria-label': 'Off-season steps' }, steps.map((k, i) => h('li', {
+      class: i < at ? 'is-done' : i === at ? 'is-on' : '', 'aria-current': i === at ? 'step' : null,
+    }, O.OFF_LABEL[k])));
+  }
+
+  // ---------- The Front Office tab ----------
+  const trade = { ti: null, give: [], get: [] };
+
+  function drawOffice() {
+    const t = me();
+    const ps = players(t).sort((a, b) => R.capHit(b) - R.capHit(a));
+    const parts = [capPanel(t),
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'CONTRACTS'),
+        h('p', { class: 'caption muted' }, `A contract is a total over seasons, split evenly into the cap hit. Over the cap at season's end: the overage comes off next season's cap, and two seasons running costs your draft pick.${t.overStreak ? ` You finished over last season.` : ''}`),
+        h('ul', { class: 'dy-list' }, ps.map((p) => pLine(p, h('span', { class: 'dy-num' }, String(R.capHit(p))),
+          `${p.role} · ${p.contract.total} over ${p.contract.years} · ${p.contract.left} left${p.tagged === L.season ? ' · TAG' : ''}`))))];
+    if (L.phase === 'offseason') {
+      parts.unshift(h('section', { class: 'dy-panel' }, h('p', { class: 'label-spaced gold' }, 'THE OFF-SEASON'), offSteps(),
+        h('button', { class: 'btn btn-primary btn-wide', onClick: drawOff }, `Continue: ${O.OFF_LABEL[L.off.step]}`)));
+    } else if (L.phase === 'season') {
+      parts.push(tradePanel(), pickupPanel());
+    } else {
+      parts.push(h('p', { class: 'caption muted' }, 'Trades are closed until next season. The deadline is after Week 8.'));
+    }
+    shell(h('div', { class: 'dy-content dy-office' }, parts));
+  }
+
+  function tradePanel() {
+    if (!O.tradeOpen(L)) return h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'TRADES'), h('p', { class: 'body-text' }, `The trade deadline (after Week ${R.TRADE_DEADLINE}) has passed.`));
+    const t = me();
+    const others = L.teams.filter((x) => x.i !== t.i).sort((a, b) => a.name.localeCompare(b.name));
+    if (trade.ti == null || trade.ti === t.i) trade.ti = R.rival(L, t.i)?.team ?? others[0].i;
+    const them = team(trade.ti);
+    trade.give = trade.give.filter((pid) => L.players[pid].team === t.i);
+    trade.get = trade.get.filter((pid) => L.players[pid].team === them.i);
+    const ev = O.evaluateTrade(L, them.i, trade.give, trade.get);
+    const pick = (list, pid) => { const i = list.indexOf(pid); if (i >= 0) list.splice(i, 1); else if (list.length < 2) list.push(pid); else toast('Up to 2 cards each way.'); drawOffice(); };
+    const col = (tm, list) => h('ul', { class: 'dy-list dy-pickable' }, players(tm).sort((a, b) => b.power - a.power).map((p) => h('li', {},
+      h('label', { class: `dy-check${list.includes(p.pid) ? ' is-on' : ''}` },
+        h('input', { type: 'checkbox', checked: list.includes(p.pid), onChange: () => pick(list, p.pid) }),
+        pAvatar(p),
+        h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${p.role} · ${p.power} · pot ${tm.i === t.i ? p.potential : '?'} · ${R.capHit(p)}`))))));
+    return h('section', { class: 'dy-panel' },
+      h('h2', { class: 'dy-h' }, `TRADES · OPEN THROUGH WEEK ${R.TRADE_DEADLINE}`),
+      h('p', { class: 'caption muted' }, 'Rebuilds want youth, potential and cap space. Contenders want Power now. Teams a few pieces away pay for the role they are missing.'),
+      h('label', { class: 'dy-field' }, h('span', { class: 'label-spaced' }, 'TRADE WITH'),
+        h('select', { class: 'dy-select', onChange: (e) => { trade.ti = Number(e.target.value); trade.get = []; drawOffice(); } },
+          others.map((x) => h('option', { value: String(x.i), selected: x.i === them.i }, `${x.name} · ${R.STAGE_LABEL[x.stage]} · ${x.w}-${x.l}`)))),
+      h('div', { class: 'dy-trade' },
+        h('div', {}, h('p', { class: 'label-spaced' }, 'YOU SEND'), col(t, trade.give)),
+        h('div', {}, h('p', { class: 'label-spaced' }, `${them.abbr} SEND`), col(them, trade.get))),
+      meter(ev.score, 50, ev.why),
+      h('button', { class: 'btn btn-primary btn-wide', disabled: !ev.ok, onClick: async () => {
+        const ok = await confirmSheet({ title: 'MAKE THE TRADE?', message: `${trade.give.map((pid) => L.players[pid].name).join(' + ')} for ${trade.get.map((pid) => L.players[pid].name).join(' + ')}. Contracts move with the cards.`, confirmLabel: 'Trade' });
+        if (!ok) return;
+        O.doTrade(L, t.i, them.i, trade.give.slice(), trade.get.slice());
+        L.pending = null;
+        trade.give = []; trade.get = [];
+        await save(); toast('Trade done.'); drawOffice();
+      } }, 'Propose trade'));
+  }
+
+  function meter(score, bar, text) {
+    return h('div', { class: 'dy-meter-wrap' },
+      h('div', { class: 'dy-meter', role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(score), 'aria-label': 'Interest' },
+        h('span', { class: 'dy-meter-fill', style: `width:${score}%;background:${score >= bar ? 'var(--win)' : score >= bar - 12 ? 'var(--brand-gold)' : 'var(--loss)'}` }),
+        h('span', { class: 'dy-meter-bar', style: `left:${bar}%` })),
+      h('p', { class: 'caption' }, `${score} interest${text ? ` · ${text}` : ''}`));
+  }
+
+  function pickupPanel() {
+    const t = me();
+    const hurt = players(t).filter((p) => p.injury > 0).length;
+    const pool = O.emergencyPool(L).sort((a, b) => b.power - a.power).slice(0, 10);
+    return h('section', { class: 'dy-panel' },
+      h('h2', { class: 'dy-h' }, 'EMERGENCY PICKUPS'),
+      h('p', { class: 'caption muted' }, `Sign a depth card (Power ${O.EMERGENCY_MAX_POWER} and under) at the minimum (${O.MIN_SALARY}) for the rest of the season. You cut someone to make room; their cap hit stays as dead money.${hurt ? ` You have ${hurt} injured.` : ''}`),
+      h('ul', { class: 'dy-list' }, pool.map((p) => pLine(p, h('button', { class: 'btn btn-secondary btn-sm', onClick: () => pickupSheet(p) }, 'Sign')))));
+  }
+
+  function pickupSheet(p) {
+    const t = me();
+    const s = sheet({
+      title: `SIGN ${p.name.toUpperCase()}`,
+      content: h('div', {},
+        h('p', { class: 'body-text' }, `${p.role} · Power ${p.power} · ${p.series}. Who do you cut?`),
+        h('ul', { class: 'dy-list' }, players(t).sort((a, b) => a.power - b.power).map((q) => pLine(q,
+          h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => {
+            const r = O.emergencyPickup(L, p.pid, q.pid);
+            if (!r.ok) { toast(r.why); return; }
+            L.pending = null; s.close(); await save(); toast(`${p.name} signed. ${q.name} cut.`); drawOffice();
+          } }, 'Cut'), `${q.role} · ${q.power} · cap hit ${R.capHit(q)}${q.injury ? ` · OUT ${q.injury} WK` : ''}`)))),
+    });
+  }
+
+  // ---------- The Draft tab and board ----------
+  const board = { world: null, role: null };
+
+  function hexMap() {
+    const worlds = O.classWorlds(L);
+    if (!worlds.length) return null;
+    const per = (window.innerWidth || 1200) < 640 ? 4 : 8;
+    const rows = [];
+    for (let i = 0; i < worlds.length; i += per) rows.push(worlds.slice(i, i + per));
+    return h('div', { class: 'dy-hexmap', role: 'group', 'aria-label': 'Where this class comes from' }, rows.map((row, r) => h('div', { class: `dy-hexrow${r % 2 ? ' is-odd' : ''}` }, row.map((w) => h('button', {
+      class: `dy-hex${board.world === w.world ? ' is-on' : ''}`, style: `--h:${hue(w.franchise || w.world)}`, 'aria-pressed': board.world === w.world ? 'true' : 'false',
+      title: `${w.world}: ${w.n} prospect${w.n > 1 ? 's' : ''}`, onClick: () => { board.world = board.world === w.world ? null : w.world; redrawBoard(); },
+    }, h('span', { class: 'dy-hex-name' }, w.world), h('span', { class: 'dy-hex-n' }, String(w.n)))))));
+  }
+  let redrawBoard = () => {};
+
+  function boardList(mode) {
+    const onClock = mode === 'pick' && O.onTheClock(L) === L.user.team;
+    let list = O.draftBoard(L);
+    if (board.world) list = list.filter((p) => p.series === board.world);
+    if (board.role) list = list.filter((p) => p.role === board.role);
+    list.sort((a, b) => (b.scout >= 1 ? b.potential : b.stars * 8 + 56) - (a.scout >= 1 ? a.potential : a.stars * 8 + 56) || b.stars - a.stars);
+    const pts = L.user.scoutPts || 0;
+    return h('ul', { class: 'dy-board' }, list.map((p) => {
+      const v = O.prospectView(p);
+      const tagCls = v.tag === 'Generational Talent' ? 'gold' : v.tag === 'Bust risk' ? 'loss' : 'muted';
+      return h('li', { class: 'dy-prospect' },
+        pAvatar(p, 'md'),
+        h('span', { class: 'dy-list-text' },
+          h('span', { class: 'dy-rname' }, p.name),
+          h('span', { class: `caption ${ROLE_CLASS(p.role)}` }, `${p.role} · ${p.series}`),
+          h('span', { class: 'dy-prospect-meta' }, stars(v.stars),
+            h('span', { class: 'caption' }, v.potential != null ? `Potential ${v.potential}` : 'Potential ?'),
+            v.tag ? h('span', { class: `caption ${tagCls}` }, v.tag) : null)),
+        h('span', { class: 'dy-prospect-btns' },
+          p.scout < 2 ? h('button', { class: 'btn btn-secondary btn-sm', disabled: pts < R.SCOUT_COST, onClick: async () => {
+            const r = O.scout(L, p.pid); if (!r.ok) { toast(r.why); return; }
+            await save(); redrawBoard();
+          } }, p.scout === 0 ? `Scout · ${R.SCOUT_COST}` : `Deep scout · ${R.SCOUT_COST}`) : null,
+          onClock ? h('button', { class: 'btn btn-primary btn-sm', onClick: () => draftPlayer(p) }, 'Draft') : null));
+    }));
+  }
+
+  function boardFilters() {
+    return h('div', { class: 'dy-chips', role: 'group', 'aria-label': 'Filter by role' },
+      [null, ...R.ROLES].map((r) => h('button', { class: `dy-chip${board.role === r ? ' is-on' : ''}`, 'aria-pressed': board.role === r ? 'true' : 'false', onClick: () => { board.role = r; redrawBoard(); } }, r || 'All roles')));
+  }
+
+  function drawDraftTab() {
+    if (L.phase === 'offseason' && L.off.step === 'draft') { drawOff(); return; }
+    redrawBoard = drawDraftTab;
+    const n = O.draftBoard(L).length;
+    shell(h('div', { class: 'dy-content' },
+      h('section', { class: 'dy-panel' },
+        h('div', { class: 'dy-scout-head' },
+          h('div', {}, h('h2', { class: 'dy-h' }, `SEASON ${L.season} DRAFT CLASS`),
+            h('p', { class: 'caption muted' }, `${n} prospects · one round in the off-season. The board shows stars, role and world. Scouting tells you the rest.`)),
+          h('div', { class: 'dy-scout-pts' }, h('p', { class: 'label-spaced' }, 'SCOUTING POINTS'), h('p', { class: 'stat' }, String(L.user.scoutPts || 0)), h('p', { class: 'caption muted' }, `+${R.SCOUT_WEEKLY} a week`))),
+        h('p', { class: 'caption muted' }, 'Newcomers wear the headshots of cards who retire this year, under new names from any culture. Any of them could be a Generational Talent.')),
+      n ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'THE WORLDS'), hexMap()) : null,
+      n ? boardFilters() : h('p', { class: 'caption muted' }, 'No draft class yet. It arrives with the new season.'),
+      n ? boardList('scout') : null));
+  }
+
+  async function draftPlayer(p) {
+    const ok = await confirmSheet({ title: `DRAFT ${p.name.toUpperCase()}?`, message: `${p.role} from ${p.series}. Rookie deal: 3 seasons.`, confirmLabel: 'Draft' });
+    if (!ok) return;
+    if (!O.makePick(L, L.user.team, p.pid)) { toast(`You already have ${R.MAX_PER_SERIES} from ${p.series}.`); return; }
+    L.news.unshift({ week: 0, off: true, kind: 'DRAFT', team: L.user.team, title: `${me().name} draft ${p.name}`, text: `Pick No. ${p.draftPick}: a ${p.role} from ${p.series}.` });
+    O.simDraft(L, true);
+    await save(); drawOff();
+  }
+
+  // ---------- The off-season ----------
+  async function beginOffseason() {
+    O.startOffseason(L);
+    await save();
+    drawOff();
+  }
+
+  function offFrame(title, body, next) {
+    stopTimers();
+    fill(root, header(`OFF-SEASON · ${title}`, () => { save(); tab = 'league'; drawHub(); }),
+      h('div', { class: 'dy-wrap' }, offSteps(), body, next || null));
+  }
+  const nextBtn = (label, before) => h('button', { class: 'btn btn-primary btn-wide', onClick: async () => {
+    if (before && (await before()) === false) return;
+    O.nextStep(L); await save(); drawOff();
+  } }, label);
+
+  function drawOff() {
+    if (L.phase !== 'offseason') { tab = 'league'; drawHub(); return; }
+    ({ fired: offFired, retire: offRetire, awards: offAwards, resign: offResign, upgrade: offUpgrade, draft: offDraft, fa: offFA, ready: offReady }[L.off.step])();
+  }
+
+  function offFired() {
+    const jobs = O.jobsAfterFiring(L);
+    const last = L.history[0];
+    offFrame('FIRED', h('div', {},
+      h('article', { class: 'dy-article' }, crest(me(), 72),
+        h('p', { class: 'label-spaced loss' }, 'AROUND THE LEAGUE'),
+        h('h2', { class: 'dy-article-title' }, `${me().name} fire ${L.user.coach}`),
+        h('p', { class: 'dy-article-body' }, 'Three missed expectations in a row. The front office wants a new voice. Pick your next job from the teams that missed the playoffs.')),
+      h('ul', { class: 'dy-jobs' }, jobs.map((i) => {
+        const t = team(i); const st = last.standings.find((x) => x.i === i);
+        return h('li', {}, h('button', { class: 'dy-job', onClick: async () => {
+          const ok = await confirmSheet({ title: `TAKE THE ${t.name.toUpperCase()} JOB?`, message: `${st.w}-${st.l} last season. Front office: ${R.STAGE_LABEL[t.stage]}.`, confirmLabel: 'Take the job' });
+          if (!ok) return;
+          const art = O.changeJob(L, i); O.nextStep(L); await save();
+          offFrame('NEW JOB', h('article', { class: 'dy-article' }, crest(t, 72), h('p', { class: 'label-spaced' }, 'AROUND THE LEAGUE · YOUR HIRE'), h('h2', { class: 'dy-article-title' }, art.title), h('p', { class: 'dy-article-body' }, art.text)),
+            h('button', { class: 'btn btn-primary btn-wide', onClick: drawOff }, 'On to the off-season'));
+        } }, crest(t, 40), h('span', { class: 'dy-list-text' }, h('span', {}, t.name), h('span', { class: 'caption muted' }, `${st.w}-${st.l} · ${R.STAGE_LABEL[t.stage]}`))));
+      }))), null);
+  }
+
+  function offRetire() {
+    const o = L.off; const t = me();
+    const mine = o.retired.filter((r) => r.team === t.i);
+    const notable = o.retired.filter((r) => r.team !== t.i).sort((a, b) => b.power - a.power).slice(0, 8);
+    const face = (r) => pAvatar(L.players[r.pid]);
+    const row = (r) => h('li', {}, face(r), h('span', { class: 'dy-list-text' }, h('span', {}, r.name),
+      h('span', { class: 'caption muted' }, `${r.team != null ? team(r.team).name : 'Free agent'} · ${r.seasons} seasons${r.iron ? ' · Iron Man' : ''} · ${r.series}`)), h('span', { class: 'dy-num' }, String(r.power)));
+    offFrame('RETIREMENTS', h('div', { class: 'dy-off-body' },
+      h('p', { class: 'body-text' }, `${o.retired.length} cards retired. Retired means retired: they don't come back. Their headshots return in next year's class under new names.`),
+      o.inducted.length ? h('section', { class: 'dy-panel dy-pantheon' }, h('h2', { class: 'dy-h gold' }, 'THE GENERATIONAL PANTHEON'),
+        h('p', { class: 'caption muted' }, 'Retired at 95+ Power.'),
+        h('ul', { class: 'dy-list' }, o.inducted.map((pid) => { const p = L.players[pid]; return h('li', {}, pAvatar(p, 'md'), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name), h('span', { class: 'caption muted' }, `${p.series} · ${p.career} seasons`)), h('span', { class: 'dy-num gold' }, String(p.power))); }))) : null,
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, `YOUR TEAM${mine.length ? '' : ': NOBODY RETIRED'}`), mine.length ? h('ul', { class: 'dy-list' }, mine.map(row)) : null),
+      notable.length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'AROUND THE LEAGUE'), h('ul', { class: 'dy-list' }, notable.map(row))) : null),
+    nextBtn('On to awards night'));
+  }
+
+  function offAwards() {
+    const row = L.history[0];
+    const award = (pid) => (pid ? L.players[pid] : null);
+    const gpp = award(row.prodigy);
+    const special = [['awakening', 'Breakout season'], ['phoenix', 'Comeback season']].filter(([k]) => row[k]).map(([k, why]) => {
+      const p = award(row[k]); return h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${R.AWARDS[k]} · ${why}`)));
+    });
+    offFrame('AWARDS NIGHT', h('div', { class: 'dy-off-body' },
+      h('section', { class: 'dy-panel dy-awards-hero' },
+        h('p', { class: 'label-spaced gold' }, `SEASON ${row.season} · THE GPP`),
+        h('div', { class: 'dy-gpp-hero' }, trophy(R.AWARDS.prodigy, 180, 'dy-trophy dy-grail'),
+          h('div', {}, gpp ? pAvatar(gpp, 'lg') : null, h('h2', { class: 'display-md' }, row.prodigyName), h('p', { class: 'caption muted' }, `${R.AWARDS.prodigy} · ${team(row.prodigyTeam).name}`)))),
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'BEST AT THEIR ROLE'),
+        h('ul', { class: 'dy-awards-grid' }, R.ROLES.map((r) => { const p = award(row.roleAwards[r]); return p ? h('li', {}, trophy(R.AWARDS[r], 96), pAvatar(p), h('p', { class: 'heading' }, p.name), h('p', { class: 'caption muted' }, `${R.AWARDS[r]} · ${team(p.team ?? row.prodigyTeam)?.abbr || ''}`)) : null; }))),
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'SPECIALTY AWARDS'),
+        h('ul', { class: 'dy-list' }, special,
+          h('li', {}, crest(team(row.coachOfYear), 32), h('span', { class: 'dy-list-text' }, h('span', {}, team(row.coachOfYear).coachName), h('span', { class: 'caption muted' }, `${R.AWARDS.coach} · Coach of the Year, ${team(row.coachOfYear).name}`)))))),
+    nextBtn('On to re-signing'));
+  }
+
+  const yearsPick = {};
+  function offResign() {
+    const t = me();
+    const exp = O.expiring(L, t).sort((a, b) => b.power - a.power);
+    const signedNow = players(t).filter((p) => p.contract && p.contract.years === p.contract.left && p.contract.left > 0 && (p.resignedSeason === L.season || p.tagged === L.season));
+    const body = h('div', { class: 'dy-off-body' },
+      capPanel(t),
+      h('p', { class: 'body-text' }, exp.length ? `${exp.length} contract${exp.length > 1 ? 's' : ''} ran out. Re-sign them now, use your one Franchise Tag, or let them go to free agency.` : 'No contracts ran out. Nothing to do here.'),
+      exp.length ? h('ul', { class: 'dy-list dy-resign' }, exp.map((p) => {
+        const ask = O.askFor(L, p, t); const want = O.wantYears(p);
+        const yrs = yearsPick[p.pid] || want;
+        return h('li', { class: 'dy-resign-row' }, pAvatar(p, 'md'),
+          h('span', { class: 'dy-list-text' }, h('span', { class: 'dy-rname' }, p.name),
+            h('span', { class: 'caption muted' }, `${p.role} · Power ${p.power} · season ${p.career} · Hype ${Math.round(p.hype)}${p.lowKey ? ' · low-key' : ''}`),
+            h('span', { class: 'caption' }, `Asks ${ask} a season · wants ${want} season${want > 1 ? 's' : ''}`)),
+          h('span', { class: 'dy-resign-btns' },
+            h('span', { class: 'dy-yrs', role: 'group', 'aria-label': 'Seasons' }, [1, 2, 3, 4].map((y) => h('button', { class: `dy-chip${y === yrs ? ' is-on' : ''}`, 'aria-pressed': y === yrs ? 'true' : 'false', onClick: () => { yearsPick[p.pid] = y; offResign(); } }, `${y}`))),
+            h('button', { class: 'btn btn-primary btn-sm', onClick: async () => { O.resign(L, p.pid, yrs); p.resignedSeason = L.season; await save(); toast(`${p.name}: ${Math.round(ask * yrs * 10) / 10} over ${yrs}.`); offResign(); } }, `Re-sign · ${Math.round(ask * yrs * 10) / 10}`),
+            t.tagged == null ? h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { O.franchiseTag(L, p.pid); await save(); toast(`${p.name} tagged for one season.`); offResign(); } }, `Tag · ${O.tagPrice(L, p)}`) : null,
+            h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { O.letGo(L, p.pid); await save(); offResign(); } }, 'Let go')));
+      })) : null,
+      signedNow.length ? h('p', { class: 'caption muted' }, `Kept: ${signedNow.map((p) => p.name).join(', ')}.`) : null,
+      t.tagged != null ? h('p', { class: 'caption gold' }, `Franchise Tag used on ${L.players[t.tagged].name}.`) : null);
+    offFrame('RE-SIGN', body, nextBtn('On to upgrades', async () => {
+      const left = O.expiring(L, me()).length;
+      if (!left) return true;
+      return confirmSheet({ title: 'LET THE REST GO?', message: `${left} unsigned card${left > 1 ? 's' : ''} will go to free agency.`, confirmLabel: 'Continue' });
+    }));
+  }
+
+  function offUpgrade() {
+    const t = me();
+    const ps = players(t).sort((a, b) => a.career - b.career || b.potential - a.potential);
+    const used = t.upgrades || 0;
+    offFrame('UPGRADES', h('div', { class: 'dy-off-body' },
+      capPanel(t),
+      h('p', { class: 'body-text' }, `Invest in development: Normal → Star → Superstar. One step per card each off-season, up to ${O.UPGRADES_PER_TEAM} a team, only in a card's first 4 seasons. The rest of the contract goes up ×1.4 (Star) or ×1.8 (Superstar), split evenly. Upgraded cards grow faster and gain hidden potential, and you find out if they are a Generational Talent or a bust.`),
+      h('p', { class: 'label-spaced' }, `${used} OF ${O.UPGRADES_PER_TEAM} USED`),
+      h('ul', { class: 'dy-list' }, ps.map((p) => {
+        const chk = O.canUpgrade(L, p);
+        const c = p.contract && p.dev < 2 && p.contract.left > 0 ? O.upgradeCost(p) : null;
+        return pLine(p, chk.ok
+          ? h('button', { class: 'btn btn-primary btn-sm', onClick: async () => {
+            const ok = await confirmSheet({ title: `${DEV_LABEL[p.dev + 1].toUpperCase()}: ${p.name.toUpperCase()}?`, message: `Cap hit goes from ${c.hitNow} to ${c.hitAfter} for the ${c.left} season${c.left > 1 ? 's' : ''} left (+${c.extra} a season).`, confirmLabel: 'Upgrade' });
+            if (!ok) return;
+            const r = O.upgrade(L, p.pid); await save();
+            toast(r.gen ? `${p.name} is a GENERATIONAL TALENT.` : r.bust ? `${p.name} looks like a bust. The upgrade can't fix that.` : `${p.name} is now a ${DEV_LABEL[p.dev]}.`);
+            offUpgrade();
+          } }, `→ ${DEV_LABEL[p.dev + 1]} · +${c.extra}`)
+          : h('span', { class: 'caption muted dy-why' }, p.upgraded === L.season ? `Upgraded${p.gen ? ' · Generational' : p.bust ? ' · Bust' : ''}` : chk.why),
+        `${p.role} · ${DEV_LABEL[p.dev]} · season ${p.career} · Power ${p.power}`);
+      }))),
+    nextBtn('On to the draft'));
+  }
+
+  function offDraft() {
+    redrawBoard = offDraft;
+    const o = L.off; const t = me();
+    if (O.onTheClock(L) != null && O.onTheClock(L) !== t.i && !o.picks.some((x) => x.team === t.i) && o.order.includes(t.i)) { O.simDraft(L, true); }
+    const clock = O.onTheClock(L);
+    const mine = clock === t.i;
+    const myPick = o.order.indexOf(t.i);
+    const done = clock == null;
+    const recent = o.picks.slice(-6).reverse();
+    const strip = h('ol', { class: 'dy-order' }, o.order.slice(o.pick, o.pick + 8).map((i, k) => h('li', { class: i === t.i ? 'is-me' : '' }, h('span', { class: 'caption' }, `${o.pick + k + 1}`), crest(team(i), 28))));
+    offFrame('THE DRAFT', h('div', { class: 'dy-off-body' },
+      h('section', { class: 'dy-panel' },
+        h('p', { class: 'label-spaced gold' }, done ? 'THE DRAFT IS OVER' : mine ? 'YOU ARE ON THE CLOCK' : `PICK ${o.pick + 1}: ${team(clock).name.toUpperCase()}`),
+        myPick < 0 ? h('p', { class: 'body-text loss' }, 'You lost your pick: over the soft cap two seasons running.') : h('p', { class: 'caption muted' }, `Your pick: No. ${myPick + 1}. One round. Rookie deals run 3 seasons.`),
+        done ? null : strip,
+        h('p', { class: 'caption muted' }, `Scouting points left: ${L.user.scoutPts || 0}. You can still scout now.`)),
+      recent.length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'LATEST PICKS'),
+        h('ul', { class: 'dy-list' }, recent.map((x) => { const p = L.players[x.pid]; return h('li', {}, h('span', { class: 'dy-num' }, `${x.pick}`), crest(team(x.team), 24), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${p.role} · ${p.series}`))); }))) : null,
+      done ? null : h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'THE WORLDS'), hexMap()),
+      done ? null : boardFilters(),
+      done ? null : boardList('pick')),
+    done || myPick < 0 || o.picks.some((x) => x.team === t.i)
+      ? nextBtn(done ? 'On to free agency' : 'Finish the draft')
+      : h('p', { class: 'caption muted' }, 'Make your pick from the board.'));
+  }
+
+  const offerSheet = (p) => {
+    const t = me(); const fa = L.off.fa;
+    const ask = O.asking(p);
+    const cur = fa.offers[p.pid] || { per: Math.round(ask * 10) / 10, years: O.wantYears(p) };
+    const st = { per: cur.per, years: cur.years };
+    const bar = O.FA_BAR[fa.round - 1];
+    const body = h('div', { class: 'dy-offer' });
+    const s = sheet({ title: `OFFER: ${p.name.toUpperCase()}`, content: body });
+    const draw = () => {
+      const it = O.interest(L, p, t, st);
+      const parts = [['Money', it.parts.money, 40], ['Winning', it.parts.winning, p.lowKey ? 26 : 18], ['Playing time', it.parts.time, p.lowKey ? 24 : 14], ['Teammates from their world', it.parts.friends, 8], ['Your coaching style', it.parts.style, 6], ['Spotlight (Hype + Aura)', it.parts.spotlight, p.lowKey ? 0 : 9]].filter((x) => x[2]);
+      fill(body,
+        h('div', { class: 'dy-offer-top' }, pAvatar(p, 'md'), h('div', {}, h('p', { class: 'heading' }, p.name), h('p', { class: 'caption muted' }, `${p.role} · Power ${p.power} · ${p.series} · season ${p.career}${p.lowKey ? ' · low-key' : ''}`),
+          h('p', { class: 'caption' }, `Asks about ${Math.round(ask * 10) / 10} a season for ${O.wantYears(p)} season${O.wantYears(p) > 1 ? 's' : ''}`))),
+        h('label', { class: 'dy-field' }, h('span', { class: 'label-spaced' }, `PER SEASON: ${st.per}`),
+          h('input', { type: 'range', min: String(O.MIN_SALARY), max: String(Math.max(2, Math.round(ask * 1.6))), step: '0.1', value: String(st.per), onInput: (e) => { st.per = Number(e.target.value); draw(); } })),
+        h('div', { class: 'dy-field' }, h('span', { class: 'label-spaced' }, 'SEASONS'),
+          h('span', { class: 'dy-yrs' }, [1, 2, 3, 4].map((y) => h('button', { class: `dy-chip${y === st.years ? ' is-on' : ''}`, 'aria-pressed': y === st.years ? 'true' : 'false', onClick: () => { st.years = y; draw(); } }, String(y))))),
+        it.blocked ? h('p', { class: 'body-text loss' }, it.blocked) : meter(it.score, bar, `signs this round at ${bar}+ (if nobody beats you)`),
+        h('ul', { class: 'dy-parts' }, parts.map(([k, v, max]) => h('li', {}, h('span', { class: 'caption' }, k), h('span', { class: 'dy-part' }, h('span', { style: `width:${Math.round((v / max) * 100)}%` }))))),
+        h('p', { class: 'caption muted' }, `Total ${Math.round(st.per * st.years * 10) / 10} over ${st.years}. Cap hit ${st.per}. Your space after: ${Math.round((O.capRoom(L, t) - st.per) * 10) / 10}.`),
+        h('div', { class: 'btn-row' },
+          fa.offers[p.pid] ? h('button', { class: 'btn btn-secondary', onClick: async () => { O.withdraw(L, p.pid); await save(); s.close(); offFA(); } }, 'Withdraw') : null,
+          h('button', { class: 'btn btn-primary', disabled: !!it.blocked, onClick: async () => {
+            const r = O.makeOffer(L, p.pid, st.per, st.years); if (!r.ok) { toast(r.why); return; }
+            await save(); s.close(); offFA();
+          } }, fa.offers[p.pid] ? 'Update offer' : 'Make offer')));
+    };
+    draw();
+  };
+
+  const faFilter = { role: null };
+  function offFA() {
+    const t = me(); const fa = L.off.fa;
+    const spots = O.openSpots(L, t);
+    const offers = Object.entries(fa.offers).map(([pid, o]) => ({ p: L.players[pid], o }));
+    let pool = O.faPool(L).sort((a, b) => b.power - a.power);
+    if (faFilter.role) pool = pool.filter((p) => p.role === faFilter.role);
+    pool = pool.slice(0, 40);
+    const last = fa.results[fa.results.length - 1];
+    const results = last ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, `ROUND ${last.round} RESULTS`),
+      h('ul', { class: 'dy-list' }, last.signed.filter((x) => x.user || L.players[x.pid].power >= 85).slice(0, 12).map((x) => {
+        const p = L.players[x.pid];
+        const txt = x.missed ? `Didn't sign. Interest ${x.score}, needed ${x.bar}.` : x.user && x.team === t.i ? `Signed with you: ${x.per} × ${x.years}` : `Signed with ${team(x.team).name}${x.beat != null ? ` (you were at ${x.beat})` : ''}`;
+        return h('li', {}, x.team != null ? crest(team(x.team), 24) : h('span', { class: 'dy-num loss' }, '✕'), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: `caption ${x.user && x.team === t.i ? 'win' : x.user ? 'loss' : 'muted'}` }, txt)));
+      }))) : null;
+    const tooMany = t.roster.length > R.ROSTER_SIZE;
+    const body = h('div', { class: 'dy-off-body' },
+      capPanel(t),
+      h('section', { class: 'dy-panel' },
+        h('p', { class: 'label-spaced gold' }, fa.done ? 'FREE AGENCY IS CLOSED' : `ROUND ${fa.round} OF ${O.FA_ROUNDS}`),
+        h('p', { class: 'body-text' }, fa.done ? `Fill any empty spots with the best leftovers on one-season bargain deals (${Math.round(O.BARGAIN * 100)}% of their ask), then start the season.`
+          : `You have ${spots} open spot${spots === 1 ? '' : 's'}. Make offers, then run the round. Every player picks the offer they like most. This round they sign at ${O.FA_BAR[fa.round - 1]}+ interest; they get less picky each round.`),
+        offers.length ? h('ul', { class: 'dy-list' }, offers.map(({ p, o }) => pLine(p, h('button', { class: 'btn btn-secondary btn-sm', onClick: () => offerSheet(p) }, 'Edit'), `Your offer: ${o.per} × ${o.years} · interest ${O.interest(L, p, t, o).score}`))) : null,
+        fa.done ? null : h('button', { class: 'btn btn-primary btn-wide', onClick: async () => {
+          O.resolveRound(L); await save(); offFA();
+        } }, offers.length ? `Run round ${fa.round}` : `Skip round ${fa.round}`)),
+      results,
+      tooMany ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h loss' }, `CUT ${t.roster.length - R.ROSTER_SIZE} TO MAKE 10`),
+        h('ul', { class: 'dy-list' }, players(t).sort((a, b) => a.power - b.power).map((p) => pLine(p, h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { O.release(L, p.pid); await save(); offFA(); } }, 'Cut'), `${p.role} · ${p.power} · cap hit ${R.capHit(p)} becomes dead money`)))) : null,
+      fa.done && spots > 0 ? h('button', { class: 'btn btn-primary btn-wide', onClick: async () => { const got = O.fillWithMinimum(L); await save(); toast(`Signed ${got.length} on bargain deals.`); offFA(); } }, `Fill ${spots} spot${spots > 1 ? 's' : ''} with bargain deals`) : null,
+      fa.done ? null : h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'FREE AGENTS'), boardChipsFA(),
+        h('ul', { class: 'dy-list' }, pool.map((p) => pLine(p, fa.offers[p.pid] ? h('span', { class: 'caption gold' }, 'OFFERED')
+          : O.interest(L, p, t, { per: O.asking(p), years: O.wantYears(p) }).blocked ? h('span', { class: 'caption muted dy-why' }, `You have ${R.MAX_PER_SERIES} from this world`)
+          : h('button', { class: 'btn btn-secondary btn-sm', disabled: spots - offers.length <= 0, onClick: () => offerSheet(p) }, 'Offer'),
+        `${p.role} · Power ${p.power} · asks ${O.asking(p)} · ${p.series}${p.undrafted ? ' · rookie' : ''}${p.formerTeam != null ? ` · ex-${team(p.formerTeam).abbr}` : ''}`)))));
+    offFrame('FREE AGENCY', body, fa.done && t.roster.length === R.ROSTER_SIZE ? nextBtn('On to the new season') : null);
+  }
+  function boardChipsFA() {
+    return h('div', { class: 'dy-chips' }, [null, ...R.ROLES].map((r) => h('button', { class: `dy-chip${faFilter.role === r ? ' is-on' : ''}`, onClick: () => { faFilter.role = r; offFA(); } }, r || 'All')));
+  }
+
+  function offReady() {
+    const t = me();
+    const ps = players(t).sort((a, b) => b.power - a.power);
+    const newbies = ps.filter((p) => p.draftSeason === L.season || (p.contract && p.contract.left === p.contract.years && !p.resignedSeason && p.tagged !== L.season));
+    offFrame('NEW SEASON', h('div', { class: 'dy-off-body' },
+      capPanel(t),
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, `${t.name.toUpperCase()} FOR SEASON ${L.season + 1}`),
+        h('ul', { class: 'dy-list' }, ps.map((p) => pLine(p, h('span', { class: 'dy-num' }, String(p.power)), `${p.role} · ${DEV_LABEL[p.dev]} · cap hit ${R.capHit(p)}${newbies.includes(p) ? ' · NEW' : ''}`)))),
+      R.payroll(L, t) > R.capOf(t) ? h('p', { class: 'body-text loss' }, `You are ${Math.round((R.payroll(L, t) - R.capOf(t)) * 10) / 10} over the cap. Finish the season over and that much comes off next season's cap. Two seasons running costs your draft pick.`) : null,
+      h('p', { class: 'body-text' }, `Job security: ${L.user.security}.${t.capPenalty ? ` You start ${t.capPenalty} under the soft cap for going over last season.` : ''}`)),
+    h('button', { class: 'btn btn-primary btn-wide', onClick: async () => {
+      const r = O.startNextSeason(L);
+      if (!r.ok) { toast(r.why); return; }
+      await save();
+      tab = 'league'; drawHub();
+      toast(`Season ${L.season}. The front office expects: ${R.EXPECT_LABEL[L.user.expect]}.`);
+    } }, `Start season ${L.season + 1}`));
   }
 
   // ---------- Schedule ----------
@@ -573,7 +1039,7 @@ export async function render() {
         h('div', { class: 'dy-plan-vs' },
           h('div', { class: 'dy-plan-side' }, crest(t, 72), h('p', { class: 'dy-slide-team' }, t.name), h('p', { class: 'caption' }, `${t.w}-${t.l}`)),
           h('div', { class: 'dy-plan-mid' }, h('p', { class: 'dy-dojo' }, `GAME PLAN · ${label}`), h('p', { class: 'dy-vs' }, g.home === t.i ? 'VS' : 'AT'),
-            rv ? h('p', { class: 'dy-trophy-line' }, rv[2].toUpperCase()) : null, h('p', { class: 'caption' }, home.arena)),
+            rv ? trophy(rv[2], 72, 'dy-trophy dy-plan-trophy') : null, rv ? h('p', { class: 'dy-trophy-line' }, rv[2].toUpperCase()) : null, h('p', { class: 'caption' }, home.arena)),
           h('div', { class: 'dy-plan-side' }, crest(opp, 72), h('p', { class: 'dy-slide-team' }, opp.name), h('p', { class: 'caption' }, `${opp.w}-${opp.l} · ${opp.coachName}`)))),
       h('div', { class: 'dy-plan-grid' },
         h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'KEYS TO THE GAME'),
@@ -725,6 +1191,7 @@ export async function render() {
           h('p', { class: 'label-spaced' }, `${t.name} ${userHome ? 'vs' : 'at'} ${opp.name}`),
           h('h2', { class: `display-lg ${rc.won ? 'gold' : ''}` }, rc.won ? 'YOU WIN' : 'THEY WIN'),
           h('p', { class: 'stat' }, `${s[0]} – ${s[1]}`),
+          rv ? trophy(rv[2], rc.won ? 120 : 72, `dy-trophy dy-recap-trophy${rc.won ? '' : ' is-lost'}`) : null,
           rv ? h('p', { class: 'dy-trophy-line' }, rc.won ? `${rv[2].toUpperCase()} IS YOURS` : `${opp.name.toUpperCase()} TAKE ${rv[2].toUpperCase()}`) : null),
         mvp ? h('div', { class: 'br-mvp panel' }, pAvatar(mvp, 'md'), h('div', {}, h('p', { class: 'label-spaced gold' }, 'GAME MVP'), h('p', { class: 'heading' }, mvp.name), h('p', { class: 'caption muted' }, team(mvp.team).name))) : null,
         hypeMoves.length ? h('section', { class: 'dy-panel' }, h('h3', { class: 'dy-h' }, 'HYPE'), h('ul', { class: 'dy-list' }, hypeMoves.map(({ p, d }) => h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, p.name), h('span', { class: `dy-num ${d > 0 ? 'win' : 'loss'}` }, `${d > 0 ? '+' : ''}${d}`))))) : null,
@@ -758,27 +1225,25 @@ export async function render() {
     const t = me(); const champ = team(row.champion);
     const mine = row.champion === t.i;
     const u = L.user; const last = u.career[u.career.length - 1];
-    const award = (pid) => (pid ? L.players[pid] : null);
-    fill(root, header(`SEASON ${row.season} · AWARDS`, () => { tab = 'league'; drawHub(); }),
+    fill(root, header(`SEASON ${row.season} · THE ZENITH CLASH`, () => { tab = 'league'; drawHub(); }),
       h('div', { class: 'dy-wrap' },
         h('div', { class: 'dy-champ' }, tinted(champ, team(row.runnerUp)),
           h('div', { class: 'dy-champ-text' },
-            crest(champ, 96),
+            h('div', { class: 'dy-champ-art' }, trophy('The Celestial Grail', 150, 'dy-trophy dy-grail'), crest(champ, 72)),
             h('p', { class: 'label-spaced gold' }, 'THE CELESTIAL GRAIL'),
             h('h2', { class: 'display-lg' }, mine ? 'CHAMPIONS!' : champ.name.toUpperCase()),
             h('p', { class: 'body-text' }, `${champ.name} beat ${team(row.runnerUp).name} ${row.score[0]}–${row.score[1]} in the Zenith Clash. Coach ${row.coach}.`))),
         h('section', { class: 'dy-panel' },
-          h('h2', { class: 'dy-h gold' }, R.AWARDS.prodigy.toUpperCase()),
-          h('div', { class: 'br-mvp' }, pAvatar(award(row.prodigy), 'md'), h('div', {}, h('p', { class: 'heading' }, row.prodigyName), h('p', { class: 'caption muted' }, team(row.prodigyTeam).name))),
-          h('ul', { class: 'dy-list' }, R.ROLES.map((r) => { const p = award(row.roleAwards[r]); return p ? h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${R.AWARDS[r]} · best ${r}`))) : null; })),
-          h('p', { class: 'caption' }, `${R.AWARDS.coach}: ${team(row.coachOfYear).coachName} (${team(row.coachOfYear).name})`)),
+          h('h2', { class: 'dy-h' }, 'DIVISION CHAMPIONS'),
+          h('ul', { class: 'dy-list' }, (row.divisions || []).map((i) => h('li', {}, crest(team(i), 32), h('span', { class: 'dy-list-text' }, h('span', {}, team(i).name), h('span', { class: 'caption muted' }, `${R.DIV_TROPHY[team(i).div]} · ${R.DIVISIONS[team(i).div]} Division`)))))),
         h('section', { class: 'dy-panel' },
           h('h2', { class: 'dy-h' }, 'THE FRONT OFFICE'),
           h('p', { class: 'heading' }, `${t.name}: ${t.w}-${t.l}${last?.playoffs ? ', made the playoffs' : ''}.`),
           h('p', { class: 'body-text' }, `Expectation: ${R.EXPECT_LABEL[u.expect]}. ${last?.met ? 'You met it.' : 'You missed it.'} Job security: ${u.security}.`),
-          u.security === 'Fired' ? h('p', { class: 'body-text loss' }, 'You\'ve been fired. Finding a new job arrives with the off-season update.') : null),
-        h('p', { class: 'caption muted' }, 'The off-season (retirements, the draft, free agency and trades) arrives in the next update. Your save is kept.'),
-        h('button', { class: 'btn btn-primary btn-wide', onClick: () => { tab = 'league'; drawHub(); } }, 'Back to the office')));
+          u.security === 'Fired' ? h('p', { class: 'body-text loss' }, 'You\'ve been fired. You\'ll pick a new job at the start of the off-season.') : null),
+        L.phase === 'done'
+          ? h('button', { class: 'btn btn-primary btn-wide', onClick: beginOffseason }, 'Start the off-season')
+          : h('button', { class: 'btn btn-primary btn-wide', onClick: () => { tab = 'league'; drawHub(); } }, 'Back to the office')));
   }
 
   await drawSlots();
