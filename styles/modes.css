@@ -530,7 +530,7 @@ button.tt-sq[disabled] { opacity: .6; }
 .br-filter { min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--surface); color: var(--ink-muted); font-weight: 600; }
 .br-filter.role-striker, .br-filter.role-tank, .br-filter.role-speedster, .br-filter.role-mystic, .br-filter.role-tactician { color: inherit; }
 .br-filter.is-on { border-color: var(--brand-gold); color: var(--ink); background: var(--surface-raised); }
-.br-pool { max-height: 52vh; overflow-y: auto; }
+.br-pool { max-height: calc(52vh / var(--z, 1)); overflow-y: auto; }
 .br-pl { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
 .br-pl-num { font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; }
 .br-auto { align-self: center; }
@@ -906,9 +906,9 @@ button.dy-lu-card:hover:not(:disabled) { background: var(--surface-raised); }
 .osm-reader { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding-bottom: var(--space-6); }
 .osm-book { display: flex; justify-content: center; gap: 0; perspective: 1800px; touch-action: pan-y; user-select: none; }
 .osm-controls { display: flex; align-items: center; gap: var(--space-4); }
-.osm-page { position: relative; overflow: hidden; width: min(94vw, 520px); min-height: calc(min(94vw, 520px) * 4 / 3); box-sizing: border-box; padding: 22px 22px 36px;
+.osm-page { position: relative; overflow: hidden; width: min(calc(94vw / var(--z, 1)), 520px); min-height: calc(min(calc(94vw / var(--z, 1)), 520px) * 4 / 3); box-sizing: border-box; padding: 22px 22px 36px;
   background: #F6F1E8; color: #1A1320; border-radius: 4px; box-shadow: 0 18px 40px rgba(0,0,0,.55); display: flex; flex-direction: column; gap: 12px; transform-origin: left center; }
-.osm-book.is-spread .osm-page { width: min(46vw, 520px); min-height: calc(min(46vw, 520px) * 4 / 3); }
+.osm-book.is-spread .osm-page { width: min(calc(46vw / var(--z, 1)), 520px); min-height: calc(min(calc(46vw / var(--z, 1)), 520px) * 4 / 3); }
 .osm-book.is-spread .osm-page:first-child { border-radius: 4px 0 0 4px; box-shadow: inset -18px 0 24px -18px rgba(0,0,0,.35), 0 18px 40px rgba(0,0,0,.55); transform-origin: right center; }
 .osm-book.is-spread .osm-page:last-child { border-radius: 0 4px 4px 0; box-shadow: inset 18px 0 24px -18px rgba(0,0,0,.35), 0 18px 40px rgba(0,0,0,.55); }
 .osm-page .caption.muted, .osm-page .muted { color: #5C5266; }
@@ -922,8 +922,8 @@ button.dy-lu-card:hover:not(:disabled) { background: var(--surface-raised); }
 .osm-folio { position: absolute; bottom: 10px; left: 22px; right: 22px; margin: 0; font-size: 0.62rem; letter-spacing: 0.14em; color: #8A8094; font-family: var(--font-display); font-weight: 700; }
 .osm-cover { background: #120B1C; color: #fff; padding: 0; }
 .osm-cover-bg { position: absolute; inset: 0; }
-.osm-mast { position: relative; z-index: 3; margin: 6px 0 0 18px; font-family: var(--font-display); font-weight: 900; font-size: clamp(72px, 22vw, 132px); line-height: .9; letter-spacing: -6px; color: #fff; text-shadow: 0 6px 18px rgba(0,0,0,.5); }
-.osm-book.is-spread .osm-mast { font-size: clamp(72px, 10vw, 132px); }
+.osm-mast { position: relative; z-index: 3; margin: 6px 0 0 18px; font-family: var(--font-display); font-weight: 900; font-size: clamp(72px, calc(22vw / var(--z, 1)), 132px); line-height: .9; letter-spacing: -6px; color: #fff; text-shadow: 0 6px 18px rgba(0,0,0,.5); }
+.osm-book.is-spread .osm-mast { font-size: clamp(72px, calc(10vw / var(--z, 1)), 132px); }
 .osm-sub { position: relative; z-index: 3; margin: 0 18px; font-family: var(--font-display); font-weight: 700; font-size: 0.66rem; letter-spacing: 0.14em; color: var(--brand-gold); }
 .osm-cover-star { position: absolute; z-index: 1; right: -10%; bottom: 0; width: 86%; aspect-ratio: 1; }
 .osm-cover-star .avatar { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0; background: transparent;
@@ -931,8 +931,8 @@ button.dy-lu-card:hover:not(:disabled) { background: var(--surface-raised); }
   -webkit-mask-composite: source-in, source-in; mask-image: linear-gradient(to top, transparent 2%, #000 30%), linear-gradient(to right, transparent 0, #000 30%), linear-gradient(to bottom, transparent 0, #000 18%); mask-composite: intersect; }
 .osm-cover-text { position: absolute; z-index: 3; left: 18px; right: 18px; bottom: 26px; }
 .osm-kicker { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 0.75rem; letter-spacing: 0.16em; color: var(--brand-gold); }
-.osm-headline { margin: 2px 0 6px; font-family: var(--font-display); font-weight: 900; font-size: clamp(30px, 8vw, 48px); line-height: .95; color: #fff; text-shadow: 0 4px 14px rgba(0,0,0,.8); }
-.osm-headline-sm { font-size: clamp(24px, 6vw, 34px); }
+.osm-headline { margin: 2px 0 6px; font-family: var(--font-display); font-weight: 900; font-size: clamp(30px, calc(8vw / var(--z, 1)), 48px); line-height: .95; color: #fff; text-shadow: 0 4px 14px rgba(0,0,0,.8); }
+.osm-headline-sm { font-size: clamp(24px, calc(6vw / var(--z, 1)), 34px); }
 .osm-dek { margin: 0; max-width: 80%; font-size: 0.95rem; font-weight: 600; text-shadow: 0 2px 8px rgba(0,0,0,.9); }
 .osm-teasers { position: absolute; z-index: 3; top: 34%; left: 18px; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; max-width: 46%; }
 .osm-teasers li { font-family: var(--font-display); font-weight: 800; font-size: 0.78rem; line-height: 1.15; padding: 6px 8px; background: rgba(12, 8, 18, .72); border-left: 3px solid var(--brand-gold); }

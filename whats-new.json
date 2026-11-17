@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.12.0",
+      "date": "2026-11-17",
+      "title": "Made for big screens",
+      "items": [
+        "On big PC monitors the whole arcade now grows with your screen: about a third bigger at 1440p and twice as big at 4K. Text, cards, portraits and buttons all scale together, so nothing looks tiny any more.",
+        "Laptops, tablets and phones look exactly the same as before.",
+        "If your browser window is short, the game scales a little less so everything still fits."
+      ]
+    },
+    {
       "version": "0.11.1",
       "date": "2026-11-17",
       "title": "Dynasty fixes and the last trophies",

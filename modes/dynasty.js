@@ -563,7 +563,7 @@ export async function render() {
   function hexMap() {
     const worlds = O.classWorlds(L);
     if (!worlds.length) return null;
-    const per = (window.innerWidth || 1200) < 640 ? 4 : 8;
+    const per = (window.innerWidth || 1200) / (window.__uiZoom || 1) < 640 ? 4 : 8;
     const rows = [];
     for (let i = 0; i < worlds.length; i += per) rows.push(worlds.slice(i, i + per));
     return h('div', { class: 'dy-hexmap', role: 'group', 'aria-label': 'Where this class comes from' }, rows.map((row, r) => h('div', { class: `dy-hexrow${r % 2 ? ' is-odd' : ''}` }, row.map((w) => h('button', {
@@ -1015,7 +1015,7 @@ export async function render() {
     stopTimers();
     m.read = true; save();
     const pages = magPages(m);
-    const wide = () => window.innerWidth >= 1000;
+    const wide = () => window.innerWidth / (window.__uiZoom || 1) >= 1000;
     // Spreads: the cover alone, then pairs (on wide screens).
     const spreads = () => (wide() ? [[0], ...Array.from({ length: Math.ceil((pages.length - 1) / 2) }, (_, k) => [1 + k * 2, 2 + k * 2].filter((i) => i < pages.length))] : pages.map((_, i) => [i]));
     let sp = spreads(); let at = 0; let busy = false;

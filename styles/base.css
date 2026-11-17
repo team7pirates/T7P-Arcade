@@ -17,7 +17,8 @@
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; background: var(--bg); }
 body {
   margin: 0;
-  min-height: 100dvh;
+  zoom: var(--z, 1);
+  min-height: calc(100dvh / var(--z, 1));
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-body);
@@ -194,7 +195,7 @@ button { cursor: pointer; }
   animation: fade-in .18s ease-out;
 }
 .sheet {
-  width: 100%; max-width: 560px; max-height: 88dvh;
+  width: 100%; max-width: 560px; max-height: calc(88dvh / var(--z, 1));
   display: flex; flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border); border-bottom: 0;
@@ -252,8 +253,8 @@ button { cursor: pointer; }
   animation: petal-fall linear infinite;
 }
 @keyframes petal-fall {
-  0% { transform: translate3d(0, -5vh, 0) rotate(0deg); }
-  100% { transform: translate3d(-18vw, 110vh, 0) rotate(540deg); }
+  0% { transform: translate3d(0, calc(-5vh / var(--z, 1)), 0) rotate(0deg); }
+  100% { transform: translate3d(calc(-18vw / var(--z, 1)), calc(110vh / var(--z, 1)), 0) rotate(540deg); }
 }
 .reduce-motion .petals { display: none; }
 
