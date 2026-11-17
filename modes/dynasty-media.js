@@ -74,10 +74,11 @@ function gradeDojo(L, games) {
   L.dojoLast = d;
 }
 
-// ---------- OSM Spotlight quotes (v0.16.0) ----------
-// The coach picks one quote for the spotlight. The Aura quote (calm,
-// confident) gives the roster +5 Aura, the Chaos quote (trash talk) +5 Chaos,
-// for the next 3 weeks, until the next issue comes out.
+// ---------- OSM Spotlight quotes (v0.16.1) ----------
+// The spotlight runs one coach quote, picked at random: an Aura quote (calm,
+// confident) gives the roster +5 Aura, a Chaos quote (trash talk) +5 Chaos,
+// for the next 3 weeks, until the next issue comes out. Quotes follow the
+// team's form (hot, winning, even, losing, cold).
 export const QUOTE_BOOST = 5;
 export const QUOTE_WEEKS = 3;
 export function moodOf(t) {
@@ -162,8 +163,11 @@ export function makeIssue(L) {
         team: t.i, pid: star.pid, record: `${t.w}-${t.l}`, rank: t.rank,
         line: met ? `${t.name} are ahead of schedule. The front office wanted "${R.EXPECT_LABEL[t.stage].toLowerCase()}". So far, so good.`
           : `${t.name} are behind where the front office wants them ("${R.EXPECT_LABEL[t.stage].toLowerCase()}"). ${L.user.coach} needs a run.`,
-        mood: moodOf(t), quotes: spotlightQuotes(L, t, star), pick: null,
+        mood: moodOf(t), quotes: spotlightQuotes(L, t, star),
+        // The magazine runs one quote at random (Khalil: a choice would always be Aura).
+        pick: R.nextRand(L) < 0.5 ? 'aura' : 'chaos',
       };
+      L.user.boost = { stat: spotlight.pick, season: L.season, from: week + 1, to: week + QUOTE_WEEKS, issue };
     }
   }
   const mag = {

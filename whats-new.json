@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.17.0",
+      "date": "2026-11-17",
+      "title": "Forbidden Fusion: your phone",
+      "items": [
+        "Your fighter has a phone. Tap Open phone (or press P; change the key in the phone's Settings) and it slides up over the Tower.",
+        "Floor 1 is a normal fight. After that, the phone shapes your climb: someone texts after every floor you clear.",
+        "Trash talk: answer HOSTILE and they become your next opponent, a tougher callout fight for 1.5× Bounty. Answer HUMBLE and the climb goes on as normal. Leave them on read and nothing changes.",
+        "Bosses reach out before their floor. Some want to test you with their lieutenant first (win and the boss comes in rattled, −5 Power). Others say you're not worth their time; tell them to bring everyone and you fight their crew of 3 for 1.6× Bounty.",
+        "Sponsors offer deals (clear 3 floors, win a callout, beat the boss) that pay Bounty. Your trainer checks in when you're hurt: rest to heal now, or push on for full Bounty.",
+        "Buzz (fans and haters react to every floor), AGN Wire (headlines from your climb) and Deals apps.",
+        "Followers stay with you between climbs: every 2,500 is +1 Aura in the Tower, up to +10.",
+        "Dynasty: the OSM spotlight now runs a random quote from you, Aura or Chaos, and your roster gets +5 of it until the next issue."
+      ]
+    },
+    {
       "version": "0.16.0",
       "date": "2026-11-17",
       "title": "Dynasty: your voice in OSM and the season review",

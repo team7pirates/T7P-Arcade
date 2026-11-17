@@ -1337,7 +1337,7 @@ export async function render() {
     return h('section', { class: 'dy-panel dy-osm-banner' },
       p ? pAvatar(p, 'md') : null,
       h('div', { class: 'dy-list-text' }, h('p', { class: 'label-spaced gold' }, m.review ? `OSM · SEASON ${m.season} IN REVIEW IS OUT` : m.legacy ? 'OSM · THE FINAL ISSUE' : `OSM · ISSUE ${m.issue} IS OUT`), h('p', { class: 'heading' }, m.cover.line),
-        m.spotlight?.quotes && !m.spotlight.pick ? h('p', { class: 'caption gold' }, 'Your spotlight quote is waiting: pick Aura or Chaos for a +5 boost.') : null),
+        m.spotlight?.pick ? h('p', { class: `caption ${m.spotlight.pick === 'aura' ? 'gold' : 'loss'}` }, `Your quote ran: +${MD.QUOTE_BOOST} ${m.spotlight.pick.toUpperCase()} for your roster for ${MD.QUOTE_WEEKS} weeks.`) : null),
       h('button', { class: 'btn btn-primary btn-sm', onClick: () => openMag(m) }, 'Read'));
   }
 
@@ -1474,8 +1474,8 @@ export async function render() {
           h('p', { class: `osm-boost is-${sp.pick}` }, `+${MD.QUOTE_BOOST} ${sp.pick === 'aura' ? 'AURA' : 'CHAOS'} for your roster · weeks ${m.week + 1}–${m.week + MD.QUOTE_WEEKS}`));
         return;
       }
-      const live = m.season === L.season && L.mags[0] === m && L.phase !== 'offseason';
-      if (!live) { fill(box, h('blockquote', { class: 'osm-quote' }, sp.quotes.aura, cite())); return; }
+      // Older v0.16.0 issues may still be waiting on a choice: run the Aura quote.
+      if (true) { fill(box, h('blockquote', { class: 'osm-quote' }, sp.quotes.aura, cite())); return; }
       const opt = (stat, label) => h('button', { class: `osm-qopt is-${stat}`, onClick: async (e) => {
         e.stopPropagation();
         if (!MD.chooseQuote(L, m, stat)) return;

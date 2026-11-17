@@ -23,8 +23,10 @@ import { ROLES, SPECIALS, BEATS, fighterStats } from '../core/combat.js';
 import { playMatch } from '../core/battle-view.js';
 import {
   GYM, MAX_BUDGET, BOUNTY_PER_POINT, ROLE_CHANGE, roleChangeCost, cost, budgetFor, starterBuild, fighterFrom,
-  floorFoes, swarmSize, isBoss, bountyFor, healAfter, titleFor, HEAL_FLOOR, HEAL_BOSS,
+  floorFoes, floorPower, swarmSize, isBoss, bountyFor, healAfter, titleFor, HEAL_FLOOR, HEAL_BOSS,
 } from './fusion-rules.js';
+import * as FP from './fusion-phone.js';
+import { createPhone } from './fusion-phone-ui.js';
 
 const DATA_KEY = 'fusion';                 // the build, lifetime Bounty, Hall of Fame
 const RUN_KEY = 'save:forbidden-fusion';   // the climb in progress
@@ -40,6 +42,8 @@ const help = howToPlay('forbidden-fusion', 'Forbidden Fusion', [
   'Every 5th floor is a boss. Past floor 10 the Omega swarms send two, then three cards at you.',
   'Clearing floors earns Bounty: more as you climb, half again for an underdog win, and double on Hard. Every 100 Bounty adds a Gym point for good.',
   'Roles lock when you save your fighter. Changing the main role later costs 10 Gym points and the second role 5, paid for good out of your Bounty.',
+  'Your phone: after floor 1, people text you. Trash talkers you answer hostile become your next opponent (a callout, Bounty ×1.5); answer humble and the climb goes on as normal. Bosses test you or send their crew, sponsors offer deals, and your trainer checks in when you\'re hurt. Open it with the Open phone button or the P key (change the key in the phone\'s Settings).',
+  'Followers stay with you between climbs: every 2,500 is +1 Aura in the Tower, up to +10.',
   'Lose a fight and the climb ends. Your best climbs go into the Hall of Fame.',
 ]);
 
@@ -74,15 +78,31 @@ function shuffleSeed() { return Math.floor(Math.random() * 2 ** 31); }
 function planFloor(r) {
   const floor = r.floor + 1;
   const avoid = new Set(r.recent || []);
-  const foes = floorFoes(floor, r.hard, characters.list.filter((c) => !c.retired), Math.random, avoid);
-  r.next = { floor, foeIds: foes.map((c) => c.id), seed: shuffleSeed() };
+  const roster = characters.list.filter((c) => !c.retired);
+  // The phone shapes every floor after the first (callouts, lieutenants, crews, bosses).
+  const p = r.phone ? FP.planFor(r, floor) : null;
+  let foes; let mod = 0; let mult = 1; let type = null;
+  if (p && p.crew) {
+    const target = Math.max(20, floorPower(floor, r.hard) - 5);
+    foes = roster.filter((c) => c.powerLevel && !avoid.has(c.id) && !p.ids.includes(c.id)).sort((a, b) => Math.abs(a.powerLevel - target) - Math.abs(b.powerLevel - target)).slice(0, 12)
+      .sort(() => Math.random() - 0.5).slice(0, 3);
+    mult = p.mult; type = 'crew';
+  } else if (p && p.ids) {
+    foes = p.ids.map((id) => characters.get(id)).filter(Boolean);
+    mod = p.mod || 0; mult = p.mult || 1; type = p.type;
+  }
+  if (!foes || !foes.length) { foes = floorFoes(floor, r.hard, roster, Math.random, avoid); type = null; mod = 0; mult = 1; }
+  r.next = { floor, foeIds: foes.map((c) => c.id), seed: shuffleSeed(), mod, mult, type };
   r.recent = [...foes.map((c) => c.id), ...(r.recent || [])].slice(0, 12);
 }
+// Foe cards with the phone's Power changes (a lieutenant +4, a rattled boss -5).
+const foeCards = (r) => r.next.foeIds.map((id) => characters.get(id)).filter(Boolean).map((c) => (r.next.mod ? { ...c, powerLevel: Math.max(20, Math.min(99, c.powerLevel + r.next.mod)) } : c));
+const withFollowers = (f, r) => ({ ...f, aura: Math.min(100, (f.aura || 0) + FP.followerAura(r?.phone?.followers ?? data.followers ?? 0)) });
 
 function newRun(hard) {
   const build = structuredClone(data.build);
   const maxHp = fighterStats(fighterOf(build)).maxHp;
-  const r = { hard, build, floor: 0, hp: maxHp, maxHp, runBounty: 0, underdogWins: 0, bossWins: 0, startedAt: Date.now(), recent: [] };
+  const r = { hard, build, floor: 0, hp: maxHp, maxHp, runBounty: 0, underdogWins: 0, bossWins: 0, startedAt: Date.now(), recent: [], phone: FP.newPhone(data.followers || 0), plan: {} };
   planFloor(r);
   return r;
 }
@@ -92,7 +112,23 @@ export async function render() {
   await loadData();
   const root = h('section', { class: 'screen mode fusion' });
   let fightView = null;
-  root._cleanup = () => { closeSheet(); if (fightView) fightView.stop(); };
+  const phone = createPhone({
+    getPhone: () => run?.phone || data.lastPhone || null,
+    getRun: () => run,
+    getKey: () => data.phoneKey || 'p',
+    setKey: (k) => { data.phoneKey = k; saveData(); },
+    onReply: (key, optionId) => {
+      if (!run) return null;
+      const line = FP.reply(run, key, optionId, { rand: Math.random, me: run.build.name });
+      // A reply can change the very next floor: plan it again.
+      if (FP.planFor(run, run.floor + 1) || run.next.type) planFloor(run);
+      data.followers = run.phone.followers;
+      saveRun(); saveData();
+      if (view === 'tower') drawTower();
+      return line;
+    },
+  });
+  root._cleanup = () => { closeSheet(); if (fightView) fightView.stop(); phone.destroy(); };
 
   const header = (sub, onBack) => modeHeader({ title: 'Forbidden Fusion', sub, onHelp: () => help.show(), onBack });
 
@@ -351,11 +387,13 @@ export async function render() {
     view = 'tower';
     const r = run;
     const fl = r.next.floor;
-    const foes = r.next.foeIds.map((id) => characters.get(id)).filter(Boolean);
-    const me = fighterOf(r.build);
+    const foes = foeCards(r);
+    const me = withFollowers(fighterOf(r.build), r);
     const boss = isBoss(fl);
+    const story = { callout: 'CALLOUT', lieutenant: 'THE BOSS\'S TEST (+4 POWER)', crew: 'THE BOSS\'S CREW', boss: r.next.mod < 0 ? 'BOSS · RATTLED (−5 POWER)' : null }[r.next.type] || null;
+    const waitingNow = r.phone ? FP.waiting(r) : [];
     const swarm = swarmSize(fl) > 1;
-    const tags = [boss ? 'BOSS' : null, swarm && !boss ? `OMEGA SWARM ×${foes.length}` : null, boss && foes.length > 1 ? `BOSS SQUAD ×${foes.length}` : null, r.hard ? 'HARD' : null].filter(Boolean);
+    const tags = [story, boss && r.next.type !== 'crew' ? 'BOSS' : null, swarm && !boss ? `OMEGA SWARM ×${foes.length}` : null, boss && foes.length > 1 ? `BOSS SQUAD ×${foes.length}` : null, r.hard ? 'HARD' : null].filter(Boolean);
     const foePower = foes.reduce((n, c) => n + c.powerLevel, 0);
 
     fill(root,
@@ -378,8 +416,21 @@ export async function render() {
         h('div', { class: `ff-foes n-${foes.length}` }, foes.map((c) => characterCard(c, { size: foes.length > 1 ? 'sm' : 'md', stats: foes.length === 1 }))),
         h('p', { class: 'caption muted ff-center' },
           foePower > me.powerLevel ? 'Underdog fight: Bounty is worth half again if you win.' : `Clear it for ${fmt(bountyFor(fl, r.hard, me, foes).bounty)} Bounty.`),
+        waitingNow.length ? h('button', { class: 'ff-phone-alert', onClick: () => phone.openThread(waitingNow[0].key) },
+          h('span', { class: 'ff-phone-alert-icon' }, '📱'),
+          h('span', {}, h('strong', {}, `${waitingNow[0].name} is waiting on your reply.`), ' How you answer can change who you fight.')) : null,
+        r.next.mult && r.next.mult !== 1 ? h('p', { class: 'caption gold ff-center' }, `Bounty ×${r.next.mult} on this floor.`) : null,
+        r.restPenalty ? h('p', { class: 'caption muted ff-center' }, 'You rested: this floor pays 20% less Bounty.') : null,
         h('div', { class: 'result-actions' },
-          h('button', { class: 'btn btn-primary', onClick: drawFight }, 'Fight'),
+          h('button', { class: 'btn btn-primary', onClick: async () => {
+            if (waitingNow.length) {
+              const ok = await confirmSheet({ title: 'LEAVE THEM ON READ?', message: `${waitingNow.map((t) => t.name).join(' and ')} ${waitingNow.length > 1 ? 'are' : 'is'} waiting on a reply. Fight now and nothing changes.`, confirmLabel: 'Fight anyway' });
+              if (!ok) return;
+              waitingNow.forEach((t) => { t.pending = null; t.msgs.push({ from: 'sys', text: 'Left on read.' }); });
+              await saveRun();
+            }
+            drawFight();
+          } }, 'Fight'),
           h('button', { class: 'btn btn-secondary', onClick: endRunEarly }, 'End climb'),
         ),
         h('p', { class: 'caption muted ff-center' }, `${fmt(r.runBounty)} Bounty this climb · floors cleared ${r.floor}`),
@@ -400,15 +451,15 @@ export async function render() {
   function drawFight() {
     const r = run;
     const fl = r.next.floor;
-    const foes = r.next.foeIds.map((id) => characters.get(id)).filter(Boolean);
-    const me = fighterOf(r.build);
+    const foes = foeCards(r);
+    const me = withFollowers(fighterOf(r.build), r);
     view = 'fight';
     const stage = h('div', { class: 'ff-stage' });
     const after = h('div', { class: 'ff-after', hidden: true });
     fill(root, header(`FLOOR ${fl}${r.hard ? ' · HARD' : ''}`, () => drawTower()), stage, after);
     fightView = playMatch(stage, {
       teamA: [me], teamB: foes, seed: r.next.seed, bestOf: 1, startHp: [r.hp], speed: 2,
-      names: { B: foes.length === 1 ? foes[0].name : isBoss(fl) ? 'THE BOSS SQUAD' : 'THE SWARM' },
+      names: { B: foes.length === 1 ? foes[0].name : r.next.type === 'crew' ? 'THE CREW' : isBoss(fl) ? 'THE BOSS SQUAD' : 'THE SWARM' },
       labels: { A: 'YOU', B: isBoss(fl) ? 'BOSS' : `FLOOR ${fl}` },
       onDone: async (result) => {
         const won = result.winner === 'A';
@@ -428,16 +479,28 @@ export async function render() {
     const r = run;
     const fl = r.next.floor;
     const me = fighterOf(r.build);
-    const { bounty, underdog } = bountyFor(fl, r.hard, me, foes);
+    const base = bountyFor(fl, r.hard, me, foes);
+    const underdog = base.underdog;
+    const bounty = Math.round(base.bounty * (r.next.mult || 1) * (r.restPenalty ? FP.REST_PENALTY : 1));
+    r.restPenalty = false;
     const before = result.endHp[0];
     const hp = healAfter(fl, before, r.maxHp);
     r.floor = fl;
     r.hp = hp;
     r.runBounty += bounty;
+    const type = r.next.type;
     if (underdog) r.underdogWins += 1;
     if (isBoss(fl)) r.bossWins += 1;
     const budgetBefore = budget();
     data.lifetimeBounty += bounty;
+    // The phone reacts to the floor and sets up the next one.
+    if (r.phone) {
+      FP.onCleared(r, fl);
+      const runBefore = r.runBounty;
+      FP.afterFloor(r, { floor: fl, hp, hpBefore: before, maxHp: r.maxHp, foes, roster: characters.list.filter((c) => !c.retired), rand: Math.random, me: me.name, hard: r.hard, underdog, callout: type === 'callout', boss: isBoss(fl) && type !== 'lieutenant' });
+      data.lifetimeBounty += r.runBounty - runBefore;
+      data.followers = r.phone.followers;
+    }
     planFloor(r);
     await saveData();
     await saveRun();
@@ -446,6 +509,7 @@ export async function render() {
 
   function drawCleared(o) {
     view = 'cleared';
+    setTimeout(() => phone.ping(), 400);
     fill(root,
       header(`FLOOR ${o.floor} CLEARED`, () => drawLab()),
       h('div', { class: 'result-head' },
@@ -471,6 +535,7 @@ export async function render() {
   // ---------- End of a climb ----------
   async function finishRun(lost) {
     const r = run;
+    if (r.phone) { data.lastPhone = r.phone; data.followers = r.phone.followers; }
     const key = r.hard ? 'hard' : 'normal';
     let newBest = false;
     await records.update('forbidden-fusion', (rec) => {
