@@ -283,6 +283,7 @@ export async function render() {
           h('p', { class: 'dy-next-name' }, `${opp.rank && opp.rank <= 25 ? `#${opp.rank} ` : ''}${opp.name}`.toUpperCase()),
           h('p', { class: 'caption muted' }, `${opp.w}-${opp.l} · ${team(g.home).arena}`))),
         rv ? h('p', { class: 'dy-trophy-line' }, `RIVALRY · ${rv[2].toUpperCase()} IS ON THE LINE`) : null,
+        (() => { const b = MD.boostNow(L); return b ? h('p', { class: `dy-boost is-${b.stat}` }, `OSM QUOTE: +${MD.QUOTE_BOOST} ${b.stat.toUpperCase()} · THROUGH WEEK ${Math.min(b.to, R.WEEKS)}`) : null; })(),
         h('button', { class: 'btn btn-primary btn-wide', onClick: () => openGamePlan() }, '📋 Game Plan'),
         h('div', { class: 'btn-row dy-next-links' },
           h('button', { class: 'btn btn-secondary btn-sm', onClick: autoWeek }, 'Auto-play week'),
@@ -990,7 +991,16 @@ export async function render() {
       h('p', { class: 'caption muted dy-pad' }, room.region ? `${MAP.region(room.region).name} · ${show.length}` : `THE WHOLE CLASS · ${show.length} PROSPECTS`),
       show.length ? h('ol', { class: 'dy-room-rows' }, show.map((p, i) => {
         const v = O.prospectView(p);
-        return h('li', {}, h('button', { class: `dy-room-row${p.watch ? ' is-watch' : ''}`, onClick: () => prospectSheet(p, mode) },
+        const pts = L.user.scoutPts || 0;
+        const quick = h('span', { class: 'dy-room-quick' },
+          h('button', { class: `dy-qbtn${p.watch ? ' is-on' : ''}`, 'aria-label': p.watch ? `Stop watching ${p.name}` : `Watch ${p.name}`, title: p.watch ? 'Watching' : 'Watch', onClick: async () => { p.watch = !p.watch; await save(); redrawBoard(); } }, p.watch ? '★' : '☆'),
+          p.scout < 2 ? h('button', { class: 'dy-qbtn dy-qscout', disabled: pts < R.SCOUT_COST, 'aria-label': `${p.scout ? 'Deep scout' : 'Scout'} ${p.name} for ${R.SCOUT_COST} points`, title: `${p.scout ? 'Deep scout' : 'Scout'} · ${R.SCOUT_COST} pts`, onClick: async () => {
+            const r = O.scout(L, p.pid); if (!r.ok) { toast(r.why); return; }
+            sfx.play('correct'); await save(); redrawBoard();
+            const v2 = O.prospectView(p);
+            toast(r.level === 2 ? `${p.name}: ${v2.tag}.` : `${p.name}: potential ${v2.potential}.`);
+          } }, p.scout ? 'DEEP' : 'SCOUT') : h('span', { class: 'dy-qdone', title: 'Fully scouted' }, '✓'));
+        return h('li', { class: 'dy-room-li' }, quick, h('button', { class: `dy-room-row${p.watch ? ' is-watch' : ''}`, onClick: () => prospectSheet(p, mode) },
           h('span', { class: 'dy-room-rank' }, String(p.stock || i + 1)),
           pAvatar(p, 'md'),
           h('span', { class: 'dy-list-text' },
@@ -1326,7 +1336,8 @@ export async function render() {
     const p = L.players[m.cover.pid];
     return h('section', { class: 'dy-panel dy-osm-banner' },
       p ? pAvatar(p, 'md') : null,
-      h('div', { class: 'dy-list-text' }, h('p', { class: 'label-spaced gold' }, `OSM · ISSUE ${m.issue} IS OUT`), h('p', { class: 'heading' }, m.cover.line)),
+      h('div', { class: 'dy-list-text' }, h('p', { class: 'label-spaced gold' }, m.review ? `OSM · SEASON ${m.season} IN REVIEW IS OUT` : m.legacy ? 'OSM · THE FINAL ISSUE' : `OSM · ISSUE ${m.issue} IS OUT`), h('p', { class: 'heading' }, m.cover.line),
+        m.spotlight?.quotes && !m.spotlight.pick ? h('p', { class: 'caption gold' }, 'Your spotlight quote is waiting: pick Aura or Chaos for a +5 boost.') : null),
       h('button', { class: 'btn btn-primary btn-sm', onClick: () => openMag(m) }, 'Read'));
   }
 
@@ -1336,8 +1347,8 @@ export async function render() {
     return h('button', { class: 'osm-thumb', style: `--c1:${t.c1};--c2:${t.c2}`, onClick: () => openMag(m), 'aria-label': `OSM season ${m.season} issue ${m.issue}` },
       h('span', { class: 'osm-thumb-mast' }, 'OSM'),
       p ? h('span', { class: 'osm-thumb-star' }, pAvatar(p, 'card')) : null,
-      m.legacy ? h('span', { class: 'osm-thumb-legacy' }, 'FINAL ISSUE') : null,
-      h('span', { class: 'osm-thumb-meta' }, `S${m.season} · #${m.issue}`),
+      m.legacy ? h('span', { class: 'osm-thumb-legacy' }, 'FINAL ISSUE') : m.review ? h('span', { class: 'osm-thumb-legacy' }, 'SEASON REVIEW') : null,
+      h('span', { class: 'osm-thumb-meta' }, m.review || m.legacy ? `S${m.season}` : `S${m.season} · #${m.issue}`),
       !m.read ? h('span', { class: 'osm-new' }, 'NEW') : null);
   }
 
@@ -1431,7 +1442,7 @@ export async function render() {
         h('p', { class: 'osm-section' }, 'OSM SPOTLIGHT'),
         h('h2', { class: 'osm-headline osm-headline-sm' }, `INSIDE THE ${st.name.toUpperCase()}`),
         h('p', { class: 'osm-dek' }, `${sp.record} · No. ${sp.rank || '–'} in the Power 25 · ${/^coach\b/i.test(L.user.coach) ? L.user.coach : `Head coach ${L.user.coach}`}`),
-        h('div', { class: 'osm-spot-star' }, h('div', { class: 'osm-potm-pic osm-coach-pic' }, coachFace(photo, st)), h('blockquote', { class: 'osm-quote' }, sp.quote, h('cite', {}, `— ${L.user.coach}, head coach`))),
+        h('div', { class: 'osm-spot-star' }, h('div', { class: 'osm-potm-pic osm-coach-pic' }, coachFace(photo, st)), quoteBlock(m)),
         h('p', { class: 'osm-body' }, sp.line),
         sp1 ? h('div', { class: 'osm-spot-mini' }, pAvatar(sp1, 'md'), h('p', { class: 'osm-body' }, h('strong', {}, `The star: ${sp1.name}. `), `${sp1.role} · ${fmt(sp1.stats.dmg)} damage · ${sp1.stats.ko} KOs this season.`)) : null,
         folio(5)));
@@ -1450,6 +1461,82 @@ export async function render() {
     return pages;
   }
 
+  // The spotlight quote: pick the Aura (calm) or Chaos (fiery) quote for a
+  // 3-week +5 boost to your roster. Old issues just show the quote.
+  function quoteBlock(m) {
+    const sp = m.spotlight;
+    const box = h('div', { class: 'osm-quote-box' });
+    const cite = () => h('cite', {}, `— ${L.user.coach}, head coach`);
+    const draw = () => {
+      if (!sp.quotes) { fill(box, h('blockquote', { class: 'osm-quote' }, sp.quote, cite())); return; }
+      if (sp.pick) {
+        fill(box, h('blockquote', { class: 'osm-quote' }, sp.quotes[sp.pick], cite()),
+          h('p', { class: `osm-boost is-${sp.pick}` }, `+${MD.QUOTE_BOOST} ${sp.pick === 'aura' ? 'AURA' : 'CHAOS'} for your roster · weeks ${m.week + 1}–${m.week + MD.QUOTE_WEEKS}`));
+        return;
+      }
+      const live = m.season === L.season && L.mags[0] === m && L.phase !== 'offseason';
+      if (!live) { fill(box, h('blockquote', { class: 'osm-quote' }, sp.quotes.aura, cite())); return; }
+      const opt = (stat, label) => h('button', { class: `osm-qopt is-${stat}`, onClick: async (e) => {
+        e.stopPropagation();
+        if (!MD.chooseQuote(L, m, stat)) return;
+        sfx.play('pick'); await save(); draw();
+        toast(`+${MD.QUOTE_BOOST} ${label} for your roster until the next issue.`);
+      } }, h('span', { class: 'osm-qlabel' }, `${label.toUpperCase()} QUOTE · +${MD.QUOTE_BOOST} ${label.toUpperCase()} FOR ${MD.QUOTE_WEEKS} WEEKS`), h('span', { class: 'osm-qtext' }, sp.quotes[stat]));
+      fill(box, h('p', { class: 'osm-qhead' }, `WHAT DO YOU TELL OSM? (THE TEAM IS ${({ hot: 'ON A HEATER', winning: 'WINNING', even: 'EVEN', losing: 'LOSING', cold: 'IN A SLUMP' })[sp.mood] || 'WATCHING'})`),
+        opt('aura', 'Aura'), opt('chaos', 'Chaos'));
+    };
+    draw();
+    box.addEventListener('pointerdown', (e) => e.stopPropagation());
+    box.addEventListener('pointerup', (e) => e.stopPropagation());
+    return box;
+  }
+
+  // ---------- The season review issue ----------
+  function reviewPages(m) {
+    const P = (pid) => (pid != null ? L.players[pid] : null);
+    const r = m.row; const champ = team(r.champion); const ru = team(r.runnerUp);
+    const page = (cls, ...kids) => h('article', { class: `osm-page ${cls}` }, ...kids);
+    const folio = (n) => h('p', { class: 'osm-folio' }, `OSM · SEASON ${m.season} IN REVIEW · ${n}`);
+    const cs = P(m.champStars[0]);
+    const pages = [];
+    pages.push(page('osm-cover osm-review-cover', tinted(champ, champ, 'dy-arena osm-cover-bg'),
+      h('p', { class: 'osm-mast' }, 'OSM'),
+      h('p', { class: 'osm-sub' }, `SEASON ${m.season} IN REVIEW · THE ZENITH CLASH ISSUE`),
+      h('div', { class: 'osm-review-grail' }, trophy('The Celestial Grail', 250)),
+      cs ? h('div', { class: 'osm-cover-star' }, pAvatar(cs, 'card')) : null,
+      h('div', { class: 'osm-cover-text' }, h('p', { class: 'osm-kicker' }, 'CHAMPIONS'), h('h2', { class: 'osm-headline' }, champ.name.toUpperCase()), h('p', { class: 'osm-dek' }, m.cover.line)),
+      h('ul', { class: 'osm-teasers' }, m.teasers.map((t) => h('li', {}, t))),
+      crest(champ, 56)));
+    pages.push(page('', h('p', { class: 'osm-section' }, 'THE ZENITH CLASH'),
+      h('div', { class: 'osm-clash' }, crest(champ, 110), h('div', { class: 'osm-clash-score' }, h('p', { class: 'osm-rank' }, `${r.score[0]}–${r.score[1]}`), trophy('The Celestial Grail', 120)), crest(ru, 110)),
+      h('p', { class: 'osm-intro' }, `${champ.name} (${r.record}) beat ${ru.name} for the Celestial Grail. Head coach: ${r.coach}.`),
+      h('p', { class: 'osm-section osm-section-sm' }, 'THE CHAMPIONS\' STARS'),
+      h('ul', { class: 'osm-potm' }, m.champStars.map((pid) => { const p = P(pid); return p ? h('li', {}, h('div', { class: 'osm-potm-pic' }, pAvatar(p, 'card')), h('p', { class: 'heading' }, p.name), h('p', { class: 'caption muted' }, `${p.role} · ${fmt(p.stats.dmg)} dmg · ${p.stats.ko} KOs`)) : null; })),
+      folio(2)));
+    const gpp = P(r.prodigy);
+    pages.push(page('', h('p', { class: 'osm-section' }, 'AWARDS NIGHT'),
+      h('div', { class: 'osm-race-top' }, trophy(R.AWARDS.prodigy, 180, 'dy-trophy osm-gpp'),
+        h('div', {}, h('p', { class: 'label-spaced' }, 'GENERATIONAL PRODIGY PLAYER'), gpp ? h('div', { class: 'osm-potm-pic osm-gpp-pic' }, pAvatar(gpp, 'card')) : null, h('p', { class: 'heading' }, r.prodigyName), h('p', { class: 'caption muted' }, team(r.prodigyTeam)?.name || ''))),
+      h('ul', { class: 'osm-awards' }, [...R.ROLES.map((x) => [R.AWARDS[x], r.roleAwards?.[x]]), [R.AWARDS.awakening, r.awakening], [R.AWARDS.phoenix, r.phoenix]].filter(([, pid]) => pid != null).map(([name, pid]) => { const p = P(pid); return h('li', {}, trophy(name, 54), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p ? p.name : '—'), h('span', { class: 'caption muted' }, name))); }),
+        h('li', {}, trophy(R.AWARDS.coach, 54), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, team(r.coachOfYear).coachName), h('span', { class: 'caption muted' }, `${R.AWARDS.coach} · ${team(r.coachOfYear).name}`)))),
+      folio(3)));
+    pages.push(page('', h('p', { class: 'osm-section' }, 'DIVISIONS & RIVALRIES'),
+      h('ul', { class: 'osm-awards' }, r.divisions.map((i) => h('li', {}, trophy(R.DIV_TROPHY[team(i).div], 54), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, team(i).name), h('span', { class: 'caption muted' }, `${R.DIV_TROPHY[team(i).div]} · ${R.DIVISIONS[team(i).div]} Division`))))),
+      h('ul', { class: 'osm-rivals' }, Object.entries(r.rivals).map(([name, holder]) => h('li', {}, trophy(name, 80, 'dy-trophy osm-rival-trophy'), h('p', { class: 'heading' }, name), h('p', { class: 'caption gold' }, `Kept by ${team(holder).abbr}`)))),
+      h('p', { class: 'osm-intro' }, `Best record: ${team(m.best).name} (${team(m.best).w}-${team(m.best).l}). Bottom of the table: ${team(m.worst).name}.`),
+      folio(4)));
+    const t = me(); const mine = m.mine;
+    pages.push(page('osm-spot', tinted(t, t, 'dy-arena osm-spot-bg'),
+      h('p', { class: 'osm-section' }, `YOUR SEASON · ${team(mine?.team ?? t.i).name.toUpperCase()}`),
+      mine ? h('h2', { class: 'osm-headline osm-headline-sm' }, `${mine.w}-${mine.l}${mine.champion ? ' · CHAMPIONS' : mine.playoffs ? ' · PLAYOFFS' : ''}`) : null,
+      mine ? h('p', { class: 'osm-body' }, `${mine.champion ? 'You won it all.' : mine.playoffs ? 'You made the playoffs.' : 'You missed the playoffs.'} The front office says you ${mine.met ? 'met' : 'missed'} expectations. Job security: ${L.user.security}.`) : null,
+      h('p', { class: 'osm-section osm-section-sm' }, 'BIGGEST AURA RISERS · IT CARRIES INTO NEXT SEASON'),
+      h('ol', { class: 'osm-power' }, m.auraTop.map((x, i) => { const p = P(x.pid); return p ? h('li', {}, h('span', { class: 'osm-rank' }, String(i + 1)), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name), h('span', { class: 'caption muted' }, x.team != null ? team(x.team).name : '')), h('span', { class: 'dy-num gold' }, `${x.aura}${x.gain ? ` (+${x.gain})` : ''}`)) : null; })),
+      h('p', { class: 'osm-next' }, 'SEE YOU IN THE OFF-SEASON'),
+      folio(5)));
+    return pages;
+  }
+
   // The coach's face: their photo, else their player icon, else the crest.
   function coachFace(photo, t) {
     if (photo) return h('img', { src: photo, alt: '', class: 'osm-coach-img' });
@@ -1459,7 +1546,7 @@ export async function render() {
   async function openMag(m) {
     stopTimers();
     m.read = true; save();
-    const pages = m.legacy ? [legacyCover(m.lg, (await loadPhotos()).coach), h('article', { class: 'osm-page osm-legacy-inner' }, h('p', { class: 'osm-section' }, 'THE CAREER'),
+    const pages = m.review ? reviewPages(m) : m.legacy ? [legacyCover(m.lg, (await loadPhotos()).coach), h('article', { class: 'osm-page osm-legacy-inner' }, h('p', { class: 'osm-section' }, 'THE CAREER'),
       h('ul', { class: 'osm-power' }, m.lg.teams.map((x) => h('li', {}, h('img', { src: `art/afl/crests/${x.crest}.webp`, alt: '', style: 'width:36px;height:36px' }), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, x.name), h('span', { class: 'caption muted' }, `${x.seasons} season${x.seasons === 1 ? '' : 's'}`))))),
       h('p', { class: 'osm-intro' }, `${m.lg.w}-${m.lg.l} · ${m.lg.titles} Grail${m.lg.titles === 1 ? '' : 's'} · ${m.lg.playoffs} playoff trips. The legends are gone. The New Era starts now.`),
       h('p', { class: 'osm-mast osm-mast-sm' }, 'OSM'))] : magPages(m, (await loadPhotos()).coach);
@@ -1502,7 +1589,7 @@ export async function render() {
     function close() { document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onResize); tab = 'media'; drawHub(); }
     const prevCleanup = root._cleanup;
     root._cleanup = () => { document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onResize); prevCleanup(); root._cleanup = prevCleanup; };
-    fill(root, header(`OSM · SEASON ${m.season} · ISSUE ${m.issue}`, close),
+    fill(root, header(m.review ? `OSM · SEASON ${m.season} IN REVIEW` : m.legacy ? 'OSM · THE FINAL ISSUE' : `OSM · SEASON ${m.season} · ISSUE ${m.issue}`, close),
       h('div', { class: 'osm-reader' }, book, h('div', { class: 'osm-controls' }, prev, count, next)));
     paint();
   }
@@ -2061,7 +2148,9 @@ export async function render() {
           h('p', { class: 'body-text' }, `Expectation: ${R.EXPECT_LABEL[u.expect]}. ${last?.met ? 'You met it.' : 'You missed it.'} Job security: ${u.security}.`),
           u.security === 'Fired' ? h('p', { class: 'body-text loss' }, 'You\'ve been fired. You\'ll pick a new job at the start of the off-season.') : null),
         L.phase === 'done'
-          ? h('button', { class: 'btn btn-primary btn-wide', onClick: beginOffseason }, 'Start the off-season')
+          ? h('div', { class: 'btn-row' },
+            (() => { const rv = (L.mags || []).find((m) => m.review && m.season === row.season); return rv ? h('button', { class: 'btn btn-secondary', onClick: () => openMag(rv) }, '📰 Read the OSM season review') : null; })(),
+            h('button', { class: 'btn btn-primary', onClick: beginOffseason }, 'Start the off-season'))
           : h('button', { class: 'btn btn-primary btn-wide', onClick: () => { tab = 'league'; drawHub(); } }, 'Back to the office')));
   }
 

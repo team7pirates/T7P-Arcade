@@ -74,6 +74,63 @@ function gradeDojo(L, games) {
   L.dojoLast = d;
 }
 
+// ---------- OSM Spotlight quotes (v0.16.0) ----------
+// The coach picks one quote for the spotlight. The Aura quote (calm,
+// confident) gives the roster +5 Aura, the Chaos quote (trash talk) +5 Chaos,
+// for the next 3 weeks, until the next issue comes out.
+export const QUOTE_BOOST = 5;
+export const QUOTE_WEEKS = 3;
+export function moodOf(t) {
+  if (t.streak >= 3) return 'hot';
+  if (t.streak <= -3) return 'cold';
+  if (t.w > t.l) return 'winning';
+  if (t.w < t.l) return 'losing';
+  return 'even';
+}
+const QUOTES = {
+  hot: {
+    aura: ['"We don\'t celebrate wins any more. We expect them."', '"${star} is playing like a legend. We just try to keep up."', '"Stay humble, stay hungry. The streak takes care of itself."'],
+    chaos: ['"Line them up. Whoever\'s next is getting the same thing."', '"Tell ${rival} we\'re coming. They know it already."', '"Nobody in this league wants to see us right now. Good."'],
+  },
+  winning: {
+    aura: ['"${star} sets the tone. The rest of us follow."', '"We\'re ahead of schedule, but nobody here is satisfied."', '"Good teams win. Great teams keep their heads down and win again."'],
+    chaos: ['"People called us a fluke. Check the standings."', '"We\'re not here to make friends. We\'re here to take trophies."', '"${rival} can talk all they want. We\'ll see them in the ring."'],
+  },
+  even: {
+    aura: ['"We\'re right where we need to be. Stay patient."', '"Every week is a chance to show who we really are."', '"${star} keeps us steady. That matters in a season like this."'],
+    chaos: ['"The gloves are off. Somebody\'s about to get hurt."', '"I\'m done being polite. Next team pays for it."', '"We\'re .500 and dangerous. That\'s the worst kind of team to face."'],
+  },
+  losing: {
+    aura: ['"It\'s a long season. We\'ll be there at the end."', '"I believe in this locker room. The results will come."', '"${star} hasn\'t stopped working. Neither have we."'],
+    chaos: ['"I\'m sick of losing. Somebody\'s going to feel that."', '"We\'re angry. Whoever we play next is going to find out."', '"Write us off. Please. It makes this easier."'],
+  },
+  cold: {
+    aura: ['"Losing streaks end. Character doesn\'t."', '"We look in the mirror, we fix it, we move on."', '"Nobody\'s pointing fingers in here. We climb out together."'],
+    chaos: ['"I\'m flipping the table. Nobody\'s job is safe, mine included."', '"Enough. The next team catches every bit of this."', '"We\'re backed into a corner. Corners are where we bite."'],
+  },
+};
+export function spotlightQuotes(L, t, star) {
+  const pool = QUOTES[moodOf(t)];
+  const rv = R.rival(L, t.i);
+  const fill = (q) => q.replace('${star}', star.name).replace('${rival}', rv ? L.teams[rv.team].name : 'the rest of the league');
+  const pick = (arr) => fill(arr[Math.floor(R.nextRand(L) * arr.length)]);
+  return { aura: pick(pool.aura), chaos: pick(pool.chaos) };
+}
+export function chooseQuote(L, mag, stat) {
+  const sp = mag?.spotlight; if (!sp || sp.pick) return false;
+  if (mag.season !== L.season || L.mags[0] !== mag) return false;
+  sp.pick = stat;
+  L.user.boost = { stat, season: L.season, from: mag.week + 1, to: mag.week + QUOTE_WEEKS, issue: mag.issue };
+  return true;
+}
+// Is the quote boost live for this week?
+export function boostNow(L) {
+  const b = L.user?.boost;
+  if (!b || b.season !== L.season) return null;
+  const wk = L.phase === 'playoffs' ? R.WEEKS + 1 : L.week;
+  return wk >= b.from && wk <= b.to ? b : null;
+}
+
 // ---------- OSM: an issue every 3 weeks ----------
 const COVER_LINES = [
   (n, t) => `${n} is carrying ${t}. Nobody can stop it.`,
@@ -105,7 +162,7 @@ export function makeIssue(L) {
         team: t.i, pid: star.pid, record: `${t.w}-${t.l}`, rank: t.rank,
         line: met ? `${t.name} are ahead of schedule. The front office wanted "${R.EXPECT_LABEL[t.stage].toLowerCase()}". So far, so good.`
           : `${t.name} are behind where the front office wants them ("${R.EXPECT_LABEL[t.stage].toLowerCase()}"). ${L.user.coach} needs a run.`,
-        quote: met ? `"${star.name} sets the tone. The rest of us follow."` : `"It's a long season. We'll be there at the end."`,
+        mood: moodOf(t), quotes: spotlightQuotes(L, t, star), pick: null,
       };
     }
   }
@@ -208,3 +265,33 @@ R.hooks.seasonRow = (L, row) => {
   migrate(L);
   row.rivals = Object.fromEntries(Object.entries(L.rivalHolders).map(([k, v]) => [k, v.team]));
 };
+
+// ---------- The season review issue (after the Zenith Clash) ----------
+export function makeReview(L, row) {
+  migrate(L);
+  if (L.mags.some((m) => m.review && m.season === row.season)) return null;
+  const P = (pid) => (pid != null ? L.players[pid] : null);
+  const champ = L.teams[row.champion];
+  const champStars = champ.roster.map((pid) => L.players[pid]).sort((a, b) => (b.stats.dmg + b.stats.ko * 2000) - (a.stats.dmg + a.stats.ko * 2000)).slice(0, 3).map((p) => p.pid);
+  const gain = (p) => p.aura - (p.startAura ?? p.aura);
+  const auraTop = Object.values(L.players).filter((p) => p.team != null).sort((a, b) => gain(b) - gain(a) || b.aura - a.aura).slice(0, 6).map((p) => ({ pid: p.pid, aura: p.aura, gain: gain(p), team: p.team }));
+  const mine = L.user ? L.user.career.find((c) => c.season === row.season) : null;
+  const best = L.teams.slice().sort((a, b) => b.w - a.w || (b.rw - b.rl) - (a.rw - a.rl))[0];
+  const worst = L.teams.slice().sort((a, b) => a.w - b.w)[0];
+  const mag = {
+    review: true, season: row.season, issue: 'REVIEW', week: R.WEEKS, read: false,
+    cover: { pid: champStars[0] ?? null, team: row.champion, line: `${champ.name} win the Celestial Grail, ${row.score[0]}–${row.score[1]} over ${L.teams[row.runnerUp].name}.` },
+    teasers: [`GPP: ${row.prodigyName}`, `Best record: ${best.name} (${best.w}-${best.l})`, mine ? `${L.teams[mine.team].abbr}: ${mine.w}-${mine.l}` : null].filter(Boolean),
+    row: { champion: row.champion, runnerUp: row.runnerUp, score: row.score, coach: row.coach, record: row.record, divisions: row.divisions || [],
+      prodigy: row.prodigy, prodigyName: row.prodigyName, prodigyTeam: row.prodigyTeam, roleAwards: row.roleAwards, roleAwardTeams: row.roleAwardTeams,
+      awakening: row.awakening ?? null, phoenix: row.phoenix ?? null, coachOfYear: row.coachOfYear, rivals: row.rivals || {} },
+    champStars, auraTop, mine: mine ? { ...mine } : null, best: best.i, worst: worst.i,
+    potm: [], power: [], race: [], rivals: [], news: [],
+  };
+  L.mags.unshift(mag);
+  L.mags = L.mags.slice(0, 14);
+  // The cover and the season's stars get the magazine's Aura too; it carries into next season.
+  const cs = P(champStars[0]); if (cs) cs.aura = Math.min(100, cs.aura + 3);
+  return mag;
+}
+R.hooks.seasonEnd = (L, row) => makeReview(L, row);

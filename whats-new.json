@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "0.16.0",
+      "date": "2026-11-17",
+      "title": "Dynasty: your voice in OSM and the season review",
+      "items": [
+        "OSM Spotlight: you now choose what to tell the magazine. Pick the Aura quote (calm, confident) or the Chaos quote (fiery trash talk) and your whole roster gets +5 of it for the next 3 weeks, until the next issue. The quotes change with how your team is doing: on a heater, winning, even, losing or in a slump.",
+        "The Next Game card shows your active quote boost and when it ends.",
+        "New: the OSM Season Review, out right after the Zenith Clash. The champions and their stars, every award winner, division and rivalry trophies, your season, and the biggest Aura risers. Aura carries into next season.",
+        "Draft board: Watch and Scout right from the list, no need to open each prospect's card. The button turns into Deep scout, then a check mark when they're fully scouted."
+      ]
+    },
+    {
       "version": "0.15.0",
       "date": "2026-11-17",
       "title": "Draft Room map, auto-updates and fixes",

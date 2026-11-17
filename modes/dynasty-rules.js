@@ -323,8 +323,15 @@ export function fightCard(league, p, ctx = {}) {
   const big = ctx.big && p.hype >= 80 ? 1 : 0;
   return {
     id: p.cid, pid: p.pid, name: p.name, powerLevel: effPower(league, p, ctx), mainRole: p.role, secondRole: p.second,
-    aura: p.aura, clutch: Math.min(100, p.clutch + big * 8), chaos: p.chaos, franchise: p.franchise, portrait: p.portrait,
+    aura: Math.min(100, p.aura + boost(league, p, 'aura')), clutch: Math.min(100, p.clutch + big * 8), chaos: Math.min(100, p.chaos + boost(league, p, 'chaos')), franchise: p.franchise, portrait: p.portrait,
   };
+}
+// The OSM spotlight quote: +5 Aura or Chaos for the user's roster for 3 weeks.
+function boost(league, p, stat) {
+  const b = league.user?.boost;
+  if (!b || b.stat !== stat || b.season !== league.season || p.team !== league.user.team) return 0;
+  const wk = league.phase === 'playoffs' ? WEEKS + 1 : league.week;
+  return wk >= b.from && wk <= b.to ? 5 : 0;
 }
 
 export const available = (p) => p.injury <= 0;
@@ -641,6 +648,7 @@ export function endSeason(league) {
   league.history.unshift(row);
   if (league.user) judgeCoach(league);
   league.phase = 'done';
+  if (hooks.seasonEnd && league.user) hooks.seasonEnd(league, row);
   return row;
 }
 const expectedWins = (t) => (t.stage === 'contender' ? 8 : t.stage === 'few' ? 6 : 4);
@@ -681,7 +689,7 @@ export function resetForSeason(league) {
     t.w = 0; t.l = 0; t.rw = 0; t.rl = 0; t.streak = 0; t.last = [];
     t.stage = stageOf(league, t); t.expect = t.stage;
   });
-  for (const p of Object.values(league.players)) { p.stats = blankStats(); p.lastStats = null; p.fatigue = 0; p.injury = 0; p.startPower = p.power; p.startHype = p.hype; }
+  for (const p of Object.values(league.players)) { p.stats = blankStats(); p.lastStats = null; p.fatigue = 0; p.injury = 0; p.startPower = p.power; p.startHype = p.hype; p.startAura = p.aura; }
   league.schedule = makeSchedule(rand);
   league.news = (league.news || []).filter((n) => n.off).slice(0, 10);
   league.off = null;
