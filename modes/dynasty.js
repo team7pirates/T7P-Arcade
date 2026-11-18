@@ -31,7 +31,7 @@ const help = howToPlay('dynasty', 'Dynasty', [
   'Win your division to make the playoffs. Win two more and you lift the Celestial Grail at the Zenith Clash.',
   'Hype comes from winning fights. Aura comes from being seen: magazine picks and awards. Both carry over.',
   'Meet the front office\'s expectation or your job security drops. Miss it three seasons running and you\'re fired.',
-  'Front Office: trade until the Week 8 deadline, sign emergency pickups, and watch the soft cap (150). Going over comes off next season\'s cap.',
+  'Front Office: trade until the Week 8 deadline (and again after the season until draft day), sign emergency pickups, and stay under the hard salary cap (160 in season 1, up 5% every off-season). A max deal is 35 a season; deals near the max are supermax, and a team can carry 3.',
   'Each time you open a save you get the Weekly Recap, then the Weekly Preview. Tick "Don\'t show again this week" to skip them; both are also on the Next Game card.',
   'Draft: you earn 8 scouting points a week. 6 points reveals a prospect\'s potential; a deep scout shows 💎 (a gem: Star or Superstar, 2x growth or more), nothing (solid: could be any of the three) or 💔 a broken diamond (a bust: Normal, 1x). Power stays hidden until they are drafted.',
   'Off-season: retirements, awards night, re-sign (one Franchise Tag), up to 2 development upgrades, a one-round draft, then 3 rounds of free agency.',
@@ -244,7 +244,7 @@ export async function render() {
       wide: true,
       content: h('div', { class: 'dy-jobsheet' },
         tinted(t, t, 'dy-arena dy-arena-sm'),
-        h('p', { class: 'caption muted' }, `${R.DIVISIONS[t.div]} Division · ${t.arena} · Payroll ${R.payroll(L, t)} of ${R.CAP}`),
+        h('p', { class: 'caption muted' }, `${R.DIVISIONS[t.div]} Division · ${t.arena} · Payroll ${R.payroll(L, t)} of ${R.capOf(t)}`),
         h('p', { class: 'body-text' }, `The front office expects: ${R.EXPECT_LABEL[t.stage]}.${rv ? ` Rivalry: ${rv.trophy} vs ${team(rv.team).name}.` : ''}`),
         h('ul', { class: 'dy-mini-roster' }, ps.map((p) => h('li', {}, pAvatar(p), h('span', {}, p.name), h('span', { class: `caption ${ROLE_CLASS(p.role)}` }, p.role), h('span', { class: 'dy-num' }, String(p.power))))),
         h('div', { class: 'btn-row' },
@@ -312,6 +312,7 @@ export async function render() {
         rv ? h('p', { class: 'dy-trophy-line' }, `RIVALRY · ${rv[2].toUpperCase()} IS ON THE LINE`) : null,
         (() => { const b = MD.boostNow(L); return b ? h('p', { class: `dy-boost is-${b.stat}` }, `OSM QUOTE: +${MD.QUOTE_BOOST} ${b.stat.toUpperCase()} · THROUGH WEEK ${Math.min(b.to, R.WEEKS)}`) : null; })(),
         (() => { const b = DP.boostText(L); return b ? h('p', { class: 'dy-boost is-phone' }, `📱 FROM YOUR PHONE: ${b} · THIS GAME`) : null; })(),
+        (() => { const n = !L.user.autoSpend ? R.teamPoints(L, me()) : 0; return n ? h('button', { class: 'dy-boost is-phone dy-sp-alert', onClick: () => { tab = 'roster'; drawHub(); } }, `⬆ ${n} SKILL POINT${n > 1 ? 'S' : ''} TO SPEND · ROSTER ›`) : null; })(),
         h('button', { class: 'btn btn-primary btn-wide', onClick: () => openGamePlan() }, '📋 Game Plan'),
         h('div', { class: 'btn-row dy-next-links' },
           h('button', { class: 'btn btn-secondary btn-sm', onClick: autoWeek }, 'Auto-play week'),
@@ -696,8 +697,9 @@ export async function render() {
     shell(h('div', { class: 'dy-content' },
       h('div', { class: 'dy-cap dy-panel' },
         h('div', {}, h('p', { class: 'label-spaced' }, 'PAYROLL'), h('p', { class: 'stat' }, String(pay))),
-        h('div', {}, h('p', { class: 'label-spaced' }, 'SOFT CAP'), h('p', { class: 'stat' }, String(R.CAP))),
-        h('div', {}, h('p', { class: 'label-spaced' }, pay > R.CAP ? 'OVER BY' : 'CAP SPACE'), h('p', { class: `stat ${pay > R.CAP ? 'loss' : 'win'}` }, String(Math.abs(Math.round((R.CAP - pay) * 10) / 10))))),
+        h('div', {}, h('p', { class: 'label-spaced' }, 'SALARY CAP'), h('p', { class: 'stat' }, String(R.capOf()))),
+        h('div', {}, h('p', { class: 'label-spaced' }, pay > R.capOf() ? 'OVER BY' : 'CAP SPACE'), h('p', { class: `stat ${pay > R.capOf() ? 'loss' : 'win'}` }, String(Math.abs(Math.round((R.capOf() - pay) * 10) / 10))))),
+      skillPanel(t),
       h('p', { class: 'caption muted' }, 'Contracts are a total over seasons, split evenly: that split is the cap hit. Tap a card for details.'),
       h('ul', { class: 'dy-roster' }, ps.map((p) => {
         const eff = R.effPower(L, p);
@@ -710,6 +712,7 @@ export async function render() {
           h('span', { class: 'dy-rstats' },
             h('span', { class: 'dy-num dy-big' }, String(eff)),
             eff !== p.power ? h('span', { class: 'caption muted' }, `base ${p.power}`) : null,
+            usable(p) ? h('span', { class: 'dy-sp-badge' }, `+${usable(p)} SP`) : null,
             fatigueBar(p),
             p.injury > 0 ? h('span', { class: 'dy-inj' }, `OUT ${p.injury} WK`) : null)));
       }))));
@@ -719,6 +722,28 @@ export async function render() {
     const color = p.fatigue > 70 ? 'var(--loss)' : p.fatigue > 30 ? 'var(--brand-gold)' : 'var(--win)';
     return h('span', { class: 'dy-fat', title: `Fatigue ${Math.round(p.fatigue)}`, 'aria-label': `Fatigue ${Math.round(p.fatigue)} of 100` },
       h('span', { style: `width:${Math.round(p.fatigue)}%;background:${color}` }));
+  }
+
+  // ---------- Skill points (v0.21.0) ----------
+  const usable = (p) => Math.max(0, Math.min(p.sp || 0, 99 - p.power));
+  function skillPanel(t = me()) {
+    const pts = R.teamPoints(L, t);
+    const auto = !!L.user.autoSpend;
+    const withPts = players(t).filter((p) => (p.sp || 0) > 0).sort((a, b) => usable(b) - usable(a));
+    return h('section', { class: 'dy-panel dy-skill' },
+      h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'SKILL POINTS'),
+        h('label', { class: 'dy-auto' }, h('input', { type: 'checkbox', checked: auto, onChange: async (e) => {
+          L.user.autoSpend = e.target.checked;
+          if (L.user.autoSpend) { const n = R.spendAll(L, t); if (n) toast(`Auto spent ${n} point${n > 1 ? 's' : ''} on Power.`); }
+          await save(); drawHub();
+        } }), h('span', {}, 'Auto upgrade'))),
+      h('p', { class: 'caption muted' }, auto ? 'Auto is on: growth goes straight into Power, like the AI teams.' : 'Growth every 3 weeks and Star/Superstar upgrades give each card skill points. 1 point = +1 Power, up to 99. Points past 99 stay on the card but can\'t be used.'),
+      !auto && withPts.length ? h('ul', { class: 'dy-list' }, withPts.map((p) => h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `Power ${p.power} · ${p.sp} point${p.sp === 1 ? '' : 's'}${usable(p) < p.sp ? ` (${p.sp - usable(p)} past 99)` : ''}`)),
+        h('span', { class: 'btn-row' },
+          h('button', { class: 'btn btn-secondary btn-sm', disabled: !usable(p), onClick: async () => { R.spendPoints(p, 1); sfx.play('tap'); await save(); drawHub(); } }, '+1'),
+          h('button', { class: 'btn btn-primary btn-sm', disabled: !usable(p), onClick: async () => { const n = R.spendPoints(p); sfx.play('correct'); await save(); toast(`${p.name}: +${n} Power.`); drawHub(); } }, `Spend ${usable(p)}`)))))
+        : !auto ? h('p', { class: 'caption muted' }, 'No skill points right now.') : null,
+      !auto && pts ? h('button', { class: 'btn btn-secondary btn-wide', onClick: async () => { const n = R.spendAll(L, t); await save(); toast(`+${n} Power across the roster.`); drawHub(); } }, `Spend all ${pts}`) : null);
   }
 
   function playerSheet(p) {
@@ -731,6 +756,7 @@ export async function render() {
           h('dl', { class: 'dy-bio' }, [
             ['Team', p.team != null ? team(p.team).name : 'Free agent'], ['Role', `${p.role}${p.second ? ` / ${p.second}` : ''}`], ['Series', p.series],
             ['Power', `${R.effPower(L, p)} (base ${p.power})`], own ? ['Potential', `about ${potLow}–${potHigh}`] : null,
+            own && p.sp ? ['Skill points', `${p.sp}${usable(p) < p.sp ? ` (${p.sp - usable(p)} past 99, can't be used)` : ''}`] : null,
             ['Dev trait', DEV_LABEL[p.dev]], ['Career', `Season ${p.career}`],
             p.revealed && (p.gen || p.bust) ? ['Scouting', p.gen ? 'Generational Talent' : 'Bust'] : p.draftPick && p.scout >= 2 ? ['Draft scouting', `${O.TAG_ICON[O.scoutTag(p)]} ${O.scoutTag(p)}`] : null,
             p.draftPick ? ['Drafted', `No. ${p.draftPick}, season ${p.draftSeason}`] : null,
@@ -751,8 +777,9 @@ export async function render() {
     const pay = R.payroll(L, t); const cap = R.capOf(t); const over = pay > cap;
     return h('div', { class: 'dy-cap dy-panel' },
       h('div', {}, h('p', { class: 'label-spaced' }, 'PAYROLL'), h('p', { class: 'stat' }, String(pay))),
-      h('div', {}, h('p', { class: 'label-spaced' }, t.capPenalty ? 'CAP (PENALTY)' : 'SOFT CAP'), h('p', { class: 'stat' }, String(cap))),
+      h('div', {}, h('p', { class: 'label-spaced' }, 'SALARY CAP'), h('p', { class: 'stat' }, String(cap))),
       h('div', {}, h('p', { class: 'label-spaced' }, over ? 'OVER BY' : 'CAP SPACE'), h('p', { class: `stat ${over ? 'loss' : 'win'}` }, String(Math.abs(Math.round((cap - pay) * 10) / 10)))),
+      h('div', {}, h('p', { class: 'label-spaced' }, 'SUPERMAX DEALS'), h('p', { class: 'stat' }, `${R.supermaxCount(L, t)}/${R.SUPERMAX_LIMIT}`)),
       t.dead ? h('div', {}, h('p', { class: 'label-spaced' }, 'DEAD MONEY'), h('p', { class: 'stat loss' }, String(t.dead))) : null);
   }
 
@@ -779,7 +806,7 @@ export async function render() {
     const ps = players(t).sort((a, b) => R.capHit(b) - R.capHit(a));
     const parts = [capPanel(t),
       h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'CONTRACTS'),
-        h('p', { class: 'caption muted' }, `A contract is a total over seasons, split evenly into the cap hit. Over the cap at season's end: the overage comes off next season's cap, and two seasons running costs your draft pick.${t.overStreak ? ` You finished over last season.` : ''}`),
+        h('p', { class: 'caption muted' }, `A contract is a total over seasons, split evenly into the cap hit. The salary cap is hard: you can't sign, re-sign, trade or upgrade past it (rookie deals and minimum fills are the exception). It grows 5% every off-season. Max deal: ${R.maxDeal()} a season; deals at ${Math.round(R.maxDeal() * R.SUPERMAX_SHARE * 10) / 10}+ are supermax, ${R.SUPERMAX_LIMIT} per team.`),
         h('ul', { class: 'dy-list' }, ps.map((p) => pLine(p, h('span', { class: 'dy-num' }, String(R.capHit(p))),
           `${p.role} · ${p.contract.total} over ${p.contract.years} · ${p.contract.left} left${p.tagged === L.season ? ' · TAG' : ''}`))))];
     if (L.phase === 'offseason') {
@@ -1222,11 +1249,11 @@ export async function render() {
           h('span', { class: 'dy-list-text' }, h('span', { class: 'dy-rname' }, p.name),
             h('span', { class: 'caption muted' }, `${p.role} · Power ${p.power} · season ${p.career} · Hype ${Math.round(p.hype)}${p.lowKey ? ' · low-key' : ''}`),
             h('span', { class: 'caption' }, `Asks ${ask} a season · wants ${want} season${want > 1 ? 's' : ''}`),
-            (() => { const space = Math.round((R.capOf(t) - R.payroll(L, t) - ask) * 10) / 10; return h('span', { class: `caption dy-resign-preview ${space < 0 ? 'loss' : 'win'}` }, `${yrs} season${yrs > 1 ? 's' : ''}: ${ask} a season, ${Math.round(ask * yrs * 10) / 10} total · cap space after: ${space}`); })()),
+            (() => { const space = Math.round((R.capOf(t) - R.payroll(L, t) - ask) * 10) / 10; const sm = R.isSupermax(ask); return h('span', { class: `caption dy-resign-preview ${space < 0 ? 'loss' : 'win'}` }, `${yrs} season${yrs > 1 ? 's' : ''}: ${ask} a season, ${Math.round(ask * yrs * 10) / 10} total · cap space after: ${space}${space < 0 ? ' (over the hard cap)' : ''}${sm ? ` · SUPERMAX (${R.supermaxCount(L, t)}/${R.SUPERMAX_LIMIT} used)` : ''}`); })()),
           h('span', { class: 'dy-resign-btns' },
             h('span', { class: 'dy-yrs', role: 'group', 'aria-label': 'Seasons' }, [1, 2, 3, 4].map((y) => h('button', { class: `dy-chip${y === yrs ? ' is-on' : ''}`, 'aria-pressed': y === yrs ? 'true' : 'false', onClick: () => { yearsPick[p.pid] = y; offResign(); } }, `${y}`))),
-            h('button', { class: 'btn btn-primary btn-sm', onClick: async () => { O.resign(L, p.pid, yrs); p.resignedSeason = L.season; await save(); toast(`${p.name}: ${Math.round(ask * yrs * 10) / 10} over ${yrs}.`); offResign(); } }, `Re-sign · ${Math.round(ask * yrs * 10) / 10}`),
-            t.tagged == null ? h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { O.franchiseTag(L, p.pid); await save(); toast(`${p.name} tagged for one season.`); offResign(); } }, `Tag · ${O.tagPrice(L, p)}`) : null,
+            h('button', { class: 'btn btn-primary btn-sm', onClick: async () => { const r = O.resign(L, p.pid, yrs); if (!r.ok) { toast(r.why); return; } p.resignedSeason = L.season; await save(); toast(`${p.name}: ${Math.round(ask * yrs * 10) / 10} over ${yrs}.`); offResign(); } }, `Re-sign · ${Math.round(ask * yrs * 10) / 10}`),
+            t.tagged == null ? h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { if (!O.franchiseTag(L, p.pid)) { toast(O.capCheck(L, t, O.tagPrice(L, p)).why || 'You can\'t tag them.'); return; } await save(); toast(`${p.name} tagged for one season.`); offResign(); } }, `Tag · ${O.tagPrice(L, p)}`) : null,
             h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { O.letGo(L, p.pid); await save(); offResign(); } }, 'Let go')));
       })) : null,
       signedNow.length ? h('p', { class: 'caption muted' }, `Kept: ${signedNow.map((p) => p.name).join(', ')}.`) : null,
@@ -1244,7 +1271,7 @@ export async function render() {
     const used = t.upgrades || 0;
     offFrame('UPGRADES', h('div', { class: 'dy-off-body' },
       capPanel(t),
-      h('p', { class: 'body-text' }, `Invest in development: Normal → Star → Superstar. One step per card each off-season, up to ${O.UPGRADES_PER_TEAM} a team, only in a card's first 4 seasons. Salary follows growth speed, 1x / 2x / 3x: Star doubles the cap hit and Superstar adds another 1.5x (3x a Normal card), but never more than +6 a season per step. A bust still grows fast, it just tops out sooner. Upgraded cards grow faster and gain hidden potential, and you find out if they are a Generational Talent or a bust.`),
+      h('p', { class: 'body-text' }, `Invest in development: Normal → Star → Superstar. One step per card each off-season, up to ${O.UPGRADES_PER_TEAM} a team, only in a card's first 4 seasons. Each step comes with skill points: a Star upgrade gives up to +10, a Superstar upgrade +5 or +10 (1 point = +1 Power, max 99; extra points stay on the card). Salary follows growth speed, 1x / 2x / 3x, but never more than +6 a season per step, and the raise has to fit under the hard cap. You also find out if they are a Generational Talent or a bust.`),
       h('p', { class: 'label-spaced' }, `${used} OF ${O.UPGRADES_PER_TEAM} USED`),
       h('ul', { class: 'dy-list' }, ps.map((p) => {
         const chk = O.canUpgrade(L, p);
@@ -1254,7 +1281,7 @@ export async function render() {
             const ok = await confirmSheet({ title: `${DEV_LABEL[p.dev + 1].toUpperCase()}: ${p.name.toUpperCase()}?`, message: `Cap hit goes from ${c.hitNow} to ${c.hitAfter} for the ${c.left} season${c.left > 1 ? 's' : ''} left (+${c.extra} a season).`, confirmLabel: 'Upgrade' });
             if (!ok) return;
             const r = O.upgrade(L, p.pid); await save();
-            toast(r.gen ? `${p.name} is a GENERATIONAL TALENT.` : r.bust ? `${p.name} looks like a bust. The upgrade can't fix that.` : `${p.name} is now a ${DEV_LABEL[p.dev]}.`);
+            toast(`${r.gen ? `${p.name} is a GENERATIONAL TALENT.` : r.bust ? `${p.name} looks like a bust. The upgrade can't fix that.` : `${p.name} is now a ${DEV_LABEL[p.dev]}.`} +${r.points} skill points${L.user.autoSpend ? ' (spent)' : ''}.`);
             offUpgrade();
           } }, `→ ${DEV_LABEL[p.dev + 1]} · +${c.extra}`)
           : h('span', { class: 'caption muted dy-why' }, p.upgraded === L.season ? `Upgraded${p.gen ? ' · Generational' : p.bust ? ' · Bust' : ''}` : chk.why),
@@ -1382,7 +1409,7 @@ export async function render() {
       h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, `${t.name.toUpperCase()} FOR SEASON ${L.season + 1}`),
         h('ul', { class: 'dy-list' }, ps.map((p) => pLine(p, h('span', { class: 'dy-num' }, String(p.power)), `${p.role} · ${DEV_LABEL[p.dev]} · cap hit ${R.capHit(p)}${newbies.includes(p) ? ' · NEW' : ''}`)))),
       R.payroll(L, t) > R.capOf(t) ? h('p', { class: 'body-text loss' }, `You are ${Math.round((R.payroll(L, t) - R.capOf(t)) * 10) / 10} over the cap. Finish the season over and that much comes off next season's cap. Two seasons running costs your draft pick.`) : null,
-      h('p', { class: 'body-text' }, `Job security: ${L.user.security}.${t.capPenalty ? ` You start ${t.capPenalty} under the soft cap for going over last season.` : ''}`)),
+      h('p', { class: 'body-text' }, `Job security: ${L.user.security}.`)),
     h('button', { class: 'btn btn-primary btn-wide', onClick: async () => {
       const r = O.startNextSeason(L);
       if (!r.ok) { toast(r.why); return; }

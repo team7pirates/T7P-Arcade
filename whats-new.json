@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.21.0",
+      "date": "2026-11-18",
+      "title": "Talent Tree, skill points and a hard cap",
+      "items": [
+        "Forbidden Fusion: the Gym's training is replaced by a Talent Tree, like The Division 2. Four branches (Power, Aura, Clutch, Hunter) surround your fighter, and every node has tiers. Titan Frame adds health, Signature Move boosts your special, Second Wind heals more after each floor, Bounty Hunter pays more, and Momentum starts each fight with your special meter partly full.",
+        "Earn 1 talent point per floor and 3 on a boss floor, and spend them between floors. Anything you buy during a climb stays locked in until the climb ends. Between climbs you can respec for free. Each save file keeps its own tree. Old saves carry over: your build becomes tree tiers, and your Bounty becomes points.",
+        "Your Fighter screen still sets your name, face, roles and Chaos.",
+        "Dynasty: on your team, growth now gives each card skill points instead of Power. Spend them on Power yourself (1 point = +1, up to 99) on the Roster tab, or turn on Auto upgrade and the game spends them for you.",
+        "Star and Superstar upgrades now come with skill points: up to +10 for Star, and +5 or +10 for Superstar. Points past 99 stay on the card, but they can't be used.",
+        "The soft cap is gone. There's now a hard salary cap of 160 that grows 5% every off-season. Contracts top out at 35 a season, and a team can carry 3 supermax deals. You can't sign, re-sign, trade or upgrade past the cap. Rookie deals and minimum signings are the exception, so you can always fill out 10."
+      ]
+    },
+    {
       "version": "0.20.0",
       "date": "2026-11-18",
       "title": "Off-season trades, coaching carousel, preseason OSM",

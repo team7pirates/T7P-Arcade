@@ -1536,3 +1536,58 @@ html { overflow-x: clip; } .screen { overflow-x: clip; }
 .osm-power li.is-me { background: rgba(240,192,96,.18); }
 .dy-fa-filters { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .dy-off-trade { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-radius: var(--radius-md); background: rgba(240,192,96,.1); border: 1px solid rgba(240,192,96,.35); margin-bottom: var(--space-3); }
+/* v0.21.0: Forbidden Fusion talent tree (Division 2 style) */
+.ff-tree-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-4); max-width: 1180px; margin: 0 auto; padding: 0 var(--space-4) var(--space-6); align-items: start; }
+.ff-tree-board { position: relative; aspect-ratio: 1; width: 100%; max-height: 78vh; margin: 0 auto; border-radius: 20px; background: radial-gradient(circle at 50% 50%, rgba(240,192,96,.12), rgba(10,8,18,.9) 70%), #0b0912; border: 1px solid rgba(255,255,255,.08); overflow: hidden; }
+.ff-tree-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ff-tline { stroke: rgba(255,255,255,.12); stroke-width: .5; }
+.ff-tline.is-on { stroke: rgba(240,192,96,.45); }
+.ff-tline.is-bought { stroke: #f0c060; stroke-width: .8; }
+.ff-tcore { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 26%; min-width: 120px; padding: 10px; border: 2px solid rgba(255,255,255,.75); background: rgba(10,8,18,.92); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; clip-path: polygon(8% 0, 100% 0, 100% 92%, 92% 100%, 0 100%, 0 8%); }
+.ff-tcore .char-card { transform: scale(.8); margin: -12px 0; }
+.ff-tcore-n { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; }
+.ff-tnode { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: 0; color: var(--ink); cursor: pointer; padding: 0; width: 92px; }
+.ff-thex { display: grid; place-items: center; width: 62px; height: 70px; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: #2a2533; border: 0; position: relative; }
+.ff-thex::after { content: ''; position: absolute; inset: 3px; clip-path: inherit; background: #15121c; z-index: 0; }
+.ff-thex.is-sm { width: 46px; height: 52px; }
+.ff-ticon { position: relative; z-index: 1; font-size: 1.6rem; }
+.ff-tnode.is-can .ff-thex { background: rgba(240,192,96,.7); }
+.ff-tnode.is-bought .ff-thex { background: #f0c060; }
+.ff-tnode.is-bought .ff-thex::after { background: #3a2a10; }
+.ff-tnode.is-max .ff-thex::after { background: #f0a020; }
+.ff-tnode.is-locked .ff-thex { background: #6a2030; }
+.ff-tnode.is-locked .ff-thex::after { background: #2a0e14; }
+.ff-tnode.is-pick .ff-thex { outline: none; filter: drop-shadow(0 0 10px rgba(240,192,96,.9)); }
+.ff-tnode.is-pick .ff-tname { color: var(--brand-gold); }
+.ff-tpips { display: flex; gap: 2px; }
+.ff-tpips i { width: 7px; height: 4px; border-radius: 1px; background: rgba(255,255,255,.25); }
+.ff-tpips i.on { background: #f0c060; }
+.ff-tname { font-size: 0.7rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; text-align: center; line-height: 1.1; text-shadow: 0 1px 3px #000; }
+.ff-tbranch { position: absolute; transform: translate(-50%, -50%); font-family: var(--font-display); font-size: .7rem; letter-spacing: .25em; opacity: .45; }
+.ff-tdetail { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 80px; background: rgba(12,10,18,.95); }
+.ff-tdetail-head { display: flex; gap: 12px; align-items: center; }
+.ff-tdetail .label-spaced { margin: 4px 0 0; }
+.ff-tcost { margin: 4px 0; } .ff-tcost b { font-size: 1.1rem; }
+.ff-tpoints { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,.1); padding-top: 8px; }
+.ff-tree-cta { display: flex; flex-direction: column; gap: 2px; width: min(560px, 92%); margin: var(--space-3) auto; padding: 12px 16px; border-radius: var(--radius-md); border: 2px solid var(--brand-gold); background: rgba(240,192,96,.1); color: var(--ink); cursor: pointer; text-align: left; }
+@media (max-width: 860px) {
+  .ff-tree-wrap { grid-template-columns: 1fr; padding: 0 var(--space-2) var(--space-6); }
+  .ff-tnode { width: 70px; } .ff-thex { width: 46px; height: 52px; } .ff-ticon { font-size: 1.15rem; } .ff-tname { font-size: .58rem; }
+  .ff-tcore { width: 30%; min-width: 92px; padding: 6px; } .ff-tcore .char-card { display: none; } .ff-tcore-n { font-size: 1.1rem; }
+  .ff-tdetail { position: static; }
+}
+/* v0.21.0: Dynasty skill points */
+.dy-sp-badge { padding: 2px 6px; border-radius: 999px; background: rgba(76,201,128,.18); color: #6fe0a0; font-size: .68rem; font-weight: 800; }
+.dy-auto { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: .85rem; cursor: pointer; }
+.dy-auto input { width: 20px; height: 20px; accent-color: var(--brand-gold); }
+.dy-skill .btn-row { flex-wrap: nowrap; }
+.dy-sp-alert { border: 0; cursor: pointer; font: inherit; text-align: left; }
+.ff-tree-wrap { width: 100%; box-sizing: border-box; }
+.ff-tree-board { width: min(100%, 76vh); max-height: none; }
+@media (max-width: 860px) { .ff-tree-board { width: 100%; } }
+.ff-tree-wrap { width: 100%; margin: 0; padding: 0; }
+@media (min-width: 900px) { .mode.fusion:has(.ff-tree-wrap) { max-width: 1180px; } #app:has(.ff-tree-wrap) { max-width: min(1240px, 100%); } }
+.ff-tcore { width: 24%; min-width: 0; aspect-ratio: auto; }
+.ff-tcore-name { margin: 2px 0 0; font-family: var(--font-display); font-weight: 800; font-size: .8rem; letter-spacing: .06em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+@media (max-width: 860px) { .ff-tcore .avatar { width: 40px; height: 40px; } .ff-tcore .caption { font-size: .55rem; } }
+@media (max-width: 860px) { .ff-tbranch { display: none; } }

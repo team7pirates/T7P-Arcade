@@ -38,6 +38,17 @@ const NL = ['Asano', 'Brooks', 'Okoye', 'Fujimoto', 'Navarro', 'Lindgren', 'Mens
   'Morimoto', 'Sinclair', 'Petrov', 'Kagami', 'Oyelaran', 'Castillo', 'Hoshi', 'Whitaker', 'Ibarra', 'Shimizu', 'Adeyemi', 'Kurosawa', 'Fontaine',
   'Mbatha', 'Yamada', 'Calloway', 'Ferreira', 'Takeuchi', 'Volkov', 'Nakashima', 'Obi', 'Lacroix', 'Tsukino', 'Haddad', 'Sorensen', 'Arakawa', 'Quarles'];
 
+// ---------- The hard cap (v0.21.0) ----------
+// Can team t add a deal paying `per` a season (after `drop` leave)? Rookie
+// deals and minimum/bargain fills are allowed over the cap so a roster can
+// always reach 10.
+export function capCheck(L, t, per, drop = [], extra = 0) {
+  const pay = R.payroll(L, t) - drop.reduce((n, pid) => n + R.capHit(L.players[pid]), 0) + extra;
+  if (pay + per > R.capOf(t) + 0.05) return { ok: false, why: `That puts you over the ${R.capOf(t)} salary cap (room: ${r1(Math.max(0, R.capOf(t) - pay))}).` };
+  if (R.isSupermax(per) && R.supermaxCount(L, t, drop) >= R.SUPERMAX_LIMIT) return { ok: false, why: `You already have ${R.SUPERMAX_LIMIT} supermax deals.` };
+  return { ok: true };
+}
+
 // ---------- Small helpers ----------
 export const asking = (p) => R.payFor(p.power, p.hype, p.lowKey);
 export const capRoom = (L, t) => r1(R.capOf(t) - R.payroll(L, t));
@@ -60,7 +71,9 @@ export function migrate(L) {
     for (const p of Object.values(L.players)) if (!p.prospect && !p.retired && p.careerLen) p.career = 1 + Math.floor(rand() * p.careerLen);
     L.careersFixed = true;
   }
-  L.teams.forEach((t) => { t.dead = t.dead || 0; t.capPenalty = t.capPenalty || 0; t.overStreak = t.overStreak || 0; });
+  // v0.21.0: hard cap, so the old soft-cap penalties are gone.
+  L.teams.forEach((t) => { t.dead = t.dead || 0; t.capPenalty = 0; t.overStreak = 0; t.forfeitPick = false; });
+  R.setCapScale(L);
   if (L.user && L.user.scoutPts == null) L.user.scoutPts = L.phase === 'season' ? (L.week - 1) * R.SCOUT_WEEKLY : R.SCOUT_WEEKLY * R.WEEKS;
   if (!L.draftClass) buildDraftClass(L);
   return L;
@@ -164,12 +177,12 @@ export function classWorlds(L) {
 export function startOffseason(L) {
   migrate(L);
   L.phase = 'offseason';
-  // Cap check on the season that just ended.
+  // A new league year: the cap (and every new contract) grows 5%.
+  L.capScale = Math.round((L.capScale || 1) * R.CAP_GROWTH * 1000) / 1000;
+  R.setCapScale(L);
+  news(L, { kind: 'CAP', team: L.user?.team ?? 0, title: `The salary cap rises to ${R.capNow()}`, text: `Up 5% for the new league year. A supermax deal now tops out at ${R.maxDeal()} a season, and a team can carry ${R.SUPERMAX_LIMIT} of them.` });
   for (const t of L.teams) {
-    const over = r1(Math.max(0, R.payroll(L, t) - R.capOf(t)));
-    t.overStreak = over > 0 ? t.overStreak + 1 : 0;
-    t.forfeitPick = t.overStreak >= 2;
-    t.capPenalty = over;       // comes off next season's cap
+    t.overStreak = 0; t.forfeitPick = false; t.capPenalty = 0;
     t.dead = 0;                // last season's dead money is spent
     t.tagged = null;
     t.upgrades = 0;
@@ -345,13 +358,15 @@ export function askFor(L, p, t) {
 }
 export function resign(L, pid, years) {
   const p = L.players[pid]; const t = L.teams[p.team];
+  const chk = capCheck(L, t, askFor(L, p, t)); if (!chk.ok) return chk;
   setContract(p, askFor(L, p, t), clamp(years, 1, 4));
-  return p.contract;
+  return { ok: true, contract: p.contract };
 }
-export const tagPrice = (L, p) => r1(Math.max(asking(p) * 1.3, 8));
+export const tagPrice = (L, p) => r1(Math.min(R.maxDeal(), Math.max(asking(p) * 1.3, 8 * R.capScale())));
 export function franchiseTag(L, pid) {
   const p = L.players[pid]; const t = L.teams[p.team];
   if (t.tagged != null) return false;
+  if (!capCheck(L, t, tagPrice(L, p)).ok) return false;
   setContract(p, tagPrice(L, p), 1);
   p.tagged = L.season; t.tagged = pid;
   return true;
@@ -375,8 +390,8 @@ function aiResign(L) {
       const pay = kept.reduce((n, q) => n + R.capHit(q), 0) + (t.dead || 0);
       const wanted = t.stage === 'rebuild' ? (p.career <= 3 && p.potential >= p.power + 4) || p.power >= median + 4
         : t.stage === 'contender' ? p.power >= median - 2 : p.power >= median;
-      if (wanted && pay + ask <= R.capOf(t) + 4) { resign(L, p.pid, Math.min(wantYears(p), 3)); kept.push(p); }
-      else if (wanted && t.tagged == null && p.power >= 86 && pay + tagPrice(L, p) <= R.capOf(t) + 12) { franchiseTag(L, p.pid); kept.push(p); news(L, { kind: 'TAGGED', team: t.i, title: `${t.name} tag ${p.name}`, text: `One more season, at ${tagPrice(L, p)}. The franchise tag keeps the star home.` }); }
+      if (wanted && capCheck(L, t, ask).ok) { resign(L, p.pid, Math.min(wantYears(p), 3)); kept.push(p); }
+      else if (wanted && t.tagged == null && p.power >= 86 && franchiseTag(L, p.pid)) { kept.push(p); news(L, { kind: 'TAGGED', team: t.i, title: `${t.name} tag ${p.name}`, text: `One more season, at ${tagPrice(L, p)}. The franchise tag keeps the star home.` }); }
       else letGo(L, p.pid);
     }
   }
@@ -392,6 +407,8 @@ export function canUpgrade(L, p) {
   if (p.career > 4) return { ok: false, why: 'Only cards in their first 4 seasons' };
   if (p.upgraded === L.season) return { ok: false, why: 'One step per off-season' };
   if ((t.upgrades || 0) >= UPGRADES_PER_TEAM) return { ok: false, why: `${UPGRADES_PER_TEAM} upgrades a team` };
+  const c = upgradeCost(p);
+  const cap = capCheck(L, t, c.hitAfter, [p.pid]); if (!cap.ok) return { ok: false, why: cap.why.replace('That puts you', 'The raise puts you') };
   return { ok: true };
 }
 export function upgradeCost(p) {
@@ -408,7 +425,13 @@ export function upgrade(L, pid) {
   p.dev += 1; p.upgraded = L.season; t.upgrades = (t.upgrades || 0) + 1;
   if (!p.bust) p.potential = Math.min(99, p.potential + 3);
   p.revealed = true; // upgrading shows whether the card is a Generational Talent or a bust
-  return { ok: true, gen: !!p.gen, bust: !!p.bust };
+  // v0.21.0 (Khalil): the upgrade comes with skill points. Star: up to +10.
+  // Superstar: +5 or +10. Points past 99 stay on the card, unused.
+  const roll = R.nextRand(L);
+  const pts = p.dev === 1 ? 2 + Math.floor(roll * 9) : roll < 0.6 ? 5 : 10;
+  p.sp = (p.sp || 0) + pts;
+  if (!R.manualPoints(L, p)) R.spendPoints(p);
+  return { ok: true, gen: !!p.gen, bust: !!p.bust, points: pts };
 }
 function aiUpgrades(L) {
   for (const t of L.teams) {
@@ -542,7 +565,14 @@ export function openFreeAgency(L) {
 }
 export function makeOffer(L, pid, per, years) {
   const fa = L.off.fa; const t = L.teams[L.user.team];
+  per = Math.min(per, R.maxDeal());
   if (!fa.offers[pid] && Object.keys(fa.offers).length >= openSpots(L, t)) return { ok: false, why: 'No roster spots left for more offers.' };
+  // Every open offer has to fit under the cap at once.
+  const others = Object.entries(fa.offers).filter(([k]) => Number(k) !== pid).map(([, o]) => o.per);
+  const supers = others.filter((x) => R.isSupermax(x)).length;
+  const chk = capCheck(L, t, r1(per), [], others.reduce((n, x) => n + x, 0));
+  if (!chk.ok) return chk;
+  if (R.isSupermax(per) && R.supermaxCount(L, t) + supers >= R.SUPERMAX_LIMIT) return { ok: false, why: `You already have ${R.SUPERMAX_LIMIT} supermax deals (counting your open offers).` };
   fa.offers[pid] = { per: r1(per), years };
   return { ok: true };
 }
@@ -564,12 +594,14 @@ export function resolveRound(L) {
   for (const t of L.teams) {
     if (L.user && t.i === L.user.team) continue;
     const spots = openSpots(L, t); if (spots <= 0) continue;
-    const room = R.capOf(t) - R.payroll(L, t) + (t.stage === 'contender' ? 18 : 8);
+    const room = R.capOf(t) - R.payroll(L, t);
+    let supers = R.supermaxCount(L, t);
     const cands = pool.filter((p) => seriesCount(L, t, p.series) < MAX_PER_SERIES).sort((a, b) => aiValue(L, t, b) - aiValue(L, t, a)).slice(0, spots * 2 + fa.round);
     let budget = room;
     for (const p of cands) {
       const per = r1(asking(p) * (0.88 + rand() * 0.27 + (fa.round - 1) * -0.05));
       if (per > budget && per > MIN_SALARY) continue;
+      if (R.isSupermax(per)) { if (supers >= R.SUPERMAX_LIMIT) continue; supers += 1; }
       budget -= per;
       add(p.pid, { ti: t.i, per: Math.max(MIN_SALARY, per), years: Math.min(wantYears(p), 3) });
     }
@@ -654,7 +686,6 @@ export function startNextSeason(L) {
   if (era) news(L, { ...era, team: L.user.team });
   for (const tm of L.teams) {
     tm.coachName = tm.coachName || 'Coach';
-    if (tm.capPenalty > 0) news(L, { kind: 'CAP', team: tm.i, title: `${tm.name} start ${tm.capPenalty} under the cap`, text: `Last season's overage comes off this season's cap: ${R.capOf(tm)} to spend.` });
   }
   return { ok: true };
 }
@@ -699,7 +730,13 @@ export function evaluateTrade(L, ti, give, get) {
   const inV = gp.reduce((n, p) => n + tradeValue(L, p, them), 0);
   const outV = tp.reduce((n, p) => n + tradeValue(L, p, them), 0);
   const capAfter = R.payroll(L, them) - tp.reduce((n, p) => n + R.capHit(p), 0) + gp.reduce((n, p) => n + R.capHit(p), 0);
-  const capOk = capAfter <= R.capOf(them) + (them.stage === 'contender' ? 15 : 5);
+  const myAfter = R.payroll(L, me) - gp.reduce((n, p) => n + R.capHit(p), 0) + tp.reduce((n, p) => n + R.capHit(p), 0);
+  // Hard cap: a trade can't leave either side over it (unless it lowers their payroll).
+  if (myAfter > R.capOf(me) + 0.05 && myAfter > R.payroll(L, me)) return { ok: false, score: 0, why: `That puts you over the ${R.capOf(me)} salary cap.` };
+  const supIn = (list) => list.filter((p) => R.isSupermax(R.capHit(p))).length;
+  if (R.supermaxCount(L, me, give) + supIn(tp) > R.SUPERMAX_LIMIT && supIn(tp) > supIn(gp)) return { ok: false, score: 0, why: `You'd have more than ${R.SUPERMAX_LIMIT} supermax deals.` };
+  if (R.supermaxCount(L, them, get) + supIn(gp) > R.SUPERMAX_LIMIT && supIn(gp) > supIn(tp)) return { ok: false, score: 0, why: `They'd have more than ${R.SUPERMAX_LIMIT} supermax deals.` };
+  const capOk = capAfter <= R.capOf(them) + 0.05 || capAfter <= R.payroll(L, them);
   const margin = inV - outV;
   const score = Math.round(clamp(50 + margin * 6, 0, 100));
   if (!capOk) return { ok: false, score: Math.min(score, 30), why: 'It puts them too far over the cap.' };
@@ -729,6 +766,9 @@ function aiTrade(L, rand) {
   const sGain = tradeValue(L, kid, s) - tradeValue(L, vet, s);
   const bGain = tradeValue(L, vet, b) - tradeValue(L, kid, b);
   if (sGain < 1 || bGain < 1) return;
+  const bAfter = R.payroll(L, b) - R.capHit(kid) + R.capHit(vet);
+  if (bAfter > R.capOf(b) && R.capHit(vet) > R.capHit(kid)) return;
+  if (R.isSupermax(R.capHit(vet)) && R.supermaxCount(L, b, [kid.pid]) >= R.SUPERMAX_LIMIT) return;
   doTrade(L, b.i, s.i, [kid.pid], [vet.pid]);
 }
 

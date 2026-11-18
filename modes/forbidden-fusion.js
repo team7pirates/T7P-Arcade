@@ -22,10 +22,12 @@ import { shareText } from '../core/grid-board.js';
 import { ROLES, SPECIALS, BEATS, fighterStats } from '../core/combat.js';
 import { playMatch } from '../core/battle-view.js';
 import {
-  GYM, MAX_BUDGET, BOUNTY_PER_POINT, ROLE_CHANGE, roleChangeCost, cost, budgetFor, starterBuild, fighterFrom,
+  GYM, START_BUDGET, ROLE_CHANGE, roleChangeCost, starterBuild, fighterFrom,
+  TREE, TREE_MAX, node, treeCost, tierOf, canBuy, applyTree, treeFromBuild, pointsForFloor, POINTS_PER_BOSS,
   floorFoes, floorPower, swarmSize, isBoss, bountyFor, healAfter, titleFor, HEAL_FLOOR, HEAL_BOSS,
 } from './fusion-rules.js';
 import * as FP from './fusion-phone.js';
+import { sfx } from '../core/sfx.js';
 import { createPhone } from '../core/phone-ui.js';
 import * as PD from '../core/phone-dating.js';
 
@@ -41,11 +43,12 @@ const fmt = (n) => Math.round(n).toLocaleString();
 const help = howToPlay('forbidden-fusion', 'Forbidden Fusion', [
   'Forge one fighter in the Gym. Pick any character as its face, give it a name, and choose a main role and a second role.',
   'Your main role sets your special move: Striker Finisher, Tank Iron Wall, Speedster Blitz, Mystic Hex or Tactician Counterplay. The role wheel still counts in every fight.',
-  'Spend Gym points: 1 point per Power Level above 50, and 1 point per 10 Aura or Clutch. Chaos is free: it only makes hits swing wider.',
+  'The Talent Tree: four branches (Power, Aura, Clutch, Hunter) around a core. Every node has tiers; spend talent points to raise them. You start with 30 points and earn 1 a floor (3 on a boss floor).',
+  'Spend points between floors. Anything you buy during a climb is locked in until the climb ends. Between climbs you can respec for free.',
   'Climb the Tower: one fight per floor. A fused fighter has 3.5 times a normal card\'s health, and it carries over. You get 20% back after each floor and 25% after a boss.',
   'Every 5th floor is a boss. Past floor 10 the Omega swarms send two, then three cards at you.',
-  'Clearing floors earns Bounty: more as you climb, half again for an underdog win, and double on Hard. Every 100 Bounty adds a Gym point for good.',
-  'Roles lock when you save your fighter. Changing the main role later costs 10 Gym points and the second role 5, paid for good out of your Bounty.',
+  'Clearing floors earns Bounty: more as you climb, half again for an underdog win, and double on Hard. Bounty is your score and your Hall of Fame.',
+  'Roles lock when you save your fighter. Changing the main role later costs 10 talent points and the second role 5, for good.',
   'Your phone: after floor 1, people text you. Trash talkers you answer hostile become your next opponent (a callout, Bounty ×1.5); answer humble and the climb goes on as normal. Bosses test you or send their crew, sponsors offer deals, and your trainer checks in when you\'re hurt. Open it with the Open phone button or the P key (change the key in the phone\'s Settings).',
   'After you beat someone, they may text you. Gloat for followers, but they come back for a rematch 3 floors later (+3 Power, Bounty ×1.5). Show respect and they send a tip: +4 Aura next floor.',
   'Matchup, the dating app: like profiles, chat, and ask your matches out. A date is +5 Aura for your next floor (one per floor).',
@@ -76,9 +79,10 @@ async function loadSlot(n) {
   data = await store.get(dataKey(n), null);
   if (!data) {
     const face = characters.get(profile.value.iconId);
-    data = { build: starterBuild(face), lifetimeBounty: 0, hof: [], createdAt: Date.now() };
+    data = { build: starterBuild(face), lifetimeBounty: 0, hof: [], createdAt: Date.now(), points: 0, rolePaid: 0 };
     await store.set(dataKey(n), data);
   }
+  migrateTree(data);
   run = await store.get(runKey(n), null);
   lastRun = null;
   return data;
@@ -89,8 +93,18 @@ const bestFloor = (d) => Math.max(0, ...((d?.hof || []).map((e) => e.floor || 0)
 
 const faceOf = (build) => (build.faceId != null ? characters.get(build.faceId) : null);
 const fighterOf = (build) => fighterFrom(build, faceOf(build));
-// Bounty spent on role changes comes off what counts toward the Gym budget.
-const budget = () => budgetFor((data.lifetimeBounty || 0) - (data.spentBounty || 0));
+// v0.21.0: talent points. 30 to start, plus what you earn clearing floors,
+// minus what role changes cost.
+const budget = () => START_BUDGET + (data.points || 0) - (data.rolePaid || 0);
+const pointsLeft = () => budget() - treeCost(data.build.tree);
+// Older saves: the Gym build becomes tree tiers, and Bounty becomes points (1 per 100).
+function migrateTree(d) {
+  if (d.build.tree) { applyTree(d.build); return; }
+  d.points = Math.floor((d.lifetimeBounty || 0) / 100);
+  d.rolePaid = Math.round((d.spentBounty || 0) / 100);
+  d.build.tree = treeFromBuild(d.build);
+  applyTree(d.build);
+}
 const rolesLocked = () => data.locked ?? ((data.lifetimeBounty || 0) > 0 || (data.hof || []).length > 0);
 
 function shuffleSeed() { return Math.floor(Math.random() * 2 ** 31); }
@@ -207,11 +221,9 @@ export async function render() {
     phone.show(true); phone.refresh();
     const b = data.build;
     const total = budget();
-    const spent = cost(b);
+    const spent = treeCost(b.tree);
     const unspent = total - spent;
 
-    const paid = data.spentBounty || 0;
-    const nextAt = total >= MAX_BUDGET ? null : (Math.floor((data.lifetimeBounty - paid) / BOUNTY_PER_POINT) + 1) * BOUNTY_PER_POINT + paid;
     const best = bestFloor(data);
 
     fill(root,
@@ -225,7 +237,7 @@ export async function render() {
             h('p', { class: 'caption muted' }, SPECIALS[b.mainRole].text),
             h('p', { class: 'label-spaced ff-gap' }, 'BEATS'),
             h('p', { class: 'caption' }, BEATS[b.mainRole].join(' · ')),
-            h('p', { class: 'label-spaced ff-gap' }, 'GYM POINTS'),
+            h('p', { class: 'label-spaced ff-gap' }, 'TALENT POINTS'),
             h('p', {}, h('span', { class: 'stat gold' }, String(spent)), h('span', { class: 'muted' }, ` / ${total}`)),
             unspent > 0 ? h('p', { class: 'ff-unspent' }, `${unspent} point${unspent === 1 ? '' : 's'} to spend`) : null,
           ),
@@ -235,9 +247,7 @@ export async function render() {
             h('p', { class: 'label-spaced' }, 'LIFETIME BOUNTY'),
             h('p', { class: 'stat' }, fmt(data.lifetimeBounty)),
           ),
-          h('p', { class: 'caption muted' }, nextAt
-            ? `Next Gym point at ${fmt(nextAt)} Bounty.`
-            : 'Your Gym budget is maxed.'),
+          h('p', { class: 'caption muted' }, `Earn 1 talent point a floor and ${POINTS_PER_BOSS} on a boss floor.`),
           best ? h('p', { class: 'caption' }, `Best climb: floor ${best} · ${titleFor(best)}`) : null,
         ),
         run
@@ -247,10 +257,11 @@ export async function render() {
             h('span', { class: 'caption muted' }, `Health ${fmt(run.hp)} / ${fmt(run.maxHp)} · ${fmt(run.runBounty)} Bounty this climb`))
           : h('button', { class: 'btn btn-primary btn-wide ff-climb', onClick: pickDifficulty }, 'Climb the Tower'),
         h('div', { class: 'ff-actions' },
+          h('button', { class: `btn ${unspent > 0 ? 'btn-primary' : 'btn-secondary'}`, onClick: () => drawTree() }, `Talent tree${unspent > 0 ? ` · ${unspent}` : ''}`),
           h('button', {
             class: 'btn btn-secondary',
-            onClick: () => (run ? toast('Finish or end your climb to change your build.') : drawGym()),
-          }, icon('edit', 18), 'The Gym'),
+            onClick: () => (run ? toast('Finish or end your climb to change your fighter.') : drawGym()),
+          }, icon('edit', 18), 'Fighter'),
           h('button', { class: 'btn btn-secondary', onClick: openHallOfFame }, 'Hall of Fame'),
         ),
       ),
@@ -277,6 +288,92 @@ export async function render() {
     });
   }
 
+  // ---------- The Talent Tree (v0.21.0) ----------
+  let treePick = 'power';
+  function drawTree() {
+    view = 'tree';
+    const b = data.build; const t = b.tree || (b.tree = {});
+    const inRun = !!run;
+    const total = budget(); const spent = treeCost(t); const left = total - spent;
+    const n = node(treePick); const tier = tierOf(t, n.id);
+    const chk = canBuy(t, n.id, left);
+    const buy = async () => {
+      if (!canBuy(t, n.id, pointsLeft()).ok) return;
+      t[n.id] = tier + 1;
+      applyTree(b);
+      if (run) {
+        const oldMax = run.maxHp;
+        run.build.tree = { ...t }; applyTree(run.build);
+        const newMax = fighterStats(fighterOf(run.build)).maxHp;
+        if (newMax !== oldMax) { run.maxHp = newMax; run.hp = Math.min(newMax, run.hp + (newMax - oldMax)); }
+        await saveRun();
+      }
+      await saveData();
+      sfx.play('correct');
+      drawTree();
+    };
+    const respec = async (all) => {
+      if (inRun) { toast('Locked until this climb ends.'); return; }
+      if (all) {
+        const ok = await confirmSheet({ title: 'RESPEC THE WHOLE TREE?', message: `All ${spent} points come back to spend again. It's free between climbs.`, confirmLabel: 'Respec' });
+        if (!ok) return;
+        b.tree = {};
+      } else {
+        // Refund one tier, and anything that needed it.
+        t[n.id] = Math.max(0, tier - 1);
+        for (const x of TREE) if (x.req && x.req[0] === n.id && (t[n.id] || 0) < x.req[1]) t[x.id] = 0;
+      }
+      applyTree(b); await saveData(); drawTree();
+    };
+    const W = 100;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${W}`); svg.setAttribute('class', 'ff-tree-lines'); svg.setAttribute('aria-hidden', 'true');
+    for (const x of TREE) {
+      const from = x.req ? node(x.req[0]) : { x: 50, y: 50 };
+      const on = x.req ? tierOf(t, x.req[0]) >= x.req[1] : true;
+      const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      Object.entries({ x1: from.x, y1: from.y, x2: x.x, y2: x.y }).forEach(([k, v]) => l.setAttribute(k, v));
+      l.setAttribute('class', `ff-tline${on ? ' is-on' : ''}${tierOf(t, x.id) ? ' is-bought' : ''}`);
+      svg.append(l);
+    }
+    const nodeEl = (x) => {
+      const tr = tierOf(t, x.id); const locked = x.req && tierOf(t, x.req[0]) < x.req[1];
+      const can = canBuy(t, x.id, left).ok;
+      return h('button', {
+        class: `ff-tnode br-${x.branch.toLowerCase()}${tr ? ' is-bought' : ''}${tr >= x.tiers ? ' is-max' : ''}${locked ? ' is-locked' : ''}${can ? ' is-can' : ''}${treePick === x.id ? ' is-pick' : ''}`,
+        style: `left:${x.x}%;top:${x.y}%`, 'aria-label': `${x.name}, tier ${tr} of ${x.tiers}${locked ? ', locked' : ''}`,
+        onClick: () => { treePick = x.id; drawTree(); },
+      },
+        h('span', { class: 'ff-tpips', 'aria-hidden': 'true' }, Array.from({ length: x.tiers }, (_, i) => h('i', { class: i < tr ? 'on' : '' }))),
+        h('span', { class: 'ff-thex' }, h('span', { class: 'ff-ticon' }, locked ? '🔒' : x.icon)),
+        h('span', { class: 'ff-tname' }, x.name));
+    };
+    fill(root,
+      header(inRun ? `TALENT TREE · FLOOR ${run.floor}` : 'TALENT TREE', () => (inRun ? drawTower() : drawLab())),
+      h('div', { class: 'ff-tree-wrap' },
+        h('div', { class: 'ff-tree-board' }, svg,
+          h('div', { class: 'ff-tcore' }, (() => { const f = fighterOf(b); const face = faceOf(b); return face ? avatar(face, characters, 'md') : h('span', { class: 'avatar avatar-md fr-anime' }, 'FF'); })(), h('p', { class: 'ff-tcore-name' }, b.name), h('p', { class: 'ff-tcore-n' }, `${spent}/${TREE_MAX}`), h('p', { class: 'caption muted' }, `PL ${b.powerLevel} · AURA ${b.aura} · CLUTCH ${b.clutch}`)),
+          ...TREE.map(nodeEl),
+          ['POWER', 'AURA', 'CLUTCH', 'HUNTER'].map((br, i) => h('span', { class: `ff-tbranch br-${br.toLowerCase()}`, style: `left:${[22, 78, 22, 78][i]}%;top:${[45, 45, 55, 55][i]}%` }, br))),
+        h('aside', { class: 'ff-tdetail panel' },
+          h('div', { class: 'ff-tdetail-head' }, h('span', { class: `ff-thex is-sm br-${n.branch.toLowerCase()}` }, h('span', { class: 'ff-ticon' }, n.icon)),
+            h('div', {}, h('p', { class: 'heading' }, `${n.name} · Tier ${tier}/${n.tiers}`), h('p', { class: 'caption muted' }, `${n.branch} branch`))),
+          h('p', { class: 'label-spaced' }, 'NOW'),
+          h('p', { class: 'body-text' }, tier ? n.text(tier) : 'Nothing yet.'),
+          tier < n.tiers ? h('p', { class: 'label-spaced' }, 'NEXT TIER') : null,
+          tier < n.tiers ? h('p', { class: 'body-text' }, n.text(tier + 1)) : h('p', { class: 'caption gold' }, 'MAXED'),
+          n.req ? h('p', { class: `caption ${tierOf(t, n.req[0]) >= n.req[1] ? 'win' : 'loss'}` }, `Needs ${node(n.req[0]).name} tier ${n.req[1]}`) : null,
+          tier < n.tiers ? h('p', { class: 'ff-tcost' }, 'Cost to upgrade ', h('b', { class: 'gold' }, String(n.cost))) : null,
+          h('div', { class: 'ff-tpoints' }, h('span', { class: 'label-spaced' }, 'AVAILABLE POINTS'), h('span', { class: 'stat gold' }, String(left))),
+          h('button', { class: 'btn btn-primary btn-wide', disabled: !chk.ok, onClick: buy }, chk.ok ? `Upgrade · ${n.cost}` : chk.why),
+          inRun ? h('p', { class: 'caption muted' }, '🔒 You are mid-climb: upgrades are locked in until the climb ends.') : h('div', { class: 'btn-row' },
+            h('button', { class: 'btn btn-secondary btn-sm', disabled: !tier, onClick: () => respec(false) }, 'Respec this node'),
+            h('button', { class: 'btn btn-secondary btn-sm', disabled: !spent, onClick: () => respec(true) }, 'Respec all')),
+          h('p', { class: 'caption muted' }, `Earn 1 point a floor, ${POINTS_PER_BOSS} on a boss floor. ${budget()} earned on this file.`),
+          inRun ? h('button', { class: 'btn btn-secondary btn-wide', onClick: drawTower }, 'Back to the Tower') : null)),
+    );
+  }
+
   // ---------- The Gym ----------
   function drawGym() {
     view = 'gym';
@@ -296,7 +393,7 @@ export async function render() {
     function draw() {
       if (document.activeElement !== nameInput) nameInput.value = draft.name;
       const charge = roleChangeCost(data.build, draft, rolesLocked());
-      const left = total - cost(draft) - charge;
+      const left = total - treeCost(draft.tree) - charge;
       pointsEl.textContent = String(left);
       preview.replaceChildren(characterCard(fighterOf(draft), { size: 'md' }));
       const face = faceOf(draft);
@@ -318,7 +415,7 @@ export async function render() {
         h('section', { class: 'panel ff-sec' },
           h('h3', { class: 'label-spaced set-title' }, 'MAIN ROLE'),
           h('p', { class: 'caption muted' }, 'Sets your special move. The role wheel gives +16% damage against the roles yours beats.'),
-          rolesLocked() ? h('p', { class: 'ff-lock' }, `🔒 Roles are locked. Changing your main role costs ${ROLE_CHANGE.main} points and your second role ${ROLE_CHANGE.second}, paid for good out of your Bounty.${charge ? ` This change: ${charge} points.` : ''}`)
+          rolesLocked() ? h('p', { class: 'ff-lock' }, `🔒 Roles are locked. Changing your main role costs ${ROLE_CHANGE.main} talent points and your second role ${ROLE_CHANGE.second}, for good.${charge ? ` This change: ${charge} points.` : ''}`)
             : h('p', { class: 'ff-lock' }, `Pick carefully: roles lock when you save. After that, changes cost ${ROLE_CHANGE.main} points (main) and ${ROLE_CHANGE.second} (second).`),
           h('div', { class: 'ff-roles', role: 'radiogroup', 'aria-label': 'Main role' }, ROLES.map((r) => h('button', {
             class: `ff-role role-${r.toLowerCase()}${draft.mainRole === r ? ' is-on' : ''}`,
@@ -337,21 +434,11 @@ export async function render() {
         ),
         h('section', { class: 'panel ff-sec' },
           h('div', { class: 'ff-points' },
-            h('h3', { class: 'label-spaced set-title' }, 'TRAINING'),
-            h('span', {}, h('span', { class: 'label-spaced' }, 'POINTS LEFT '), pointsEl, h('span', { class: 'muted' }, ` / ${total}`)),
+            h('h3', { class: 'label-spaced set-title' }, 'STYLE'),
+            h('span', {}, h('span', { class: 'label-spaced' }, 'TALENT POINTS LEFT '), pointsEl),
           ),
-          stepper('powerLevel', 'Power Level', GYM.power, '1 point each. Health and attack.', draft, left, draw),
-          stepper('aura', 'Aura', GYM.aura, '1 point per 10. Special meter fills faster, more damage.', draft, left, draw),
-          stepper('clutch', 'Clutch', GYM.clutch, '1 point per 10. Chance to survive a knockout with 1 health.', draft, left, draw),
+          h('p', { class: 'caption muted' }, 'Power, Aura and Clutch now come from the Talent Tree.'),
           stepper('chaos', 'Chaos', GYM.chaos, 'Free. Higher Chaos makes every hit swing wider.', draft, left, draw),
-          h('button', {
-            class: 'btn btn-secondary ff-auto',
-            onClick: () => {
-              const s = starterBuild({ mainRole: draft.mainRole, secondRole: draft.secondRole }, total);
-              Object.assign(draft, { powerLevel: s.powerLevel, aura: s.aura, clutch: s.clutch });
-              draw();
-            },
-          }, 'Spend for me'),
         ),
       );
     }
@@ -359,11 +446,11 @@ export async function render() {
     async function save() {
       draft.name = (draft.name || '').trim().replace(/\s+/g, ' ').slice(0, NAME_MAX) || 'THE FORBIDDEN ONE';
       const charge = roleChangeCost(data.build, draft, rolesLocked());
-      if (cost(draft) + charge > total) { toast(charge ? `That build plus the ${charge}-point role change costs more points than you have.` : 'That build costs more points than you have.'); return; }
+      if (treeCost(draft.tree) + charge > total) { toast(`The ${charge}-point role change costs more talent points than you have free. Respec your tree first.`); return; }
       if (charge) {
-        const ok = await confirmSheet({ title: 'CHANGE ROLES?', message: `This costs ${charge} Gym points for good (${fmt(charge * BOUNTY_PER_POINT)} Bounty). Your budget drops from ${total} to ${total - charge} until you earn it back.`, confirmLabel: `Pay ${charge} points` });
+        const ok = await confirmSheet({ title: 'CHANGE ROLES?', message: `This costs ${charge} talent points for good. Your total drops from ${total} to ${total - charge}.`, confirmLabel: `Pay ${charge} points` });
         if (!ok) return;
-        data.spentBounty = (data.spentBounty || 0) + charge * BOUNTY_PER_POINT;
+        data.rolePaid = (data.rolePaid || 0) + charge;
       }
       data.locked = true;
       data.build = draft;
@@ -373,7 +460,7 @@ export async function render() {
     }
 
     fill(root,
-      header('THE GYM', () => drawLab()),
+      header('YOUR FIGHTER', () => drawLab()),
       h('div', { class: 'ff-gym-wrap' }, preview, body),
       h('div', { class: 'ff-gym-bar' },
         h('button', { class: 'btn btn-secondary', onClick: () => drawLab() }, 'Cancel'),
@@ -501,6 +588,7 @@ export async function render() {
             }
             drawFight();
           } }, 'Fight'),
+          h('button', { class: 'btn btn-secondary', onClick: () => drawTree() }, `Talent tree${pointsLeft() > 0 ? ` · ${pointsLeft()}` : ''}`),
           h('button', { class: 'btn btn-secondary', onClick: endRunEarly }, 'End climb'),
         ),
         h('p', { class: 'caption muted ff-center' }, `${fmt(r.runBounty)} Bounty this climb · floors cleared ${r.floor}`),
@@ -551,10 +639,10 @@ export async function render() {
     const me = fighterOf(r.build);
     const base = bountyFor(fl, r.hard, me, foes);
     const underdog = base.underdog;
-    const bounty = Math.round(base.bounty * (r.next.mult || 1) * (r.restPenalty ? FP.REST_PENALTY : 1));
+    const bounty = Math.round(base.bounty * (r.next.mult || 1) * (r.restPenalty ? FP.REST_PENALTY : 1) * (1 + (r.build.talents?.bounty || 0)));
     r.restPenalty = false;
     const before = result.endHp[0];
-    const hp = healAfter(fl, before, r.maxHp);
+    const hp = healAfter(fl, before, r.maxHp, r.build.talents?.heal || 0);
     r.floor = fl;
     r.hp = hp;
     r.runBounty += bounty;
@@ -563,6 +651,7 @@ export async function render() {
     if (isBoss(fl)) r.bossWins += 1;
     const budgetBefore = budget();
     data.lifetimeBounty += bounty;
+    data.points = (data.points || 0) + pointsForFloor(fl);
     // The phone reacts to the floor and sets up the next one.
     if (r.phone) {
       FP.onCleared(r, fl);
@@ -588,14 +677,15 @@ export async function render() {
         h('h2', { class: 'display-lg gold' }, `+${fmt(o.bounty)}`),
         h('p', { class: 'label-spaced' }, 'BOUNTY'),
         o.underdog ? h('p', { class: 'new-best' }, 'UNDERDOG WIN · ×1.5') : null,
-        o.gained > 0 ? h('p', { class: 'new-best' }, `+${o.gained} GYM POINT${o.gained === 1 ? '' : 'S'}`) : null,
+        o.gained > 0 ? h('p', { class: 'new-best' }, `+${o.gained} TALENT POINT${o.gained === 1 ? '' : 'S'}`) : null,
       ),
       h('div', { class: 'ff-me panel' },
         h('div', { class: 'ff-me-text' },
-          h('p', { class: 'caption muted' }, `Recovered ${fmt(o.healed)} health (${Math.round((o.boss ? HEAL_BOSS : HEAL_FLOOR) * 100)}% after ${o.boss ? 'a boss' : 'a floor'}).`),
+          h('p', { class: 'caption muted' }, `Recovered ${fmt(o.healed)} health (${Math.round(((o.boss ? HEAL_BOSS : HEAL_FLOOR) + (run.build.talents?.heal || 0)) * 100)}% after ${o.boss ? 'a boss' : 'a floor'}).`),
           hpBar(o.hp, run.maxHp),
         ),
       ),
+      pointsLeft() > 0 ? h('button', { class: 'ff-tree-cta', onClick: () => drawTree() }, h('span', { class: 'label-spaced gold' }, 'TALENT TREE'), h('span', { class: 'heading' }, `${pointsLeft()} point${pointsLeft() === 1 ? '' : 's'} to spend`), h('span', { class: 'caption muted' }, 'Upgrades bought during a climb are locked in until it ends.')) : null,
       h('div', { class: 'result-actions' },
         h('button', { class: 'btn btn-primary', onClick: drawTower }, `On to floor ${o.floor + 1}`),
         h('button', { class: 'btn btn-secondary', onClick: () => drawLab() }, 'Back to the Lab'),
@@ -658,12 +748,12 @@ export async function render() {
       h('div', { class: 'result-stats' },
         stat('Bounty', fmt(r.runBounty)), stat('Bosses', r.bossWins), stat('Underdog wins', r.underdogWins),
       ),
-      h('p', { class: 'caption muted result-tip' }, budget() < MAX_BUDGET
-        ? `Lifetime Bounty ${fmt(data.lifetimeBounty)}: your Gym budget is ${budget()} points.`
-        : 'Your Gym budget is maxed. Now it is all about the floor.'),
+      h('p', { class: 'caption muted result-tip' }, treeCost(data.build.tree) < TREE_MAX
+        ? `${budget()} talent points earned on this file. The climb is over, so you can respec your tree for free.`
+        : 'Your talent tree is maxed. Now it is all about the floor.'),
       h('div', { class: 'result-actions' },
         h('button', { class: 'btn btn-primary', onClick: async () => { lastRun = null; run = newRun(r.hard); await saveRun(); drawTower(); } }, 'Climb again'),
-        h('button', { class: 'btn btn-secondary', onClick: () => { lastRun = null; drawGym(); } }, 'The Gym'),
+        h('button', { class: 'btn btn-secondary', onClick: () => { lastRun = null; drawTree(); } }, 'Talent tree'),
         h('button', { class: 'btn btn-secondary', onClick: share }, 'Share'),
       ),
     );

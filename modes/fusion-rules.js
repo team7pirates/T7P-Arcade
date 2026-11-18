@@ -45,8 +45,8 @@ export function starterBuild(face, budget = START_BUDGET) {
   const aura = Math.min(100, Math.max(0, Math.floor(left / 2)) * GYM.aura.step);
   left -= aura / GYM.aura.step;
   const clutch = Math.min(100, Math.max(0, left) * GYM.clutch.step);
-  return {
-    name: 'THE FORBIDDEN ONE',
+  return applyTree({
+    tree: { power: 3, aura: 2, clutch: 1 },  // 21 + 4 + 2 = 27 of the 30 starting points
     faceId: face ? face.id : null,
     mainRole: main,
     secondRole: second,
@@ -54,7 +54,60 @@ export function starterBuild(face, budget = START_BUDGET) {
     aura,
     clutch,
     chaos: 50,
-  };
+    name: 'THE FORBIDDEN ONE',
+  });
+}
+
+// ---------- The Talent Tree (v0.21.0, replaces the Gym's training) ----------
+// Like The Division 2: four branches around a core. Every node has tiers;
+// each tier costs points. You earn points by clearing floors (1 a floor, 3 on
+// a boss floor) and can spend them between floors. What you buy during a
+// climb is locked in until the climb ends; between climbs you can respec
+// for free. The tree is kept per save file.
+export const TREE = [
+  { id: 'power', name: 'Power Level', branch: 'POWER', icon: '💪', tiers: 7, cost: 7, per: 7, x: 30, y: 30,
+    text: (n) => `+${n * 7} Power Level. More health and harder hits.` },
+  { id: 'titan', name: 'Titan Frame', branch: 'POWER', icon: '🛡️', tiers: 3, cost: 4, per: 0.25, x: 13, y: 12, req: ['power', 3],
+    text: (n) => `+${Math.round(n * 0.25 / FUSION_HP * 100)}% max health.` },
+  { id: 'aura', name: 'Aura', branch: 'AURA', icon: '✨', tiers: 5, cost: 2, per: 20, x: 70, y: 30,
+    text: (n) => `+${n * 20} Aura. Your special fills faster and hits harder.` },
+  { id: 'signature', name: 'Signature Move', branch: 'AURA', icon: '🔥', tiers: 3, cost: 4, per: 0.1, x: 87, y: 12, req: ['aura', 2],
+    text: (n) => `+${n * 10}% special move damage.` },
+  { id: 'clutch', name: 'Clutch', branch: 'CLUTCH', icon: '🎯', tiers: 5, cost: 2, per: 20, x: 30, y: 70,
+    text: (n) => `+${n * 20} Clutch. More chances to survive a knockout with 1 health.` },
+  { id: 'secondWind', name: 'Second Wind', branch: 'CLUTCH', icon: '❤️', tiers: 3, cost: 3, per: 0.05, x: 13, y: 88, req: ['clutch', 2],
+    text: (n) => `Heal ${n * 5}% more after every floor.` },
+  { id: 'bounty', name: 'Bounty Hunter', branch: 'HUNTER', icon: '💰', tiers: 3, cost: 3, per: 0.1, x: 70, y: 70,
+    text: (n) => `+${n * 10}% Bounty from every floor.` },
+  { id: 'momentum', name: 'Momentum', branch: 'HUNTER', icon: '⚡', tiers: 3, cost: 3, per: 20, x: 87, y: 88, req: ['bounty', 1],
+    text: (n) => `Start every fight with your special meter ${n * 20}% full.` },
+];
+export const node = (id) => TREE.find((n) => n.id === id);
+export const TREE_MAX = TREE.reduce((n, x) => n + x.tiers * x.cost, 0); // 117
+export const POINTS_PER_FLOOR = 1;
+export const POINTS_PER_BOSS = 3;
+export const pointsForFloor = (floor) => (isBoss(floor) ? POINTS_PER_BOSS : POINTS_PER_FLOOR);
+export const treeCost = (tree = {}) => TREE.reduce((n, x) => n + (tree[x.id] || 0) * x.cost, 0);
+export const tierOf = (tree, id) => (tree && tree[id]) || 0;
+export function canBuy(tree, id, left) {
+  const n = node(id); const t = tierOf(tree, id);
+  if (!n || t >= n.tiers) return { ok: false, why: 'Maxed' };
+  if (n.req && tierOf(tree, n.req[0]) < n.req[1]) return { ok: false, why: `Needs ${node(n.req[0]).name} tier ${n.req[1]}` };
+  if (left < n.cost) return { ok: false, why: `Costs ${n.cost} points` };
+  return { ok: true };
+}
+// Write the tree's stats into the build (Power, Aura, Clutch and the talents).
+export function applyTree(build) {
+  const t = build.tree || {};
+  build.powerLevel = Math.min(99, 50 + tierOf(t, 'power') * 7);
+  build.aura = Math.min(100, tierOf(t, 'aura') * 20);
+  build.clutch = Math.min(100, tierOf(t, 'clutch') * 20);
+  build.talents = { hp: tierOf(t, 'titan') * 0.25, sp: tierOf(t, 'signature') * 0.1, heal: tierOf(t, 'secondWind') * 0.05, bounty: tierOf(t, 'bounty') * 0.1, meter: tierOf(t, 'momentum') * 20 };
+  return build;
+}
+// An old Gym build turned into tree tiers (points that don't fit stay unspent).
+export function treeFromBuild(b) {
+  return { power: Math.min(7, Math.floor((b.powerLevel - 50) / 7)), aura: Math.min(5, Math.floor((b.aura || 0) / 20)), clutch: Math.min(5, Math.floor((b.clutch || 0) / 20)) };
 }
 
 // ---------- The Tower ----------
@@ -114,8 +167,8 @@ export function bountyFor(floor, hard, fighter, foes) {
   return { bounty: b, underdog };
 }
 
-export function healAfter(floor, hp, maxHp) {
-  const share = isBoss(floor) ? HEAL_BOSS : HEAL_FLOOR;
+export function healAfter(floor, hp, maxHp, extra = 0) {
+  const share = (isBoss(floor) ? HEAL_BOSS : HEAL_FLOOR) + extra;
   return Math.min(maxHp, hp + Math.round(maxHp * share));
 }
 
@@ -140,6 +193,8 @@ export function fighterFrom(build, face) {
     aura: build.aura,
     clutch: build.clutch,
     chaos: build.chaos,
-    hpMult: FUSION_HP,
+    hpMult: FUSION_HP + (build.talents?.hp || 0),
+    spMult: 1 + (build.talents?.sp || 0),
+    startMeter: build.talents?.meter || 0,
   };
 }

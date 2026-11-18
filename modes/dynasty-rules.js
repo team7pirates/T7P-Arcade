@@ -18,7 +18,19 @@ export const STARTERS = 5;
 export const MAX_PER_SERIES = 3;
 export const WEEKS = 12;
 export const TRADE_DEADLINE = 8;
-export const CAP = 150;
+// v0.21.0 (Khalil): a hard cap, no soft-cap penalties. Sized so a team can
+// carry 3 supermax deals and fill the rest of a 10-card roster. The cap and
+// all new contracts grow 5% a season.
+export const CAP = 160;            // the season-1 cap
+export const CAP_GROWTH = 1.05;
+export const MAX_DEAL = 35;        // the most any contract pays a season (season 1)
+export const SUPERMAX_SHARE = 0.85; // a deal at 85%+ of the max is a supermax
+export const SUPERMAX_LIMIT = 3;
+let SCALE = 1; // the league's cap growth so far (1.05 ^ seasons)
+export const setCapScale = (league) => { if (league.capScale == null) league.capScale = 1; SCALE = league.capScale; return SCALE; };
+export const capScale = () => SCALE;
+export const maxDeal = () => Math.round(MAX_DEAL * SCALE * 10) / 10;
+export const capNow = () => Math.round(CAP * SCALE * 10) / 10;
 export const MAG_EVERY = 3;
 export const SCOUT_WEEKLY = 8;   // scouting points a week
 export const SCOUT_COST = 6;     // 3/4 of a week's points
@@ -134,12 +146,14 @@ export const QUIZ = [
 export function payFor(power, hype = 50, lowKey = false) {
   const base = 0.00031 * Math.max(0, power - 48) ** 3;
   const mood = lowKey ? 1 : 1 + Math.max(-0.2, Math.min(0.2, (hype - 50) / 250));
-  return Math.max(1, Math.round(base * mood * 10) / 10);
+  return Math.max(1, Math.min(maxDeal(), Math.round(base * mood * SCALE * 10) / 10));
 }
+export const isSupermax = (per) => per >= maxDeal() * SUPERMAX_SHARE;
 export const capHit = (p) => (p.contract && p.contract.left > 0 ? Math.round((p.contract.total / p.contract.years) * 10) / 10 : 0);
 export const payroll = (league, team) => Math.round((team.roster.reduce((n, pid) => n + capHit(league.players[pid]), 0) + (team.dead || 0)) * 10) / 10;
-// This season's cap: the soft cap minus last season's overage.
-export const capOf = (team) => Math.round((CAP - (team.capPenalty || 0)) * 10) / 10;
+// This season's cap (the same for every team; it grows each season).
+export const capOf = () => capNow();
+export const supermaxCount = (league, team, skip = []) => team.roster.filter((pid) => !skip.includes(pid) && isSupermax(capHit(league.players[pid]))).length;
 
 // ---------- Setup ----------
 const DEV = [1, 2, 3]; // Normal, Star, Superstar growth speed
@@ -248,7 +262,9 @@ function pickName(rand, used) {
 
 export function newLeague(chars, seed = Date.now()) {
   const rand = rng(seed);
+  SCALE = 1;
   const league = {
+    capScale: 1,
     v: SAVE_VERSION, seed, rngState: seed ^ 0x5bd1e995, season: 0, week: 1, phase: 'season',
     teams: TEAMS.map(([abbr, name, c1, c2, arena], i) => ({
       i, abbr, name, c1, c2, arena, div: Math.floor(i / 8), crest: 1001 + i, roster: [], lineup: null,
@@ -515,6 +531,24 @@ export function endWeek(league) {
   if (hooks.afterWeekPhone) hooks.afterWeekPhone(league, games);
 }
 
+// v0.21.0 (Khalil): skill points. On your team, growth turns into skill
+// points each card keeps; you spend them on Power (1 point = +1, up to 99),
+// or turn on Auto and the game spends them for you. AI teams always spend.
+// Points past 99 stay on the card; they just can't be used.
+export const manualPoints = (league, p) => !!league.user && p.team === league.user.team && !league.user.autoSpend;
+export function spendPoints(p, n = Infinity) {
+  const can = Math.max(0, Math.min(p.sp || 0, n, 99 - p.power));
+  p.power += can; p.sp = (p.sp || 0) - can;
+  return can;
+}
+export function teamPoints(league, team) {
+  return team.roster.reduce((n, pid) => n + Math.min(league.players[pid].sp || 0, 99 - league.players[pid].power), 0);
+}
+export function spendAll(league, team) {
+  let n = 0; for (const pid of team.roster) n += spendPoints(league.players[pid]);
+  return n;
+}
+
 function growthTick(league, rand) {
   const ps = Object.values(league.players).filter((p) => p.team != null);
   // Performance since the last tick.
@@ -531,7 +565,12 @@ function growthTick(league, rand) {
     if (top.has(p.pid) && g > -0.5) g += 1;
     if (league.user && p.team === league.user.team && focus === 'power') g += 0.5;
     p.growth += g;
-    while (p.growth >= 1 && p.power < p.potential) { p.power += 1; p.growth -= 1; }
+    if (manualPoints(league, p)) {
+      while (p.growth >= 1 && p.power + (p.sp || 0) < p.potential) { p.sp = (p.sp || 0) + 1; p.growth -= 1; }
+    } else {
+      if (p.sp) spendPoints(p);
+      while (p.growth >= 1 && p.power < p.potential) { p.power += 1; p.growth -= 1; }
+    }
     if (p.growth >= 1) p.growth = 0.99;
     while (p.growth <= -1) { p.power = Math.max(30, p.power - 1); p.growth += 1; }
     if (league.user && p.team === league.user.team && focus === 'clutch' && rand() < 0.5) p.clutch = Math.min(100, p.clutch + 1);

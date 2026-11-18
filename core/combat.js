@@ -93,6 +93,9 @@ export function fighterStats(c) {
     maxHp: Math.round(TUNING.baseHp * Math.sqrt(scale) * (c.mainRole === 'Tank' ? TUNING.tankHp : 1) * (c.hpMult || 1)),
     atk: TUNING.baseAtk * Math.sqrt(scale),
     hpMult: c.hpMult || 1,
+    // v0.21.0: Forbidden Fusion talents (1 / 0 for everyone else)
+    spMult: c.spMult || 1,
+    startMeter: c.startMeter || 0,
   };
 }
 
@@ -143,7 +146,7 @@ function runRound(sides, round, deciding, rand, events, startHp) {
     state[s] = {
       lineup: sides[s].map((f, i) => {
         const hp = s === 'A' && startHp && startHp[i] != null ? Math.max(1, Math.min(f.maxHp, Math.round(startHp[i]))) : f.maxHp;
-        return { ...f, hp, meter: 0, burn: 0, guard: false, stunned: false, clutchUsed: false, out: false };
+        return { ...f, hp, meter: f.startMeter || 0, burn: 0, guard: false, stunned: false, clutchUsed: false, out: false };
       }),
       idx: 0,
     };
@@ -199,7 +202,7 @@ function runRound(sides, round, deciding, rand, events, startHp) {
 
       const hit = (mult, extra = {}) => {
         const crit = rand() < TUNING.critChance;
-        let dmg = Math.max(1, Math.round(base * mult * swing() * (crit ? TUNING.critMult : 1)));
+        let dmg = Math.max(1, Math.round(base * mult * (special ? me.spMult || 1 : 1) * swing() * (crit ? TUNING.critMult : 1)));
         if (crit) extra.crit = true;
         if (foe.guard) { dmg = Math.round(dmg / 2); foe.guard = false; extra.guarded = true; }
         events.push({ t: 'attack', side, move: special ? special.name : 'Strike', special: !!special, role: me.mainRole, adv, dmg, ...extra });
