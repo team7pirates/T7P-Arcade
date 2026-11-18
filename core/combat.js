@@ -96,6 +96,10 @@ export function fighterStats(c) {
     // v0.21.0: Forbidden Fusion talents (1 / 0 for everyone else)
     spMult: c.spMult || 1,
     startMeter: c.startMeter || 0,
+    // v0.24.0: Forbidden Fusion's second ring
+    unbreak: c.unbreak || 0, unbreakHeal: c.unbreakHeal || 0,
+    meterMult: c.meterMult || 1, firstSpMult: c.firstSpMult || 1,
+    lastStand: c.lastStand || 0,
   };
 }
 
@@ -146,7 +150,7 @@ function runRound(sides, round, deciding, rand, events, startHp) {
     state[s] = {
       lineup: sides[s].map((f, i) => {
         const hp = s === 'A' && startHp && startHp[i] != null ? Math.max(1, Math.min(f.maxHp, Math.round(startHp[i]))) : f.maxHp;
-        return { ...f, hp, meter: f.startMeter || 0, burn: 0, guard: false, stunned: false, clutchUsed: false, out: false };
+        return { ...f, hp, meter: f.startMeter || 0, burn: 0, guard: false, stunned: false, clutchUsed: false, out: false, saves: f.unbreak || 0, firstSpDone: false };
       }),
       idx: 0,
     };
@@ -197,12 +201,17 @@ function runRound(sides, round, deciding, rand, events, startHp) {
       };
       const special = me.meter >= 100 && me.mainRole ? SPECIALS[me.mainRole] : null;
       if (special) me.meter = 0;
-      else me.meter = Math.min(100, me.meter + TUNING.meterPerAttack + me.aura * TUNING.meterAura);
+      else me.meter = Math.min(100, me.meter + (TUNING.meterPerAttack + me.aura * TUNING.meterAura) * (me.meterMult || 1));
+      const domain = special && !me.firstSpDone && (me.firstSpMult || 1) > 1 ? me.firstSpMult : 1;
+      if (special) me.firstSpDone = true;
+      const stand = me.lastStand && me.hp < me.maxHp * 0.25 ? 1 + me.lastStand : 1;
       const adv = beats(me.mainRole, foe.mainRole);
 
       const hit = (mult, extra = {}) => {
         const crit = rand() < TUNING.critChance;
-        let dmg = Math.max(1, Math.round(base * mult * (special ? me.spMult || 1 : 1) * swing() * (crit ? TUNING.critMult : 1)));
+        let dmg = Math.max(1, Math.round(base * mult * (special ? (me.spMult || 1) * domain : 1) * stand * swing() * (crit ? TUNING.critMult : 1)));
+        if (domain > 1) extra.domain = true;
+        if (stand > 1) extra.lastStand = true;
         if (crit) extra.crit = true;
         if (foe.guard) { dmg = Math.round(dmg / 2); foe.guard = false; extra.guarded = true; }
         events.push({ t: 'attack', side, move: special ? special.name : 'Strike', special: !!special, role: me.mainRole, adv, dmg, ...extra });
@@ -249,6 +258,14 @@ function runRound(sides, round, deciding, rand, events, startHp) {
 
 // Returns true if the card was knocked out.
 function applyDamage(state, side, f, dmg, deciding, rand, events, kind) {
+  // Unbreakable: survive a knockout with 1 health (plus a little back).
+  if (dmg >= f.hp && f.saves > 0) {
+    f.saves -= 1;
+    f.hp = Math.min(f.maxHp, 1 + Math.round(f.maxHp * (f.unbreakHeal || 0)));
+    events.push({ t: 'damage', side, dmg, hp: f.hp, kind });
+    events.push({ t: 'clutch', side, unbreakable: true });
+    return false;
+  }
   if (dmg >= f.hp && !f.clutchUsed) {
     const chance = (deciding ? TUNING.clutchDeciding : TUNING.clutch) * (f.clutch / 100);
     if (rand() < chance) {

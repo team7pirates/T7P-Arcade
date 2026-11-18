@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.24.0",
+      "date": "2026-11-18",
+      "title": "New main menu and the Talent Tree's second ring",
+      "items": [
+        "New main menu: it fills the screen, with big art cards for Forbidden Fusion, Dynasty and Brawl, the four other modes in one row, and a small icon bar for Records, Fight Lab, Changelog, Ratings, About and Get the app.",
+        "A Continue card at the top picks up where you left off, for example \"File 2 · KAI · Floor 12\" or your Dynasty team's season and week.",
+        "On phones the menu keeps its stacked layout and adds the Continue card.",
+        "Forbidden Fusion: the Talent Tree has a second ring. Use the rail on the side of the tree screen to switch between Ring 1 and Ring 2.",
+        "Ring 2 has four big talents, 3 tiers each at 9 points a tier. Unbreakable (max Power Level and Titan Frame): once a fight you survive a knockout on 1 health, and higher tiers heal you a little. Domain Expansion (max Aura and Signature Move): your special charges faster and the first special of each fight hits up to 2× as hard. Last Stand (max Clutch and Second Wind): up to +20% damage under 25% health. Sponsor Magnet (max Bounty Hunter and Momentum): sponsors call more often and pay up to 50% more.",
+        "You can own 2 second-ring talents at most, and you have to max the first before you start the second. The tree tells you why a talent is locked. Respec between climbs to swap.",
+        "The talent detail panel has proper spacing now."
+      ]
+    },
+    {
       "version": "0.23.0",
       "date": "2026-11-18",
       "title": "Play-in playoffs, draft-day trades, saved Tier games",

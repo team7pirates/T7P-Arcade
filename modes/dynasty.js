@@ -682,6 +682,7 @@ export async function render() {
   // On load: recap of last week, then the preview, then the hub.
   function enterDynasty() {
     DP.ensure(L); phone.show(true); phone.refresh();
+    profile.update({ dynastySlot: slot });
     const toHub = () => { tab = 'league'; drawHub(); };
     const seen = L.weeklySeen && L.weeklySeen.season === L.season && L.weeklySeen.week === L.week;
     if (L.phase !== 'season' || seen) { toHub(); return; }

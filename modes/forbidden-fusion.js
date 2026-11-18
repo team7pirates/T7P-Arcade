@@ -24,6 +24,7 @@ import { playMatch } from '../core/battle-view.js';
 import {
   GYM, START_BUDGET, ROLE_CHANGE, roleChangeCost, starterBuild, fighterFrom,
   TREE, TREE_MAX, node, treeCost, tierOf, canBuy, applyTree, treeFromBuild, pointsForFloor, POINTS_PER_BOSS,
+  RING2, RING2_LIMIT, RING2_MAX, isRing2, ring2Owned, ring2Block,
   floorFoes, floorPower, swarmSize, isBoss, bountyFor, healAfter, titleFor, HEAL_FLOOR, HEAL_BOSS,
 } from './fusion-rules.js';
 import * as FP from './fusion-phone.js';
@@ -45,6 +46,7 @@ const help = howToPlay('forbidden-fusion', 'Forbidden Fusion', [
   'Your main role sets your special move: Striker Finisher, Tank Iron Wall, Speedster Blitz, Mystic Hex or Tactician Counterplay. The role wheel still counts in every fight.',
   'The Talent Tree: four branches (Power, Aura, Clutch, Hunter) around a core. Every node has tiers; spend talent points to raise them. You start with 30 points and earn 1 a floor (5 on a boss floor), double on Hard. Sponsor money counts too: every 25 Bounty a sponsor pays is another point.',
   'Spend points between floors. Anything you buy during a climb is locked in until the climb ends. Between climbs you can respec for free.',
+  'The second ring (the ✦ button beside the tree): one big node per branch, Unbreakable, Domain Expansion, Last Stand and Sponsor Magnet. A branch\'s big node opens once both of its nodes are maxed. You can own 2 of the 4, and you have to max the first before you start the second.',
   'Climb the Tower: one fight per floor. A fused fighter has 3.5 times a normal card\'s health, and it carries over. You get 20% back after each floor and 25% after a boss.',
   'Every 10th floor is a boss. Past floor 10 the Omega swarms send two, then three cards at you.',
   'Clearing floors earns Bounty: more as you climb, half again for an underdog win, and double on Hard. Bounty is your score and your Hall of Fame.',
@@ -76,6 +78,7 @@ async function migrateOld() {
 }
 async function loadSlot(n) {
   slot = n;
+  profile.update({ fusionSlot: n });
   data = await store.get(dataKey(n), null);
   if (!data) {
     const face = characters.get(profile.value.iconId);
@@ -291,9 +294,14 @@ export async function render() {
 
   // ---------- The Talent Tree (v0.21.0) ----------
   let treePick = 'power';
+  let treeRing = 1;
+  // Positions on the second-ring board (one big node per corner).
+  const R2POS = { unbreakable: [22, 24], domain: [78, 24], laststand: [22, 78], magnet: [78, 78] };
   function drawTree() {
     view = 'tree';
     const b = data.build; const t = b.tree || (b.tree = {});
+    if (treeRing === 2 && !isRing2(treePick)) treePick = RING2[0].id;
+    if (treeRing === 1 && isRing2(treePick)) treePick = 'power';
     const inRun = !!run;
     const total = budget(); const spent = treeCost(t); const left = total - spent;
     const n = node(treePick); const tier = tierOf(t, n.id);
@@ -320,28 +328,32 @@ export async function render() {
         if (!ok) return;
         b.tree = {};
       } else {
-        // Refund one tier, and anything that needed it.
+        // Refund one tier, and anything that needed it (second-ring nodes need
+        // their branch maxed).
         t[n.id] = Math.max(0, tier - 1);
         for (const x of TREE) if (x.req && x.req[0] === n.id && (t[n.id] || 0) < x.req[1]) t[x.id] = 0;
+        for (const x of RING2) if (x.needs.some((id) => (t[id] || 0) < node(id).tiers)) t[x.id] = 0;
       }
       applyTree(b); await saveData(); drawTree();
     };
     const W = 100;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', `0 0 ${W} ${W}`); svg.setAttribute('class', 'ff-tree-lines'); svg.setAttribute('aria-hidden', 'true');
-    for (const x of TREE) {
+    const NODES = treeRing === 2 ? RING2.map((x) => ({ ...x, x: R2POS[x.id][0], y: R2POS[x.id][1] })) : TREE;
+    for (const x of NODES) {
       const from = x.req ? node(x.req[0]) : { x: 50, y: 50 };
-      const on = x.req ? tierOf(t, x.req[0]) >= x.req[1] : true;
+      const on = x.req ? tierOf(t, x.req[0]) >= x.req[1] : x.needs ? !ring2Block(t, x.id) || tierOf(t, x.id) > 0 : true;
       const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       Object.entries({ x1: from.x, y1: from.y, x2: x.x, y2: x.y }).forEach(([k, v]) => l.setAttribute(k, v));
       l.setAttribute('class', `ff-tline${on ? ' is-on' : ''}${tierOf(t, x.id) ? ' is-bought' : ''}`);
       svg.append(l);
     }
+    const owned2 = ring2Owned(t);
     const nodeEl = (x) => {
-      const tr = tierOf(t, x.id); const locked = x.req && tierOf(t, x.req[0]) < x.req[1];
+      const tr = tierOf(t, x.id); const locked = (x.req && tierOf(t, x.req[0]) < x.req[1]) || (x.needs && !tr && !!ring2Block(t, x.id));
       const can = canBuy(t, x.id, left).ok;
       return h('button', {
-        class: `ff-tnode br-${x.branch.toLowerCase()}${tr ? ' is-bought' : ''}${tr >= x.tiers ? ' is-max' : ''}${locked ? ' is-locked' : ''}${can ? ' is-can' : ''}${treePick === x.id ? ' is-pick' : ''}`,
+        class: `ff-tnode${x.needs ? ' is-ring2' : ''} br-${x.branch.toLowerCase()}${tr ? ' is-bought' : ''}${tr >= x.tiers ? ' is-max' : ''}${locked ? ' is-locked' : ''}${can ? ' is-can' : ''}${treePick === x.id ? ' is-pick' : ''}`,
         style: `left:${x.x}%;top:${x.y}%`, 'aria-label': `${x.name}, tier ${tr} of ${x.tiers}${locked ? ', locked' : ''}`,
         onClick: () => { treePick = x.id; drawTree(); },
       },
@@ -351,19 +363,24 @@ export async function render() {
     };
     fill(root,
       header(inRun ? `TALENT TREE · FLOOR ${run.floor}` : 'TALENT TREE', () => (inRun ? drawTower() : drawLab())),
-      h('div', { class: 'ff-tree-wrap' },
-        h('div', { class: 'ff-tree-board' }, svg,
-          h('div', { class: 'ff-tcore' }, (() => { const f = fighterOf(b); const face = faceOf(b); return face ? avatar(face, characters, 'md') : h('span', { class: 'avatar avatar-md fr-anime' }, 'FF'); })(), h('p', { class: 'ff-tcore-name' }, b.name), h('p', { class: 'ff-tcore-n' }, `${spent}/${TREE_MAX}`), h('p', { class: 'caption muted' }, `PL ${b.powerLevel} · AURA ${b.aura} · CLUTCH ${b.clutch}`)),
-          ...TREE.map(nodeEl),
-          ['POWER', 'AURA', 'CLUTCH', 'HUNTER'].map((br, i) => h('span', { class: `ff-tbranch br-${br.toLowerCase()}`, style: `left:${[22, 78, 22, 78][i]}%;top:${[45, 45, 55, 55][i]}%` }, br))),
+      h('div', { class: 'ff-tree-wrap has-rail' },
+        h('nav', { class: 'ff-trail', 'aria-label': 'Tree rings' },
+          h('button', { class: `ff-trail-btn${treeRing === 1 ? ' is-on' : ''}`, 'aria-pressed': String(treeRing === 1), onClick: () => { treeRing = 1; drawTree(); } }, h('span', { class: 'ff-trail-icon' }, '⬡'), h('span', {}, 'RING 1')),
+          h('button', { class: `ff-trail-btn${treeRing === 2 ? ' is-on' : ''}`, 'aria-pressed': String(treeRing === 2), onClick: () => { treeRing = 2; drawTree(); } }, h('span', { class: 'ff-trail-icon' }, '✦'), h('span', {}, 'RING 2'), h('span', { class: 'ff-trail-count' }, `${owned2.length}/${RING2_LIMIT}`))),
+        h('div', { class: `ff-tree-board${treeRing === 2 ? ' is-ring2' : ''}` }, svg,
+          h('div', { class: 'ff-tcore' }, (() => { const f = fighterOf(b); const face = faceOf(b); return face ? avatar(face, characters, 'md') : h('span', { class: 'avatar avatar-md fr-anime' }, 'FF'); })(), h('p', { class: 'ff-tcore-name' }, b.name), h('p', { class: 'ff-tcore-n' }, treeRing === 2 ? `${owned2.length}/${RING2_LIMIT}` : `${spent}/${TREE_MAX + RING2_MAX}`), h('p', { class: 'caption muted' }, treeRing === 2 ? 'SECOND RING TALENTS' : `PL ${b.powerLevel} · AURA ${b.aura} · CLUTCH ${b.clutch}`)),
+          ...NODES.map(nodeEl),
+          treeRing === 1 ? ['POWER', 'AURA', 'CLUTCH', 'HUNTER'].map((br, i) => h('span', { class: `ff-tbranch br-${br.toLowerCase()}`, style: `left:${[22, 78, 22, 78][i]}%;top:${[45, 45, 55, 55][i]}%` }, br))
+            : h('p', { class: 'ff-tring-note' }, `Pick ${RING2_LIMIT} of 4. Max both nodes of a branch to open its big node, and max your first before starting a second.`)),
         h('aside', { class: 'ff-tdetail panel' },
           h('div', { class: 'ff-tdetail-head' }, h('span', { class: `ff-thex is-sm br-${n.branch.toLowerCase()}` }, h('span', { class: 'ff-ticon' }, n.icon)),
-            h('div', {}, h('p', { class: 'heading' }, `${n.name} · Tier ${tier}/${n.tiers}`), h('p', { class: 'caption muted' }, `${n.branch} branch`))),
+            h('div', {}, h('p', { class: 'heading' }, `${n.name} · Tier ${tier}/${n.tiers}`), h('p', { class: 'caption muted' }, `${n.branch} branch${n.needs ? ' · second ring' : ''}`))),
           h('p', { class: 'label-spaced' }, 'NOW'),
           h('p', { class: 'body-text' }, tier ? n.text(tier) : 'Nothing yet.'),
           tier < n.tiers ? h('p', { class: 'label-spaced' }, 'NEXT TIER') : null,
           tier < n.tiers ? h('p', { class: 'body-text' }, n.text(tier + 1)) : h('p', { class: 'caption gold' }, 'MAXED'),
           n.req ? h('p', { class: `caption ${tierOf(t, n.req[0]) >= n.req[1] ? 'win' : 'loss'}` }, `Needs ${node(n.req[0]).name} tier ${n.req[1]}`) : null,
+          n.needs ? h('p', { class: `caption ${ring2Block(t, n.id) ? 'loss' : 'win'}` }, ring2Block(t, n.id) || (tier ? `Second ring · ${owned2.length}/${RING2_LIMIT} chosen` : `Opens: ${n.needs.map((id) => node(id).name).join(' and ')} are maxed`)) : null,
           tier < n.tiers ? h('p', { class: 'ff-tcost' }, 'Cost to upgrade ', h('b', { class: 'gold' }, String(n.cost))) : null,
           h('div', { class: 'ff-tpoints' }, h('span', { class: 'label-spaced' }, 'AVAILABLE POINTS'), h('span', { class: 'stat gold' }, String(left))),
           h('button', { class: 'btn btn-primary btn-wide', disabled: !chk.ok, onClick: buy }, chk.ok ? `Upgrade · ${n.cost}` : chk.why),
@@ -761,7 +778,7 @@ export async function render() {
       h('div', { class: 'result-stats' },
         stat('Bounty', fmt(r.runBounty)), stat('Bosses', r.bossWins), stat('Underdog wins', r.underdogWins),
       ),
-      h('p', { class: 'caption muted result-tip' }, treeCost(data.build.tree) < TREE_MAX
+      h('p', { class: 'caption muted result-tip' }, treeCost(data.build.tree) < TREE_MAX + RING2_MAX
         ? `${budget()} talent points earned on this file. The climb is over, so you can respec your tree for free.`
         : 'Your talent tree is maxed. Now it is all about the floor.'),
       h('div', { class: 'result-actions' },

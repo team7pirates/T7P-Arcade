@@ -202,7 +202,7 @@ export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, be
         break;
       }
       case 'clutch':
-        pop(ev.side, 'CLUTCH!', 'pop-clutch');
+        pop(ev.side, ev.unbreakable ? 'UNBREAKABLE!' : 'CLUTCH!', 'pop-clutch');
         break;
       case 'status':
         live[ev.side].status[ev.status] = true;

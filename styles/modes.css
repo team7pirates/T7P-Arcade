@@ -1564,7 +1564,7 @@ html { overflow-x: clip; } .screen { overflow-x: clip; }
 .ff-tpips i.on { background: #f0c060; }
 .ff-tname { font-size: 0.7rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; text-align: center; line-height: 1.1; text-shadow: 0 1px 3px #000; }
 .ff-tbranch { position: absolute; transform: translate(-50%, -50%); font-family: var(--font-display); font-size: .7rem; letter-spacing: .25em; opacity: .45; }
-.ff-tdetail { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 80px; background: rgba(12,10,18,.95); }
+.ff-tdetail { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 80px; background: rgba(12,10,18,.95); padding: var(--space-4); }
 .ff-tdetail-head { display: flex; gap: 12px; align-items: center; }
 .ff-tdetail .label-spaced { margin: 4px 0 0; }
 .ff-tcost { margin: 4px 0; } .ff-tcost b { font-size: 1.1rem; }
@@ -1617,4 +1617,26 @@ body:has(.osm-page) .ph-open:not(.is-moved) { display: none; }
   .tt-play { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: start; gap: var(--space-5); }
   .tt-play.is-board-only { grid-template-columns: 1fr; }
   .tt-play .tt-board { position: sticky; top: 16px; }
+}
+/* v0.24.0: the talent tree's second ring and side rail */
+.ff-tree-wrap.has-rail { grid-template-columns: 84px minmax(0, 1fr) 340px; }
+.ff-trail { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 80px; }
+.ff-trail-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 6px; border-radius: 14px; border: 1px solid rgba(255,255,255,.12); background: rgba(12,10,18,.9); color: var(--ink); cursor: pointer; font-size: .62rem; font-weight: 800; letter-spacing: .12em; }
+.ff-trail-btn.is-on { border-color: var(--brand-gold); color: var(--brand-gold); box-shadow: 0 0 14px rgba(240,192,96,.25); }
+.ff-trail-icon { font-size: 1.5rem; line-height: 1; }
+.ff-trail-count { font-size: .62rem; opacity: .8; }
+.ff-tree-board.is-ring2 { background: radial-gradient(circle at 50% 50%, rgba(160,90,255,.18), rgba(10,8,18,.92) 70%), #0b0912; }
+.ff-tnode.is-ring2 .ff-thex { width: 86px; height: 98px; }
+.ff-tnode.is-ring2 .ff-ticon { font-size: 2.2rem; }
+.ff-tnode.is-ring2 { width: 120px; }
+.ff-tnode.is-ring2.is-bought .ff-thex { background: #b07cff; }
+.ff-tnode.is-ring2.is-can .ff-thex { background: rgba(176,124,255,.75); }
+.ff-tring-note { position: absolute; left: 50%; bottom: 3%; transform: translateX(-50%); width: 80%; margin: 0; text-align: center; font-size: .75rem; opacity: .7; }
+@media (max-width: 860px) {
+  .ff-tree-wrap.has-rail { grid-template-columns: 1fr; }
+  .ff-trail { flex-direction: row; position: static; }
+  .ff-trail-btn { flex: 1; flex-direction: row; justify-content: center; gap: 8px; padding: 8px; }
+  .ff-trail-icon { font-size: 1.1rem; }
+  .ff-tnode.is-ring2 { width: 84px; } .ff-tnode.is-ring2 .ff-thex { width: 60px; height: 68px; } .ff-tnode.is-ring2 .ff-ticon { font-size: 1.5rem; }
+  .ff-tring-note { display: none; }
 }

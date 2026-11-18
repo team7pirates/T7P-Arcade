@@ -82,17 +82,47 @@ export const TREE = [
   { id: 'momentum', name: 'Momentum', branch: 'HUNTER', icon: '⚡', tiers: 3, cost: 3, per: 20, x: 87, y: 88, req: ['bounty', 1],
     text: (n) => `Start every fight with your special meter ${n * 20}% full.` },
 ];
-export const node = (id) => TREE.find((n) => n.id === id);
-export const TREE_MAX = TREE.reduce((n, x) => n + x.tiers * x.cost, 0); // 117
+// v0.24.0 (Khalil): the second ring. One big node at the end of each
+// branch. It opens when both of that branch's nodes are maxed. You can own 2
+// of the 4, and you have to max the first before you start a second.
+export const RING2 = [
+  { id: 'unbreakable', name: 'Unbreakable', branch: 'POWER', icon: '🪨', tiers: 3, cost: 9, needs: ['power', 'titan'],
+    text: (n) => (n >= 3 ? 'Once a fight, survive a knockout and get 10% of your health back.' : n === 2 ? 'Once a fight, survive a knockout and get 5% of your health back.' : 'Once a fight, survive a knockout with 1 health.') },
+  { id: 'domain', name: 'Domain Expansion', branch: 'AURA', icon: '🌀', tiers: 3, cost: 9, needs: ['aura', 'signature'],
+    text: (n) => `Your special charges ${n * 8 + 1}% faster, and the first special of every fight hits ${[0, 1.33, 1.67, 2][n]}× as hard.` },
+  { id: 'laststand', name: 'Last Stand', branch: 'CLUTCH', icon: '🩸', tiers: 3, cost: 9, needs: ['clutch', 'secondWind'],
+    text: (n) => `+${[0, 7, 14, 20][n]}% damage while you're under 25% health.` },
+  { id: 'magnet', name: 'Sponsor Magnet', branch: 'HUNTER', icon: '🧲', tiers: 3, cost: 9, needs: ['bounty', 'momentum'],
+    text: (n) => `Sponsors call ${[0, 25, 50, 75][n]}% more often and pay ${[0, 17, 33, 50][n]}% more (more talent points too).` },
+];
+export const RING2_LIMIT = 2;
+export const node = (id) => TREE.find((n) => n.id === id) || RING2.find((n) => n.id === id);
+export const isRing2 = (id) => RING2.some((n) => n.id === id);
+export const ring2Owned = (tree = {}) => RING2.filter((n) => (tree[n.id] || 0) > 0);
+export const TREE_MAX = TREE.reduce((n, x) => n + x.tiers * x.cost, 0); // 120 (first ring)
+export const RING2_MAX = RING2_LIMIT * 3 * 9;                           // 54
 export const POINTS_PER_FLOOR = 1;
 export const POINTS_PER_BOSS = 5;
 export const pointsForFloor = (floor) => (isBoss(floor) ? POINTS_PER_BOSS : POINTS_PER_FLOOR);
-export const treeCost = (tree = {}) => TREE.reduce((n, x) => n + (tree[x.id] || 0) * x.cost, 0);
+export const treeCost = (tree = {}) => [...TREE, ...RING2].reduce((n, x) => n + (tree[x.id] || 0) * x.cost, 0);
+const maxed = (tree, id) => (tree[id] || 0) >= node(id).tiers;
+// Why a second-ring node can't be bought yet (null when it can be, points aside).
+export function ring2Block(tree, id) {
+  const n = node(id); const t = tree[id] || 0;
+  if (t > 0) return null;
+  const miss = n.needs.filter((x) => !maxed(tree, x));
+  if (miss.length) return `Max ${miss.map((x) => node(x).name).join(' and ')} first`;
+  const owned = ring2Owned(tree);
+  if (owned.length >= RING2_LIMIT) return `You can only have ${RING2_LIMIT}. Respec between climbs to swap.`;
+  if (owned.length === 1 && !maxed(tree, owned[0].id)) return `Max ${owned[0].name} before you start a second`;
+  return null;
+}
 export const tierOf = (tree, id) => (tree && tree[id]) || 0;
 export function canBuy(tree, id, left) {
   const n = node(id); const t = tierOf(tree, id);
   if (!n || t >= n.tiers) return { ok: false, why: 'Maxed' };
   if (n.req && tierOf(tree, n.req[0]) < n.req[1]) return { ok: false, why: `Needs ${node(n.req[0]).name} tier ${n.req[1]}` };
+  if (isRing2(id)) { const b = ring2Block(tree, id); if (b) return { ok: false, why: b }; }
   if (left < n.cost) return { ok: false, why: `Costs ${n.cost} points` };
   return { ok: true };
 }
@@ -102,7 +132,14 @@ export function applyTree(build) {
   build.powerLevel = Math.min(99, 50 + tierOf(t, 'power') * 7);
   build.aura = Math.min(100, tierOf(t, 'aura') * 20);
   build.clutch = Math.min(100, tierOf(t, 'clutch') * 20);
-  build.talents = { hp: tierOf(t, 'titan') * 0.25, sp: tierOf(t, 'signature') * 0.1, heal: tierOf(t, 'secondWind') * 0.05, bounty: tierOf(t, 'bounty') * 0.1, meter: tierOf(t, 'momentum') * 20 };
+  const ub = tierOf(t, 'unbreakable'); const dm = tierOf(t, 'domain'); const ls = tierOf(t, 'laststand'); const mg = tierOf(t, 'magnet');
+  build.talents = {
+    hp: tierOf(t, 'titan') * 0.25, sp: tierOf(t, 'signature') * 0.1, heal: tierOf(t, 'secondWind') * 0.05, bounty: tierOf(t, 'bounty') * 0.1, meter: tierOf(t, 'momentum') * 20,
+    unbreak: ub ? 1 : 0, unbreakHeal: [0, 0, 0.05, 0.1][ub],
+    meterMult: 1 + dm * 0.08 + (dm ? 0.01 : 0), firstSpMult: [1, 1.33, 1.67, 2][dm],
+    lastStand: [0, 0.07, 0.14, 0.2][ls],
+    dealChance: [1, 1.25, 1.5, 1.75][mg], dealPay: [1, 1.17, 1.33, 1.5][mg],
+  };
   return build;
 }
 // An old Gym build turned into tree tiers (points that don't fit stay unspent).
@@ -196,5 +233,8 @@ export function fighterFrom(build, face) {
     hpMult: FUSION_HP + (build.talents?.hp || 0),
     spMult: 1 + (build.talents?.sp || 0),
     startMeter: build.talents?.meter || 0,
+    unbreak: build.talents?.unbreak || 0, unbreakHeal: build.talents?.unbreakHeal || 0,
+    meterMult: build.talents?.meterMult || 1, firstSpMult: build.talents?.firstSpMult || 1,
+    lastStand: build.talents?.lastStand || 0,
   };
 }

@@ -172,7 +172,7 @@ export function afterFloor(r, ctx) {
   else if (!bossNext && !r.plan[next]) { trashEvent(r, ctx, next); }
   // Side events.
   if (ctx.hp / ctx.maxHp < 0.45 && !bossNext) trainerEvent(r, ctx);
-  if (rand() < 0.35 && !ph.deals.some((d) => d.status === 'active' || d.status === 'offer')) dealEvent(r, ctx);
+  if (rand() < Math.min(0.75, 0.35 * (r.build?.talents?.dealChance || 1)) && !ph.deals.some((d) => d.status === 'active' || d.status === 'offer')) dealEvent(r, ctx);
   if (rand() < 0.5) fanEvent(r, ctx);
 }
 
@@ -254,7 +254,7 @@ function trainerEvent(r, ctx) {
 
 function dealEvent(r, ctx) {
   const d = pick(SPONSORS, ctx.rand);
-  const pay = Math.round((20 + ctx.floor * 3) * d.pay);
+  const pay = Math.round((20 + ctx.floor * 3) * d.pay * (r.build?.talents?.dealPay || 1));
   const deal = { id: r.phone.seq++, brand: d.brand, task: d.task, label: d.label, pay, followers: 250 + ctx.floor * 20, status: 'offer', start: ctx.floor, progress: 0 };
   r.phone.deals.unshift(deal);
   deal.icon = d.icon;
