@@ -144,7 +144,9 @@ export const QUIZ = [
 // ---------- Money ----------
 // Cap hit per season from Power, nudged by Hype (low-key cards ignore Hype).
 export function payFor(power, hype = 50, lowKey = false) {
-  const base = 0.00031 * Math.max(0, power - 48) ** 3;
+  // v0.22.0: a flatter, higher curve (Khalil wanted higher salaries): Power 70 ≈ 6.7,
+  // 80 ≈ 16, 90 ≈ 31, 94+ = the 35 max.
+  const base = 0.0047 * Math.max(0, power - 48) ** 2.35;
   const mood = lowKey ? 1 : 1 + Math.max(-0.2, Math.min(0.2, (hype - 50) / 250));
   return Math.max(1, Math.min(maxDeal(), Math.round(base * mood * SCALE * 10) / 10));
 }
@@ -216,6 +218,15 @@ function signAll(league, rand) {
     if (p.team == null) continue;
     const years = 1 + Math.floor(rand() * 4);
     p.contract = { total: Math.round(payFor(p.power, p.hype, p.lowKey) * years * 10) / 10, years, left: years };
+  }
+  // These deals were signed in past seasons, for less: every team starts at
+  // 84–97% of the cap, so the cap matters from day one.
+  for (const t of league.teams) {
+    const pay = t.roster.reduce((n, pid) => n + capHit(league.players[pid]), 0);
+    const target = CAP * (0.84 + rand() * 0.13);
+    if (pay <= target) continue;
+    const k = target / pay;
+    for (const pid of t.roster) { const c = league.players[pid].contract; c.total = Math.round(c.total * k * 10) / 10; }
   }
 }
 

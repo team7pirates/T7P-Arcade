@@ -427,7 +427,8 @@ export function upgrade(L, pid) {
   // v0.21.0 (Khalil): the upgrade raises the card's max. Star: up to +10.
   // Superstar: +5 or +10. Never past 99. Banked skill points can then fill it.
   const roll = R.nextRand(L);
-  const raise = p.dev === 1 ? 2 + Math.floor(roll * 9) : roll < 0.6 ? 5 : 10;
+  let raise = p.dev === 1 ? 2 + Math.floor(roll * 9) : roll < 0.6 ? 5 : 10;
+  if (p.bust) raise = Math.ceil(raise / 2); // busts get half the raise
   const before = R.maxOf(p);
   p.potential = Math.min(99, Math.max(p.potential, p.power) + raise);
   if (!R.manualPoints(L, p)) R.spendPoints(p);
@@ -715,10 +716,33 @@ export function tradeValue(L, p, t) {
 }
 
 // give: user's pids, get: their pids. Same number each way keeps rosters at 10.
-export function evaluateTrade(L, ti, give, get) {
+// ---------- Draft picks in trades (v0.22.0) ----------
+// A pick's worth: by where that team projects to pick (worst team picks
+// first; in the off-season, last season's final standings) and who's buying.
+export function projectedSlot(L, ti) {
+  const order = R.standings(L).map((t) => t.i).reverse();
+  return order.indexOf(ti) + 1;
+}
+export function pickValue(L, ti, forTeam) {
+  const n = L.teams.length;
+  const frac = (projectedSlot(L, ti) - 1) / Math.max(1, n - 1); // 0 = top pick
+  const base = forTeam.stage === 'rebuild' ? 16 : forTeam.stage === 'contender' ? 7 : 11;
+  return base * (1.3 - frac * 0.8);
+}
+export function movePicks(L, picks, to) {
+  L.pickOwner = L.pickOwner || {};
+  for (const ti of picks) L.pickOwner[ti] = to;
+}
+
+// opts: { givePicks: [team index of picks you send], getPicks: [picks you get] }
+export function evaluateTrade(L, ti, give, get, opts = {}) {
   const me = L.teams[L.user.team]; const them = L.teams[ti];
+  const gk = opts.givePicks || []; const tk = opts.getPicks || [];
   if (!tradeOpen(L)) return { ok: false, score: 0, why: tradeClosedWhy(L) };
-  if (!give.length || give.length !== get.length) return { ok: false, score: 0, why: 'Trade the same number of cards each way.' };
+  if (give.length !== get.length) return { ok: false, score: 0, why: 'Trade the same number of cards each way (picks can go on top).' };
+  if (!give.length && !gk.length && !tk.length) return { ok: false, score: 0, why: 'Pick cards or draft picks to trade.' };
+  if (!give.length && !(gk.length && tk.length)) return { ok: false, score: 0, why: 'A trade with no cards has to be picks both ways.' };
+  if (gk.some((x) => pickOwner(L, x) !== me.i) || tk.some((x) => pickOwner(L, x) !== them.i)) return { ok: false, score: 0, why: 'One of those picks has already moved.' };
   const gp = give.map((pid) => L.players[pid]); const tp = get.map((pid) => L.players[pid]);
   for (const p of tp) if (seriesCount(L, me, p.series, give) + tp.filter((q) => q.series === p.series).length > MAX_PER_SERIES) return { ok: false, score: 0, why: `You'd have more than ${MAX_PER_SERIES} from ${p.series}.` };
   for (const p of gp) if (seriesCount(L, them, p.series, get) + gp.filter((q) => q.series === p.series).length > MAX_PER_SERIES) return { ok: false, score: 0, why: `They'd have more than ${MAX_PER_SERIES} from ${p.series}.` };
@@ -737,19 +761,30 @@ export function evaluateTrade(L, ti, give, get) {
   if (R.supermaxCount(L, me, give) + supIn(tp) > R.SUPERMAX_LIMIT && supIn(tp) > supIn(gp)) return { ok: false, score: 0, why: `You'd have more than ${R.SUPERMAX_LIMIT} supermax deals.` };
   if (R.supermaxCount(L, them, get) + supIn(gp) > R.SUPERMAX_LIMIT && supIn(gp) > supIn(tp)) return { ok: false, score: 0, why: `They'd have more than ${R.SUPERMAX_LIMIT} supermax deals.` };
   const capOk = capAfter <= R.capOf(them) + 0.05 || capAfter <= R.payroll(L, them);
-  const margin = inV - outV;
+  const margin = inV - outV + gk.reduce((n, x) => n + pickValue(L, x, them), 0) - tk.reduce((n, x) => n + pickValue(L, x, them), 0);
   const score = Math.round(clamp(50 + margin * 6, 0, 100));
   if (!capOk) return { ok: false, score: Math.min(score, 30), why: 'It puts them too far over the cap.' };
   return { ok: margin >= 2, score, margin, why: margin >= 2 ? `${them.name} (${R.STAGE_LABEL[them.stage]}) accept.` : `${them.name} (${R.STAGE_LABEL[them.stage]}) want more.` };
 }
-// fromTi sends `give` to toTi and gets `get` back.
-export function doTrade(L, fromTi, toTi, give, get) {
+// fromTi sends `give` to toTi and gets `get` back (plus draft picks, if any).
+export function doTrade(L, fromTi, toTi, give, get, picks = {}) {
   const a = L.teams[fromTi]; const b = L.teams[toTi];
+  const gk = picks.givePicks || []; const tk = picks.getPicks || [];
+  if (gk.length || tk.length) {
+    movePicks(L, gk, b.i); movePicks(L, tk, a.i);
+    const pk = (list) => list.map((x) => `the ${L.teams[x].abbr} pick`).join(' and ');
+    if (!give.length) {
+      L.trades.push({ season: L.season, week: L.week, a: a.i, b: b.i, aGot: [], bGot: [], aPicks: tk.slice(), bPicks: gk.slice() });
+      L.news.unshift({ week: L.week, kind: 'TRADE', team: a.i, title: `${a.name} and ${b.name} swap draft picks`, text: `${a.name} send ${pk(gk)} and get ${pk(tk)}.` });
+      return;
+    }
+  }
   for (const pid of give) { a.roster = a.roster.filter((x) => x !== pid); b.roster.push(pid); L.players[pid].team = b.i; L.players[pid].formerTeam = a.i; }
   for (const pid of get) { b.roster = b.roster.filter((x) => x !== pid); a.roster.push(pid); L.players[pid].team = a.i; L.players[pid].formerTeam = b.i; }
-  L.trades.push({ season: L.season, week: L.week, a: a.i, b: b.i, aGot: get.slice(), bGot: give.slice() });
-  L.news.unshift({ week: L.week, kind: 'TRADE', team: a.i, title: `${a.name} trade ${give.map((pid) => L.players[pid].name).join(' + ')} to ${b.name}`,
-    text: `${a.name} get ${get.map((pid) => L.players[pid].name).join(' + ')} back.` });
+  L.trades.push({ season: L.season, week: L.week, a: a.i, b: b.i, aGot: get.slice(), bGot: give.slice(), aPicks: tk.slice(), bPicks: gk.slice() });
+  const pks = (list) => list.map((x) => `the ${L.teams[x].abbr} pick`).join(' and ');
+  L.news.unshift({ week: L.week, kind: 'TRADE', team: a.i, title: `${a.name} trade ${[...give.map((pid) => L.players[pid].name), ...(gk.length ? [pks(gk)] : [])].join(' + ')} to ${b.name}`,
+    text: `${a.name} get ${[...get.map((pid) => L.players[pid].name), ...(tk.length ? [pks(tk)] : [])].join(' + ')} back.` });
 }
 
 // AI teams make the odd deal before the deadline.

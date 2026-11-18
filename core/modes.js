@@ -11,7 +11,7 @@ export const MODES = [
   {
     id: 'forbidden-fusion', loadingLine: 'FIRING UP THE FUSION LAB', name: 'Forbidden Fusion', sub: 'Forge · Tower · Legend',
     flagship: true, wave: 3, ready: true, load: loader('forbidden-fusion'),
-    blurb: 'Forge one fighter in the Gym, then climb the Tower floor by floor.',
+    blurb: 'Forge one fighter, grow your Talent Tree, and climb the Tower floor by floor while your phone blows up.',
   },
   {
     id: 'dynasty', loadingLine: 'SETTING UP THE FRONT OFFICE', name: 'Dynasty', sub: 'Coach · Fight · Dynasty',

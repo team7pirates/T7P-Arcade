@@ -1592,3 +1592,12 @@ html { overflow-x: clip; } .screen { overflow-x: clip; }
 @media (max-width: 860px) { .ff-tcore .avatar { width: 40px; height: 40px; } .ff-tcore .caption { font-size: .55rem; } }
 @media (max-width: 860px) { .ff-tbranch { display: none; } }
 .dy-sp-badge.is-locked { background: rgba(255,255,255,.08); color: var(--ink-3, #aaa); }
+.dy-trade .dy-gap { margin-top: var(--space-3); }
+/* v0.22.0: phone-size pass */
+body:has(.sheet) .ph-open, body:has(.sheet) .ph-toast { display: none; }
+@media (max-width: 640px) {
+  .dy-cap { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: var(--space-2); }
+  .ph-toast { position: fixed; top: 64px; bottom: auto; left: 12px; right: 12px; max-width: none; }
+  .mode { padding-bottom: 96px; }
+}
+body:has(.osm-page) .ph-open:not(.is-moved) { display: none; }

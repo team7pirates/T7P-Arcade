@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.22.0",
+      "date": "2026-11-18",
+      "title": "Trade your picks, bigger contracts, tidy saves",
+      "items": [
+        "Dynasty: trade your draft picks yourself. The trade screen now lists every pick each team owns, with its projected slot. Add picks on top of a card trade, or swap picks for picks. Rebuilds value picks the most and contenders the least.",
+        "Higher salaries: mid-level and star players cost more now (Power 80 is about 16 a season, Power 90 about 31). Every team starts the league near the cap, so the hard cap matters for everyone, not just you.",
+        "Busts get half the max raise from Star and Superstar upgrades.",
+        "Every 2 days, when the game starts, it trims old clutter from your saves: old phone texts, old regular magazine issues, and day-to-day details of long-retired players. A message tells you what it removed. Seasons, records, trophies, stats, history, season reviews and the Hall of Fame are never touched. Settings also has a Clean up saves now button.",
+        "Phone-size fixes: the cap panel fits in two rows, phone pop-ups show at the top of the screen instead of covering buttons, and the phone button hides while a sheet or the magazine is open.",
+        "Text fixes: Forbidden Fusion now mentions the Talent Tree, and Settings no longer says sound effects are coming soon."
+      ]
+    },
+    {
       "version": "0.21.1",
       "date": "2026-11-18",
       "title": "Skill points work like Khalil planned",

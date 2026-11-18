@@ -801,7 +801,7 @@ export async function render() {
   }
 
   // ---------- The Front Office tab ----------
-  const trade = { ti: null, give: [], get: [] };
+  const trade = { ti: null, give: [], get: [], givePicks: [], getPicks: [] };
 
   function drawOffice() {
     const t = me();
@@ -832,7 +832,19 @@ export async function render() {
     const them = team(trade.ti);
     trade.give = trade.give.filter((pid) => L.players[pid].team === t.i);
     trade.get = trade.get.filter((pid) => L.players[pid].team === them.i);
-    const ev = O.evaluateTrade(L, them.i, trade.give, trade.get);
+    trade.givePicks = (trade.givePicks || []).filter((x) => O.pickOwner(L, x) === t.i);
+    trade.getPicks = (trade.getPicks || []).filter((x) => O.pickOwner(L, x) === them.i);
+    const picksOpt = { givePicks: trade.givePicks, getPicks: trade.getPicks };
+    const ev = O.evaluateTrade(L, them.i, trade.give, trade.get, picksOpt);
+    const pickRows = (tm, list) => {
+      const owned = O.picksOwnedBy(L, tm.i);
+      if (!owned.length) return h('p', { class: 'caption muted dy-pad' }, 'No draft picks to trade.');
+      return h('ul', { class: 'dy-list dy-pickable' }, owned.map((x) => h('li', {},
+        h('label', { class: `dy-check${list.includes(x) ? ' is-on' : ''}` },
+          h('input', { type: 'checkbox', checked: list.includes(x), onChange: () => { const i = list.indexOf(x); if (i >= 0) list.splice(i, 1); else list.push(x); drawOffice(); } }),
+          crest(team(x), 32),
+          h('span', { class: 'dy-list-text' }, h('span', {}, `${team(x).abbr} draft pick${x !== tm.i ? ` (from ${team(x).name})` : ''}`), h('span', { class: 'caption muted' }, `Projected No. ${O.projectedSlot(L, x)} · one round`))))));
+    };
     const pick = (list, pid) => { const i = list.indexOf(pid); if (i >= 0) list.splice(i, 1); else if (list.length < 2) list.push(pid); else toast('Up to 2 cards each way.'); drawOffice(); };
     const col = (tm, list) => h('ul', { class: 'dy-list dy-pickable' }, players(tm).sort((a, b) => b.power - a.power).map((p) => h('li', {},
       h('label', { class: `dy-check${list.includes(p.pid) ? ' is-on' : ''}` },
@@ -840,21 +852,23 @@ export async function render() {
         pAvatar(p),
         h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${p.role} · ${p.power} · pot ${tm.i === t.i ? p.potential : '?'} · ${R.capHit(p)}`))))));
     return h('section', { class: 'dy-panel' },
-      h('h2', { class: 'dy-h' }, `TRADES · OPEN THROUGH WEEK ${R.TRADE_DEADLINE}`),
+      h('h2', { class: 'dy-h' }, L.phase === 'offseason' ? 'TRADES · OPEN UNTIL DRAFT DAY' : `TRADES · OPEN THROUGH WEEK ${R.TRADE_DEADLINE}`),
       h('p', { class: 'caption muted' }, 'Rebuilds want youth, potential and cap space. Contenders want Power now. Teams a few pieces away pay for the role they are missing.'),
       h('label', { class: 'dy-field' }, h('span', { class: 'label-spaced' }, 'TRADE WITH'),
-        h('select', { class: 'dy-select', onChange: (e) => { trade.ti = Number(e.target.value); trade.get = []; drawOffice(); } },
+        h('select', { class: 'dy-select', onChange: (e) => { trade.ti = Number(e.target.value); trade.get = []; trade.getPicks = []; drawOffice(); } },
           others.map((x) => h('option', { value: String(x.i), selected: x.i === them.i }, `${x.name} · ${R.STAGE_LABEL[x.stage]} · ${x.w}-${x.l}`)))),
       h('div', { class: 'dy-trade' },
-        h('div', {}, h('p', { class: 'label-spaced' }, 'YOU SEND'), col(t, trade.give)),
-        h('div', {}, h('p', { class: 'label-spaced' }, `${them.abbr} SEND`), col(them, trade.get))),
+        h('div', {}, h('p', { class: 'label-spaced' }, 'YOU SEND'), col(t, trade.give), h('p', { class: 'label-spaced dy-gap' }, 'YOUR DRAFT PICKS'), pickRows(t, trade.givePicks)),
+        h('div', {}, h('p', { class: 'label-spaced' }, `${them.abbr} SEND`), col(them, trade.get), h('p', { class: 'label-spaced dy-gap' }, `${them.abbr} DRAFT PICKS`), pickRows(them, trade.getPicks))),
+      h('p', { class: 'caption muted' }, 'Cards go the same number each way (up to 2). Draft picks can go on top, or you can swap picks for picks. Rebuilds value picks most, contenders least.'),
       meter(ev.score, 50, ev.why),
       h('button', { class: 'btn btn-primary btn-wide', disabled: !ev.ok, onClick: async () => {
-        const ok = await confirmSheet({ title: 'MAKE THE TRADE?', message: `${trade.give.map((pid) => L.players[pid].name).join(' + ')} for ${trade.get.map((pid) => L.players[pid].name).join(' + ')}. Contracts move with the cards.`, confirmLabel: 'Trade' });
+        const side = (cards, pk) => [...cards.map((pid) => L.players[pid].name), ...pk.map((x) => `the ${team(x).abbr} pick`)].join(' + ');
+        const ok = await confirmSheet({ title: 'MAKE THE TRADE?', message: `${side(trade.give, trade.givePicks)} for ${side(trade.get, trade.getPicks)}. Contracts move with the cards.`, confirmLabel: 'Trade' });
         if (!ok) return;
-        O.doTrade(L, t.i, them.i, trade.give.slice(), trade.get.slice());
+        O.doTrade(L, t.i, them.i, trade.give.slice(), trade.get.slice(), { givePicks: trade.givePicks.slice(), getPicks: trade.getPicks.slice() });
         L.pending = null;
-        trade.give = []; trade.get = [];
+        trade.give = []; trade.get = []; trade.givePicks = []; trade.getPicks = [];
         await save(); toast('Trade done.'); drawOffice();
       } }, 'Propose trade'));
   }
@@ -1273,7 +1287,7 @@ export async function render() {
     const used = t.upgrades || 0;
     offFrame('UPGRADES', h('div', { class: 'dy-off-body' },
       capPanel(t),
-      h('p', { class: 'body-text' }, `Invest in development: Normal → Star → Superstar. One step per card each off-season, up to ${O.UPGRADES_PER_TEAM} a team, only in a card's first 4 seasons. Each step raises the card's max: Star by up to +10, Superstar by +5 or +10 (never past 99). Skill points the card banked at its old max can then be spent. Salary follows growth speed, 1x / 2x / 3x, but never more than +6 a season per step, and the raise has to fit under the hard cap. You also find out if they are a Generational Talent or a bust.`),
+      h('p', { class: 'body-text' }, `Invest in development: Normal → Star → Superstar. One step per card each off-season, up to ${O.UPGRADES_PER_TEAM} a team, only in a card's first 4 seasons. Each step raises the card's max: Star by up to +10, Superstar by +5 or +10 (never past 99; busts get half). Skill points the card banked at its old max can then be spent. Salary follows growth speed, 1x / 2x / 3x, but never more than +6 a season per step, and the raise has to fit under the hard cap. You also find out if they are a Generational Talent or a bust.`),
       h('p', { class: 'label-spaced' }, `${used} OF ${O.UPGRADES_PER_TEAM} USED`),
       h('ul', { class: 'dy-list' }, ps.map((p) => {
         const chk = O.canUpgrade(L, p);

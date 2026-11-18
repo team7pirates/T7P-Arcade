@@ -76,16 +76,8 @@ export function boostText(L) {
 // ---------- Draft picks ----------
 // How much a team's pick is worth, by where that team sits right now (worst
 // team picks first) and who's buying (rebuilds love picks).
-export function projectedSlot(L, ti) {
-  const order = R.standings(L).map((t) => t.i).reverse();
-  return order.indexOf(ti) + 1;
-}
-export function pickValue(L, ti, forTeam) {
-  const n = L.teams.length;
-  const frac = (projectedSlot(L, ti) - 1) / Math.max(1, n - 1); // 0 = top pick
-  const base = forTeam.stage === 'rebuild' ? 16 : forTeam.stage === 'contender' ? 7 : 11;
-  return base * (1.3 - frac * 0.8);
-}
+export const projectedSlot = (L, ti) => O.projectedSlot(L, ti);
+export const pickValue = (L, ti, forTeam) => O.pickValue(L, ti, forTeam);
 export const pickLabel = (L, ti) => `${L.teams[ti].abbr} draft pick (projected No. ${projectedSlot(L, ti)})`;
 
 // ---------- Trade offers ----------

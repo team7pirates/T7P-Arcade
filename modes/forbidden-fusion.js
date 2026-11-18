@@ -41,7 +41,7 @@ const HOF_SIZE = 10;
 const fmt = (n) => Math.round(n).toLocaleString();
 
 const help = howToPlay('forbidden-fusion', 'Forbidden Fusion', [
-  'Forge one fighter in the Gym. Pick any character as its face, give it a name, and choose a main role and a second role.',
+  'Forge one fighter on the Your Fighter screen. Pick any character as its face, give it a name, and choose a main role and a second role.',
   'Your main role sets your special move: Striker Finisher, Tank Iron Wall, Speedster Blitz, Mystic Hex or Tactician Counterplay. The role wheel still counts in every fight.',
   'The Talent Tree: four branches (Power, Aura, Clutch, Hunter) around a core. Every node has tiers; spend talent points to raise them. You start with 30 points and earn 1 a floor (3 on a boss floor).',
   'Spend points between floors. Anything you buy during a climb is locked in until the climb ends. Between climbs you can respec for free.',
@@ -521,7 +521,7 @@ export async function render() {
       title: 'PICK A FACE',
       wide: true,
       content: h('div', { class: 'picker' },
-        h('p', { class: 'caption muted' }, 'The face is the look and the name tag. Your stats come from the Gym.'),
+        h('p', { class: 'caption muted' }, 'The face is the look and the name tag. Your stats come from the Talent Tree.'),
         h('div', { class: 'search-wrap' }, icon('search', 18), search),
         count,
         results,

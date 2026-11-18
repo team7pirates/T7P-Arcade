@@ -1,6 +1,7 @@
 // Settings: sound, fight scenes, display and saves.
 
 import { h, icon, toast, confirmSheet, sheet } from '../ui.js';
+import { runCleanup } from '../cleanup.js';
 import { settings, DEFAULT_SETTINGS } from '../settings.js';
 import { store } from '../store.js';
 import { profile } from '../profile.js';
@@ -19,7 +20,7 @@ export function renderSettings() {
       slider('Music volume', 'musicVolume', s.musicVolume),
       slider('Sound effects volume', 'sfxVolume', s.sfxVolume),
       h('button', { class: 'btn btn-secondary', onClick: () => { music.next(); toast('Next song.'); } }, 'Next song'),
-      h('p', { class: 'caption muted setting-note' }, 'Music starts on your first tap. Set Music volume to 0 to turn it off. Sound effects are coming soon.'),
+      h('p', { class: 'caption muted setting-note' }, 'Music starts on your first tap. Set either volume to 0 to turn it off.'),
     ),
 
     group('Fight scenes',
@@ -39,10 +40,11 @@ export function renderSettings() {
     group('Saves',
       h('p', { class: 'body-text setting-note' },
         store.persistent
-          ? 'Your saves are kept on this device. To move them to another phone or PC without the internet: tap Send or back up saves, send the file with AirDrop, Nearby Share, Bluetooth or a USB cable, then open Settings on the other device and tap Restore. You can send everything or just one save.'
+          ? 'Your saves are kept on this device. To move them to another phone or PC without the internet: tap Send or back up saves, send the file with AirDrop, Nearby Share, Bluetooth or a USB cable, then open Settings on the other device and tap Restore. You can send everything or just one save. Every 2 days the game also trims old clutter (old texts, old magazine issues) and tells you what it removed; your records and history are never touched.'
           : 'This browser is blocking storage (private window?), so nothing is saved after you close the tab.'),
       h('div', { class: 'btn-col' },
         h('button', { class: 'btn btn-secondary', onClick: backupSheet }, icon('download', 18), 'Send or back up saves'),
+        h('button', { class: 'btn btn-secondary', onClick: async () => { const r = await runCleanup({ force: true }); toast(r?.text || 'Nothing to clean up. Your saves are tidy.', { duration: 7000 }); } }, 'Clean up saves now'),
         restoreButton(),
         h('button', { class: 'btn btn-danger', onClick: eraseAll }, 'Erase everything'),
       ),

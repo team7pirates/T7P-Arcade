@@ -16,6 +16,7 @@ import { renderSettings } from './screens/settings.js';
 import { renderAbout } from './screens/about.js';
 import { renderChangelog } from './screens/changelog.js';
 import { renderFightLab } from './screens/fight-lab.js';
+import { runCleanup } from './cleanup.js';
 
 registerScreen('menu', renderMenu);
 registerScreen('settings', renderSettings);
@@ -53,6 +54,8 @@ async function boot() {
   await startRouter('menu');
   install.onChange(refresh);
   markAppReady();
+  // Every 2 days: trim old clutter from the saves and say what happened.
+  setTimeout(() => { runCleanup().catch(() => {}); }, 2500);
 }
 
 registerServiceWorker();
