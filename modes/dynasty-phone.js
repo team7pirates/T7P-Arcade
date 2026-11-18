@@ -235,7 +235,7 @@ export function offseasonOffer(L) {
 export function afterPlayoffGame(L, g) {
   if (!L.user || !L.phone) return;
   coachEvent(L, g);
-  if (L.playoffs && !L.playoffs.champion) squadEvent(L);
+  if (L.playoffs && L.playoffs.champion == null) squadEvent(L);
 }
 
 export const dateCtx = (L) => ({ rand: Math.random, now: nowOf(L), turn: `s${L.season}w${R.gameWeek(L)}`, turnLabel: 'week', where: 'the AFL broadcast', when: 'game', perk: `+${DATE_BOOST} Aura for your team next game` });

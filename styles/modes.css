@@ -1601,3 +1601,20 @@ body:has(.sheet) .ph-open, body:has(.sheet) .ph-toast { display: none; }
   .mode { padding-bottom: 96px; }
 }
 body:has(.osm-page) .ph-open:not(.is-moved) { display: none; }
+/* v0.23.0: playoff issues */
+.osm-path { margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: rgba(0,0,0,.05); }
+.osm-path-head { display: flex; align-items: center; gap: 10px; }
+.osm-clash-cover { position: relative; z-index: 1; margin: 18px 0 0; }
+/* v0.23.0: Brawl draft board uses abbreviations on phones */
+.br-sn-abbr { display: none; }
+@media (max-width: 640px) { .br-sn-full { display: none; } .br-sn-abbr { display: inline; } }
+/* v0.23.0: Tier Target saves and fits on PC */
+.tt-saved { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tt-play { display: flex; flex-direction: column; gap: var(--space-3); }
+@media (min-width: 1000px) {
+  .mode.tier-target:has(.tt-play) { max-width: 1080px; }
+  #app:has(.mode.tier-target .tt-play) { max-width: min(1120px, 100%); }
+  .tt-play { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: start; gap: var(--space-5); }
+  .tt-play.is-board-only { grid-template-columns: 1fr; }
+  .tt-play .tt-board { position: sticky; top: 16px; }
+}

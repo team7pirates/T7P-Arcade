@@ -3,7 +3,7 @@
 // role (the role picks the special move), and a point budget spent on Power,
 // Aura and Clutch, with Chaos as a free dial. Then climb the Tower: one
 // single-round fight per floor, with health carrying from floor to floor
-// (20% back after a floor, 25% after a boss). Every 5th floor is a boss; past
+// (20% back after a floor, 25% after a boss). Every 10th floor is a boss; past
 // floor 10 the Omega swarms send more cards at once. Each floor cleared pays
 // Bounty, more for underdog wins and double on Hard, and Bounty grows the
 // Gym budget for good. The Hall of Fame keeps the ten best climbs.
@@ -43,10 +43,10 @@ const fmt = (n) => Math.round(n).toLocaleString();
 const help = howToPlay('forbidden-fusion', 'Forbidden Fusion', [
   'Forge one fighter on the Your Fighter screen. Pick any character as its face, give it a name, and choose a main role and a second role.',
   'Your main role sets your special move: Striker Finisher, Tank Iron Wall, Speedster Blitz, Mystic Hex or Tactician Counterplay. The role wheel still counts in every fight.',
-  'The Talent Tree: four branches (Power, Aura, Clutch, Hunter) around a core. Every node has tiers; spend talent points to raise them. You start with 30 points and earn 1 a floor (3 on a boss floor).',
+  'The Talent Tree: four branches (Power, Aura, Clutch, Hunter) around a core. Every node has tiers; spend talent points to raise them. You start with 30 points and earn 1 a floor (5 on a boss floor), double on Hard. Sponsor money counts too: every 25 Bounty a sponsor pays is another point.',
   'Spend points between floors. Anything you buy during a climb is locked in until the climb ends. Between climbs you can respec for free.',
   'Climb the Tower: one fight per floor. A fused fighter has 3.5 times a normal card\'s health, and it carries over. You get 20% back after each floor and 25% after a boss.',
-  'Every 5th floor is a boss. Past floor 10 the Omega swarms send two, then three cards at you.',
+  'Every 10th floor is a boss. Past floor 10 the Omega swarms send two, then three cards at you.',
   'Clearing floors earns Bounty: more as you climb, half again for an underdog win, and double on Hard. Bounty is your score and your Hall of Fame.',
   'Roles lock when you save your fighter. Changing the main role later costs 10 talent points and the second role 5, for good.',
   'Your phone: after floor 1, people text you. Trash talkers you answer hostile become your next opponent (a callout, Bounty ×1.5); answer humble and the climb goes on as normal. Bosses test you or send their crew, sponsors offer deals, and your trainer checks in when you\'re hurt. Open it with the Open phone button or the P key (change the key in the phone\'s Settings).',
@@ -97,6 +97,7 @@ const fighterOf = (build) => fighterFrom(build, faceOf(build));
 // minus what role changes cost.
 const budget = () => START_BUDGET + (data.points || 0) - (data.rolePaid || 0);
 const pointsLeft = () => budget() - treeCost(data.build.tree);
+const SPONSOR_PER_POINT = 25;
 // Older saves: the Gym build becomes tree tiers, and Bounty becomes points (1 per 100).
 function migrateTree(d) {
   if (d.build.tree) { applyTree(d.build); return; }
@@ -247,7 +248,7 @@ export async function render() {
             h('p', { class: 'label-spaced' }, 'LIFETIME BOUNTY'),
             h('p', { class: 'stat' }, fmt(data.lifetimeBounty)),
           ),
-          h('p', { class: 'caption muted' }, `Earn 1 talent point a floor and ${POINTS_PER_BOSS} on a boss floor.`),
+          h('p', { class: 'caption muted' }, `Earn 1 talent point a floor and ${POINTS_PER_BOSS} on a boss floor (double on Hard), plus 1 for every 25 Bounty a sponsor pays.`),
           best ? h('p', { class: 'caption' }, `Best climb: floor ${best} · ${titleFor(best)}`) : null,
         ),
         run
@@ -369,7 +370,7 @@ export async function render() {
           inRun ? h('p', { class: 'caption muted' }, '🔒 You are mid-climb: upgrades are locked in until the climb ends.') : h('div', { class: 'btn-row' },
             h('button', { class: 'btn btn-secondary btn-sm', disabled: !tier, onClick: () => respec(false) }, 'Respec this node'),
             h('button', { class: 'btn btn-secondary btn-sm', disabled: !spent, onClick: () => respec(true) }, 'Respec all')),
-          h('p', { class: 'caption muted' }, `Earn 1 point a floor, ${POINTS_PER_BOSS} on a boss floor. ${budget()} earned on this file.`),
+          h('p', { class: 'caption muted' }, `Earn 1 point a floor, ${POINTS_PER_BOSS} on a boss floor, double on Hard, plus sponsor money. ${budget()} earned on this file.`),
           inRun ? h('button', { class: 'btn btn-secondary btn-wide', onClick: drawTower }, 'Back to the Tower') : null)),
     );
   }
@@ -651,14 +652,23 @@ export async function render() {
     if (isBoss(fl)) r.bossWins += 1;
     const budgetBefore = budget();
     data.lifetimeBounty += bounty;
-    data.points = (data.points || 0) + pointsForFloor(fl);
+    data.points = (data.points || 0) + pointsForFloor(fl) * (r.hard ? 2 : 1);
     // The phone reacts to the floor and sets up the next one.
     if (r.phone) {
       FP.onCleared(r, fl);
       const runBefore = r.runBounty;
       FP.afterFloor(r, { floor: fl, hp, hpBefore: before, maxHp: r.maxHp, foes, roster: characters.list.filter((c) => !c.retired), rand: Math.random, me: me.name, hard: r.hard, underdog, callout: type === 'callout' || type === 'revenge', type, boss: isBoss(fl) && type !== 'lieutenant' });
       if (PD.dating(r.phone).matches.length) PD.refreshPrompts(r.phone, dateCtx(r));
-      data.lifetimeBounty += r.runBounty - runBefore;
+      const sponsor = r.runBounty - runBefore;
+      data.lifetimeBounty += sponsor;
+      // v0.23.0 (Khalil): sponsor money goes toward your upgrades: every 25 Bounty a sponsor pays is a talent point.
+      if (sponsor > 0) {
+        r.sponsorBank = (r.sponsorBank || 0) + sponsor;
+        const pts = Math.floor(r.sponsorBank / SPONSOR_PER_POINT);
+        r.sponsorBank -= pts * SPONSOR_PER_POINT;
+        data.points = (data.points || 0) + pts;
+        r.sponsorPoints = (r.sponsorPoints || 0) + pts;
+      }
       data.followers = r.phone.followers;
     }
     planFloor(r);
@@ -710,6 +720,9 @@ export async function render() {
       rec.lifetimeBounty = data.lifetimeBounty;
       return rec;
     });
+    data.climbs = (data.climbs || 0) + 1;
+    if (r.hard) data.hardClimbs = (data.hardClimbs || 0) + 1;
+    data.bestBounty = Math.max(data.bestBounty || 0, r.runBounty);
     const entry = {
       floor: r.floor, hard: r.hard, bounty: r.runBounty, date: new Date().toISOString().slice(0, 10),
       ...r.build,

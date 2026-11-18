@@ -4,7 +4,7 @@
 // the rival's lineup and set your order to counter it with the role wheel,
 // but the rival GM sees yours too and can swap two of its cards. Squads from
 // the same series or franchise get a chemistry bonus, and about half of all
-// Brawls open with a Woj Bomb league event.
+// Brawls open with a AFL Insider Drop league event.
 //
 // Rules and numbers live in brawl-rules.js (shared with the balance sim).
 
@@ -31,7 +31,7 @@ const fmt = (n) => Math.round(n).toLocaleString();
 const help = howToPlay('brawl', 'Brawl', [
   'Snake-draft five characters against seven rival GMs: one Striker, one Tank, one Speedster, one Mystic and one Tactician.',
   'Chemistry: three or more from the same series, or five from the same franchise, fight with extra Power.',
-  'About half of all Brawls open with a Woj Bomb event that tilts the bracket for or against you.',
+  'About half of all Brawls open with a AFL Insider Drop event that tilts the bracket for or against you.',
   'Then an 8-team knockout bracket: quarterfinals, semifinals, the final. Every match is your full squad, best of 3 rounds.',
   'Before each match you see the rival\'s lineup and set your order. Cards fight in order and the next one tags in after a knockout, so line up roles that beat theirs.',
   'Careful: the rival GM sees your lineup too and can swap two of its cards. Think one step ahead.',
@@ -165,13 +165,19 @@ export async function render() {
     );
   }
 
-  // ---------- Woj Bomb ----------
+  // Short team names for narrow screens: initials of each word (YOUR SQUAD -> YS).
+  function abbrOf(name) {
+    const w = String(name).replace(/[^A-Za-z0-9 ]/g, '').split(/\s+/).filter(Boolean);
+    return (w.length > 1 ? w.map((x) => x[0]).join('') : w[0].slice(0, 3)).toUpperCase().slice(0, 4);
+  }
+
+  // ---------- AFL Insider Drop ----------
   function drawEvent() {
     const ev = EVENTS[game.event];
     fill(root,
       header('BREAKING NEWS', () => drawStart()),
       h('div', { class: 'br-event' },
-        h('p', { class: 'label-spaced' }, 'WOJ BOMB'),
+        h('p', { class: 'label-spaced' }, 'AFL INSIDER DROP'),
         h('h2', { class: 'display-lg gold' }, ev.title),
         h('p', { class: 'body-text' }, ev.text),
         h('button', {
@@ -301,7 +307,7 @@ export async function render() {
     return h('details', { class: 'br-snake', open: true },
       h('summary', { class: 'label-spaced' }, 'SNAKE DRAFT BOARD'),
       h('div', { class: 'br-snake-wrap' }, h('table', { class: 'br-snake-table' },
-        h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'RD'), ...g.teams.map((t, seat) => h('th', { scope: 'col', class: seat === g.userSeat ? 'is-me' : '' }, t.name)))),
+        h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'RD'), ...g.teams.map((t, seat) => h('th', { scope: 'col', class: seat === g.userSeat ? 'is-me' : '', title: t.name }, h('span', { class: 'br-sn-full' }, t.name), h('span', { class: 'br-sn-abbr' }, abbrOf(t.name)))))),
         h('tbody', {}, Array.from({ length: PICKS }, (_, r) => h('tr', {}, h('th', { scope: 'row' }, `${r + 1} ${r % 2 ? '←' : '→'}`), ...g.teams.map((_, seat) => cell(r, seat))))))));
   }
 

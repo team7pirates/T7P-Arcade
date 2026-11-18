@@ -1,4 +1,4 @@
-// Brawl rules: the snake draft, team chemistry, Woj Bomb events, the
+// Brawl rules: the snake draft, team chemistry, AFL Insider Drop events, the
 // 8-team bracket, AI lineups and MVPs. Pure functions with no screen code, so
 // the balance simulation in sim/ runs the same rules the game does.
 
@@ -19,7 +19,7 @@ export function shuffle(a, rand = Math.random) {
   return x;
 }
 
-// ---------- Woj Bomb events ----------
+// ---------- AFL Insider Drop events ----------
 // About half of all Brawls open with a league event.
 export const EVENTS = {
   rivalry: { title: 'RIVALRY BRACKET', text: 'Everyone is gunning for you. Every team you face fights at +2 Power.', foes: 2 },

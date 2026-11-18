@@ -6,7 +6,7 @@
 // 3 lives. 5 passes per game. A wildcard every 5 wins. Hard Mode doubles
 // points and hides every number.
 
-import { h, fill, toast, closeSheet, sheet } from '../core/ui.js';
+import { h, fill, toast, closeSheet, sheet, confirmSheet } from '../core/ui.js';
 import { profile } from '../core/profile.js';
 import { records } from '../core/records.js';
 import { characters } from '../core/characters.js';
@@ -14,6 +14,25 @@ import { characterCard } from '../core/card.js';
 import { modeHeader, howToPlay } from '../core/mode-kit.js';
 import { go } from '../core/router.js';
 import { shareText } from '../core/grid-board.js';
+import { store } from '../core/store.js';
+import { sfx } from '../core/sfx.js';
+
+// v0.23.0: the game in progress is saved; leave any time and pick it back up
+// until you start a new one.
+const SAVE_KEY = 'save:tier-target';
+function packGame(g) {
+  return { ...g, pool: undefined, deck: g.deck.map((c) => c.id), current: g.current?.id ?? null, cat: g.cat.id,
+    squares: g.squares.map((x) => ({ ...x, card: x.card ? x.card.id : null })) };
+}
+function unpackGame(d) {
+  const get = (id) => characters.get(id);
+  const pool = characters.list.filter((c) => !c.retired && c.powerLevel);
+  const deck = d.deck.map(get).filter(Boolean);
+  if (!deck.length) return null;
+  return { ...d, pool, deck, current: d.current != null ? get(d.current) : null, cat: CATEGORIES.find((c) => c.id === d.cat) || CATEGORIES[0],
+    squares: d.squares.map((x) => ({ ...x, card: x.card != null ? get(x.card) : null })) };
+}
+const saveGame = () => (game ? store.set(SAVE_KEY, packGame(game)) : store.remove(SAVE_KEY));
 
 const SQUARES = [
   { mult: 4, tier: 'S' },
@@ -99,6 +118,9 @@ export async function render() {
   const root = h('section', { class: 'screen mode tier-target' });
   root._cleanup = () => { closeSheet(); lastGame = null; };
 
+  if (!game) { const d = await store.get(SAVE_KEY, null); if (d) game = unpackGame(d); }
+  let resumed = !!game;
+
   // ---------- Start ----------
   function drawStart() {
     const rec = records.get('tier-target');
@@ -117,7 +139,7 @@ export async function render() {
           h('span', { class: 'switch' }, toggle, h('span', { class: 'switch-track', 'aria-hidden': 'true' })),
         ),
         h('p', { class: 'caption muted' }, recordLine(rec)),
-        h('button', { class: 'btn btn-primary btn-wide', onClick: () => { game = newGame(hardChoice); drawGame(); } }, 'Start'),
+        h('button', { class: 'btn btn-primary btn-wide', onClick: () => { game = newGame(hardChoice); saveGame(); sfx.play('flip'); drawGame(); } }, 'Start'),
       ),
     );
   }
@@ -131,6 +153,8 @@ export async function render() {
     const squaresLeft = g.squares.filter((s) => !s.card).map((s) => `${s.mult}×`).join(' ');
     fill(root,
       modeHeader({ title: 'Tier Target', sub: `ROUND ${g.round}${hard ? ' · HARD' : ''}`, onHelp: () => help.show(), onBack: () => go('menu') }),
+      h('div', { class: 'tt-saved' }, h('span', { class: 'caption muted' }, 'Your game saves as you play. Leave any time.'),
+        h('button', { class: 'btn btn-secondary btn-sm', onClick: startNew }, 'Start a new game')),
       h('button', { class: 'tt-cat', onClick: () => showCategory(g.cat) },
         h('span', { class: 'label-spaced' }, 'CATEGORY'),
         h('span', { class: 'tt-cat-name' }, g.cat.name),
@@ -159,6 +183,16 @@ export async function render() {
       ) : null,
       board(g),
     );
+    // On wide screens the dealt card and the pyramid sit side by side.
+    const deal = root.querySelector('.tt-deal'); const bd = root.querySelector('.tt-board');
+    if (deal && bd) { const wrap = h('div', { class: 'tt-play' }); deal.replaceWith(wrap); wrap.append(deal, bd); }
+    else if (bd) { const wrap = h('div', { class: 'tt-play is-board-only' }); bd.replaceWith(wrap); wrap.append(bd); }
+  }
+
+  async function startNew() {
+    const ok = await confirmSheet({ title: 'START A NEW GAME?', message: `Your game in progress (round ${game.round}, ${fmt(game.score)} points) ends without counting toward your records.`, confirmLabel: 'Start new' });
+    if (!ok) return;
+    game = null; await saveGame(); drawStart();
   }
 
   function meter(g) {
@@ -210,13 +244,16 @@ export async function render() {
     sq.value = g.cat.fn(g.current) * sq.mult;
     g.running += sq.value;
     g.filled += 1;
-    if (sq.surge) { g.score += SURGE_POINTS * (g.hard ? 2 : 1); toast(`⚡ Power surge +${SURGE_POINTS * (g.hard ? 2 : 1)}`); }
+    sfx.play('pick');
+    if (sq.surge) { g.score += SURGE_POINTS * (g.hard ? 2 : 1); toast(`⚡ Power surge +${SURGE_POINTS * (g.hard ? 2 : 1)}`); sfx.play('special'); }
     if (g.filled >= SQUARES.length) {
       g.current = null;
+      saveGame();
       drawGame();
       setTimeout(evaluate, 350);
     } else {
       deal(g);
+      saveGame();
       drawGame();
     }
   }
@@ -226,6 +263,8 @@ export async function render() {
     if (g.passes <= 0 || !g.current) return;
     g.passes -= 1;
     deal(g);
+    sfx.play('flip');
+    saveGame();
     drawGame();
   }
 
@@ -240,6 +279,8 @@ export async function render() {
       if (!best || g.cat.fn(c) > g.cat.fn(best)) best = c;
     }
     g.current = best;
+    sfx.play('fanfare');
+    saveGame();
     drawGame();
   }
 
@@ -264,6 +305,7 @@ export async function render() {
       if (g.wins % 5 === 0) { g.wildcards += 1; bonuses.push('Wildcard earned'); }
       if (g.streak % 5 === 0) { g.score += STREAK_BONUS; bonuses.push(`${g.streak}-round streak +${fmt(STREAK_BONUS)}`); }
     }
+    sfx.play(res === 'GREEN' ? 'win' : res === 'YELLOW' ? 'correct' : 'wrong');
     showResult(res, pts, diff, bonuses);
   }
 
@@ -276,7 +318,7 @@ export async function render() {
     s = sheet({
       title: titles[res],
       center: true,
-      onClose: () => { if (over) finish(); else { newRound(game); drawGame(); } },
+      onClose: () => { if (over) finish(); else { newRound(game); saveGame(); drawGame(); } },
       content: h('div', { class: `tt-result is-${res.toLowerCase()}` },
         h('p', { class: 'tt-result-line' }, `Round Value ${fmt(g.running)} · Target ${fmt(g.target)}`),
         h('p', { class: 'caption muted' }, `Off by ${fmt(diff)}${res === 'RED' ? (g.running > g.target ? ', too high' : ', too low') : ''}`),
@@ -293,6 +335,7 @@ export async function render() {
   async function finish() {
     const g = game;
     game = null;
+    await saveGame();
     let newBest = false;
     const key = g.hard ? 'hard' : 'normal';
     await records.update('tier-target', (r) => {
@@ -306,6 +349,7 @@ export async function render() {
       return r;
     });
     lastGame = { ...g, newBest };
+    sfx.play(newBest ? 'fanfare' : 'gong');
     drawOver();
   }
 
@@ -328,7 +372,7 @@ export async function render() {
         stat('Rounds', g.round), stat('Won', g.wins), stat('Best streak', g.bestStreak),
       ),
       h('div', { class: 'result-actions' },
-        h('button', { class: 'btn btn-primary', onClick: () => { lastGame = null; game = newGame(g.hard); drawGame(); } }, 'Play again'),
+        h('button', { class: 'btn btn-primary', onClick: () => { lastGame = null; game = newGame(g.hard); saveGame(); drawGame(); } }, 'Play again'),
         h('button', { class: 'btn btn-secondary', onClick: share }, 'Share'),
         h('button', { class: 'btn btn-secondary', onClick: () => { lastGame = null; drawStart(); } }, 'Change mode'),
       ),
@@ -345,8 +389,12 @@ export async function render() {
     });
   }
 
-  if (game) drawGame();
-  else if (lastGame) drawOver();
+  if (game) {
+    drawGame();
+    if (resumed) { toast(`Welcome back: round ${game.round}, ${fmt(game.score)} points.`); resumed = false; }
+    // Left right after the tenth card: score that round now.
+    if (game.filled >= SQUARES.length && !game.current) setTimeout(evaluate, 350);
+  } else if (lastGame) drawOver();
   else drawStart();
   help.showFirstTime();
   return root;

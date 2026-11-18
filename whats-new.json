@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.23.0",
+      "date": "2026-11-18",
+      "title": "Play-in playoffs, draft-day trades, saved Tier games",
+      "items": [
+        "Dynasty playoffs now have 10 teams. The 4 division winners are seeds 1–4 and the next 2 best records are 5–6. Seeds 7–10 play a one-game play-in (7 vs 10, 8 vs 9) for the last two spots. Then come quarterfinals, semifinals and the Zenith Clash, all one and done.",
+        "OSM now puts out a Play-in issue when the playoffs start (the field, the play-in odds, who just missed, the GPT race) and a Zenith Clash issue right before the final (how both teams got there, their stars, the odds). The season review still follows.",
+        "Trade on draft day: trades stay open through the draft, and you can trade the picks still on the board (No. 12 today, and so on).",
+        "AI teams trade draft picks now too: a contender will throw in its pick to land a veteran.",
+        "Forbidden Fusion: sponsor money goes toward your upgrades, with every 25 Bounty a sponsor pays becoming a talent point. Hard mode earns double talent points. Bosses now come every 10th floor and are worth 5 points.",
+        "Tier Target and Blind Tier List save your game as you play. Leave any time and pick up where you left off until you start a new one. Both modes have sound effects now, and on PC the Tier Target pyramid sits next to the dealt card so it fits on the screen.",
+        "Brawl: the opening event is now called the AFL Insider Drop. On phones, the draft board uses short team names.",
+        "My Records shows Forbidden Fusion by save file: best floor, Hard best, best Bounty, lifetime Bounty and climbs."
+      ]
+    },
+    {
       "version": "0.22.0",
       "date": "2026-11-18",
       "title": "Trade your picks, bigger contracts, tidy saves",

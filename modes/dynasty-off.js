@@ -451,10 +451,14 @@ function aiUpgrades(L) {
 export function setDraftOrder(L) {
   const last = L.history[0];
   const po = L.playoffs;
-  const semisLost = po ? po.semis.map((g) => (g.result.winner === g.home ? g.away : g.home)) : [];
+  // Worst to best: non-playoff teams by record, then play-in losers,
+  // quarterfinal losers, semifinal losers, the runner-up and the champion.
+  const out = po ? R.playoffLosers(po) : { playin: [], quarters: [], semis: [] };
   const champ = last.champion; const runner = last.runnerUp;
-  const rest = last.standings.map((s) => s.i).filter((i) => i !== champ && i !== runner && !semisLost.includes(i)).reverse();
-  const order = [...rest, ...semisLost, runner, champ];
+  const byRec = (list) => last.standings.map((s) => s.i).filter((i) => list.includes(i)).reverse();
+  const done = new Set([champ, runner, ...out.playin, ...out.quarters, ...out.semis]);
+  const rest = last.standings.map((s) => s.i).filter((i) => !done.has(i)).reverse();
+  const order = [...rest, ...byRec(out.playin), ...byRec(out.quarters), ...byRec(out.semis), runner, champ];
   const forfeit = order.filter((i) => L.teams[i].forfeitPick);
   forfeit.forEach((i) => news(L, { kind: 'CAP', team: i, title: `${L.teams[i].name} lose their draft pick`, text: 'Over the soft cap two seasons running. The league takes the pick.' }));
   // v0.18.0: picks traded on the phone go to their new owner.
@@ -694,9 +698,16 @@ export function startNextSeason(L) {
 // ---------- In season: trades (deadline after Week 8) ----------
 // Trades: in season through the deadline, and again in the off-season until
 // draft day (v0.20.0).
-export const PRE_DRAFT = ['fired', 'retire', 'legacy', 'awards', 'resign', 'upgrade'];
+export const PRE_DRAFT = ['fired', 'retire', 'legacy', 'awards', 'resign', 'upgrade', 'draft'];
 export const offseasonTrades = (L) => L.phase === 'offseason' && PRE_DRAFT.includes(L.off?.step);
 export const tradeOpen = (L) => (L.phase === 'season' && L.week <= R.TRADE_DEADLINE) || offseasonTrades(L);
+// Draft day (v0.23.0): the slots still to be picked trade as 'd<slot>'.
+export const isSlot = (x) => typeof x === 'string' && x[0] === 'd';
+export const slotOf = (x) => Number(x.slice(1));
+export const draftSlotsOwnedBy = (L, owner) => (L.phase === 'offseason' && L.off?.step === 'draft' && L.off.order
+  ? L.off.order.map((o, k) => (o === owner && k >= L.off.pick ? `d${k}` : null)).filter(Boolean) : []);
+export const anyPickOwner = (L, x) => (isSlot(x) ? (slotOf(x) >= (L.off?.pick ?? 0) ? L.off?.order?.[slotOf(x)] : -1) : pickOwner(L, x));
+export const pickName = (L, x) => (isSlot(x) ? `No. ${slotOf(x) + 1} pick today` : `${L.teams[x].abbr} draft pick`);
 export const tradeClosedWhy = (L) => (L.phase === 'offseason'
   ? 'Trades are closed from the draft until next season. They open again in Week 1.'
   : L.phase === 'season' ? `The trade deadline (after Week ${R.TRADE_DEADLINE}) has passed. Trades open again after the season, until draft day.`
@@ -724,14 +735,14 @@ export function projectedSlot(L, ti) {
   return order.indexOf(ti) + 1;
 }
 export function pickValue(L, ti, forTeam) {
-  const n = L.teams.length;
-  const frac = (projectedSlot(L, ti) - 1) / Math.max(1, n - 1); // 0 = top pick
+  const n = isSlot(ti) ? (L.off?.order?.length || L.teams.length) : L.teams.length;
+  const frac = (isSlot(ti) ? slotOf(ti) : projectedSlot(L, ti) - 1) / Math.max(1, n - 1); // 0 = top pick
   const base = forTeam.stage === 'rebuild' ? 16 : forTeam.stage === 'contender' ? 7 : 11;
   return base * (1.3 - frac * 0.8);
 }
 export function movePicks(L, picks, to) {
   L.pickOwner = L.pickOwner || {};
-  for (const ti of picks) L.pickOwner[ti] = to;
+  for (const ti of picks) { if (isSlot(ti)) L.off.order[slotOf(ti)] = to; else L.pickOwner[ti] = to; }
 }
 
 // opts: { givePicks: [team index of picks you send], getPicks: [picks you get] }
@@ -742,7 +753,7 @@ export function evaluateTrade(L, ti, give, get, opts = {}) {
   if (give.length !== get.length) return { ok: false, score: 0, why: 'Trade the same number of cards each way (picks can go on top).' };
   if (!give.length && !gk.length && !tk.length) return { ok: false, score: 0, why: 'Pick cards or draft picks to trade.' };
   if (!give.length && !(gk.length && tk.length)) return { ok: false, score: 0, why: 'A trade with no cards has to be picks both ways.' };
-  if (gk.some((x) => pickOwner(L, x) !== me.i) || tk.some((x) => pickOwner(L, x) !== them.i)) return { ok: false, score: 0, why: 'One of those picks has already moved.' };
+  if (gk.some((x) => anyPickOwner(L, x) !== me.i) || tk.some((x) => anyPickOwner(L, x) !== them.i)) return { ok: false, score: 0, why: 'One of those picks has already moved (or been used).' };
   const gp = give.map((pid) => L.players[pid]); const tp = get.map((pid) => L.players[pid]);
   for (const p of tp) if (seriesCount(L, me, p.series, give) + tp.filter((q) => q.series === p.series).length > MAX_PER_SERIES) return { ok: false, score: 0, why: `You'd have more than ${MAX_PER_SERIES} from ${p.series}.` };
   for (const p of gp) if (seriesCount(L, them, p.series, get) + gp.filter((q) => q.series === p.series).length > MAX_PER_SERIES) return { ok: false, score: 0, why: `They'd have more than ${MAX_PER_SERIES} from ${p.series}.` };
@@ -772,7 +783,7 @@ export function doTrade(L, fromTi, toTi, give, get, picks = {}) {
   const gk = picks.givePicks || []; const tk = picks.getPicks || [];
   if (gk.length || tk.length) {
     movePicks(L, gk, b.i); movePicks(L, tk, a.i);
-    const pk = (list) => list.map((x) => `the ${L.teams[x].abbr} pick`).join(' and ');
+    const pk = (list) => list.map((x) => (isSlot(x) ? `the No. ${slotOf(x) + 1} pick` : `the ${L.teams[x].abbr} pick`)).join(' and ');
     if (!give.length) {
       L.trades.push({ season: L.season, week: L.week, a: a.i, b: b.i, aGot: [], bGot: [], aPicks: tk.slice(), bPicks: gk.slice() });
       L.news.unshift({ week: L.week, kind: 'TRADE', team: a.i, title: `${a.name} and ${b.name} swap draft picks`, text: `${a.name} send ${pk(gk)} and get ${pk(tk)}.` });
@@ -782,14 +793,17 @@ export function doTrade(L, fromTi, toTi, give, get, picks = {}) {
   for (const pid of give) { a.roster = a.roster.filter((x) => x !== pid); b.roster.push(pid); L.players[pid].team = b.i; L.players[pid].formerTeam = a.i; }
   for (const pid of get) { b.roster = b.roster.filter((x) => x !== pid); a.roster.push(pid); L.players[pid].team = a.i; L.players[pid].formerTeam = b.i; }
   L.trades.push({ season: L.season, week: L.week, a: a.i, b: b.i, aGot: get.slice(), bGot: give.slice(), aPicks: tk.slice(), bPicks: gk.slice() });
-  const pks = (list) => list.map((x) => `the ${L.teams[x].abbr} pick`).join(' and ');
+  const pks = (list) => list.map((x) => (isSlot(x) ? `the No. ${slotOf(x) + 1} pick` : `the ${L.teams[x].abbr} pick`)).join(' and ');
   L.news.unshift({ week: L.week, kind: 'TRADE', team: a.i, title: `${a.name} trade ${[...give.map((pid) => L.players[pid].name), ...(gk.length ? [pks(gk)] : [])].join(' + ')} to ${b.name}`,
     text: `${a.name} get ${[...get.map((pid) => L.players[pid].name), ...(tk.length ? [pks(tk)] : [])].join(' + ')} back.` });
 }
 
 // AI teams make the odd deal before the deadline.
 function aiTrade(L, rand) {
-  if (rand() > 0.3) return;
+  if (rand() > 0.45) return;
+  for (let k = 0; k < 3; k++) if (aiTryTrade(L, rand)) return;
+}
+function aiTryTrade(L, rand) {
   const sellers = L.teams.filter((t) => t.stage === 'rebuild' && (!L.user || t.i !== L.user.team));
   const buyers = L.teams.filter((t) => t.stage === 'contender' && (!L.user || t.i !== L.user.team));
   if (!sellers.length || !buyers.length) return;
@@ -798,13 +812,21 @@ function aiTrade(L, rand) {
   const kid = roster(L, b).filter((p) => p.career <= 2 && p.injury <= 0 && p.pid !== vet?.pid).sort((x, y) => (y.potential - y.power) - (x.potential - x.power))[0];
   if (!vet || !kid) return;
   if (seriesCount(L, b, vet.series, [kid.pid]) >= MAX_PER_SERIES || seriesCount(L, s, kid.series, [vet.pid]) >= MAX_PER_SERIES) return;
-  const sGain = tradeValue(L, kid, s) - tradeValue(L, vet, s);
+  let sGain = tradeValue(L, kid, s) - tradeValue(L, vet, s);
   const bGain = tradeValue(L, vet, b) - tradeValue(L, kid, b);
-  if (sGain < 1 || bGain < 1) return;
+  // v0.23.0: AI teams trade picks too. A contender throws in its pick to get
+  // a rebuild to sell (rebuilds love picks).
+  const picks = [];
+  if (pickOwner(L, b.i) === b.i && L.phase === 'season' && (sGain < 1 || rand() < 0.4)) {
+    const pv = pickValue(L, b.i, s);
+    if (sGain + pv >= 1 && bGain >= 2) { picks.push(b.i); sGain += pv; }
+  }
+  if (sGain < 1 || bGain < 1) return false;
   const bAfter = R.payroll(L, b) - R.capHit(kid) + R.capHit(vet);
-  if (bAfter > R.capOf(b) && R.capHit(vet) > R.capHit(kid)) return;
-  if (R.isSupermax(R.capHit(vet)) && R.supermaxCount(L, b, [kid.pid]) >= R.SUPERMAX_LIMIT) return;
-  doTrade(L, b.i, s.i, [kid.pid], [vet.pid]);
+  if (bAfter > R.capOf(b) && R.capHit(vet) > R.capHit(kid)) return false;
+  if (R.isSupermax(R.capHit(vet)) && R.supermaxCount(L, b, [kid.pid]) >= R.SUPERMAX_LIMIT) return false;
+  doTrade(L, b.i, s.i, [kid.pid], [vet.pid], { givePicks: picks });
+  return true;
 }
 
 // Emergency pickup in season: sign a free agent at the minimum, cutting someone.

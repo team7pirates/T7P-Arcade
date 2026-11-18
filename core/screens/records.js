@@ -3,11 +3,32 @@
 import { h, sheet } from '../ui.js';
 import { records } from '../records.js';
 import { formatTime } from '../mode-kit.js';
+import { store } from '../store.js';
 
 const GAUNTLET_TIERS = [[8, 'CIPHER GOD'], [6, 'PHANTOM'], [4, 'SHADOW AGENT'], [2, 'OPERATIVE'], [0, 'RECRUIT']];
 const gauntletTier = (n) => GAUNTLET_TIERS.find(([min]) => n >= min)[1];
 
-export function openRecords() {
+// v0.23.0: Forbidden Fusion records per save file.
+async function fusionFiles() {
+  const out = [];
+  for (let n = 1; n <= 5; n++) {
+    const d = await store.get(`fusion:slot${n}`, null);
+    if (!d) continue;
+    const hof = d.hof || [];
+    out.push({
+      n, name: d.build?.name || 'Fighter',
+      best: Math.max(0, d.best || 0, ...hof.map((e) => e.floor || 0)),
+      hardBest: Math.max(0, ...hof.filter((e) => e.hard).map((e) => e.floor || 0)),
+      bounty: Math.max(d.bestBounty || 0, ...hof.map((e) => e.bounty || 0)),
+      lifetime: d.lifetimeBounty || 0,
+      climbs: d.climbs ?? hof.length,
+    });
+  }
+  return out;
+}
+
+export async function openRecords() {
+  const files = await fusionFiles();
   const g = records.get('grids');
   const ga = records.get('gauntlet');
   const tt = records.get('tier-target');
@@ -16,7 +37,7 @@ export function openRecords() {
   const br = records.get('brawl');
   const dy = records.get('dynasty');
   const levels = [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']];
-  const played = levels.some(([k]) => g[k]) || ga.runs || tt.normal || tt.hard || bl.lists || ff.normal || ff.hard || br.runs || dy.seasons;
+  const played = files.length || levels.some(([k]) => g[k]) || ga.runs || tt.normal || tt.hard || bl.lists || ff.normal || ff.hard || br.runs || dy.seasons;
   const fmt = (n) => Math.round(n).toLocaleString();
 
   sheet({
@@ -45,7 +66,16 @@ export function openRecords() {
             : h('p', { class: 'caption muted' }, 'No Brawls yet.'),
         ),
         h('section', { class: 'rec-block' },
-          h('h3', { class: 'label-spaced set-title' }, 'FORBIDDEN FUSION'),
+          h('h3', { class: 'label-spaced set-title' }, 'FORBIDDEN FUSION · BY SAVE FILE'),
+          files.length
+            ? h('table', { class: 'rec-table' },
+              h('thead', {}, h('tr', {}, ['File', 'Best floor', 'Hard best', 'Best Bounty', 'Lifetime', 'Climbs'].map((t) => h('th', { scope: 'col' }, t)))),
+              h('tbody', {}, files.map((f) => h('tr', {},
+                h('th', { scope: 'row' }, `${f.n} · ${f.name}`),
+                h('td', {}, f.best ? String(f.best) : '–'), h('td', {}, f.hardBest ? String(f.hardBest) : '–'),
+                h('td', {}, f.bounty ? fmt(f.bounty) : '–'), h('td', {}, fmt(f.lifetime)), h('td', {}, String(f.climbs))))))
+            : h('p', { class: 'caption muted' }, 'No save files yet.'),
+          h('h3', { class: 'label-spaced set-title' }, 'FORBIDDEN FUSION · ALL FILES'),
           ff.normal || ff.hard
             ? h('table', { class: 'rec-table' },
               h('thead', {}, h('tr', {}, ['', 'Best floor', 'Best Bounty', 'Climbs'].map((t) => h('th', { scope: 'col' }, t)))),

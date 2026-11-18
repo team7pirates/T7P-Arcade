@@ -1,7 +1,7 @@
 // DYNASTY: the Weekly Recap and Weekly Preview (v0.14.0). Pure rules, no DOM.
 // The recap looks back at a finished week; the preview looks at the week
 // ahead. Playoff chances come from a quick simulation of the rest of the
-// season (the playoff is the 4 division winners).
+// season (the playoff field is 10 teams: 4 division winners plus 6).
 
 import * as R from './dynasty-rules.js';
 import * as MD from './dynasty-media.js';
@@ -27,11 +27,16 @@ export function playoffOdds(L, { fix = null, n = 240, fromWeek = L.week } = {}) 
       else win = rnd() < chance(g.home, g.away) ? g.home : g.away;
       w[win] += 1;
     }
+    // v0.23.0: 4 division winners plus the 6 best other records (play-in included).
+    const val = (i) => w[i] + (L.teams[i].rw - L.teams[i].rl) * 0.01 + rnd() * 0.001;
+    const winners = [];
     for (let d = 0; d < 4; d++) {
       let best = -1; let bv = -1;
-      L.teams.forEach((t, i) => { if (t.div !== d) return; const v = w[i] + (t.rw - t.rl) * 0.01 + rnd() * 0.001; if (v > bv) { bv = v; best = i; } });
-      made[best] += 1;
+      L.teams.forEach((t, i) => { if (t.div !== d) return; const v = val(i); if (v > bv) { bv = v; best = i; } });
+      winners.push(best);
     }
+    const rest = L.teams.map((t) => t.i).filter((i) => !winners.includes(i)).sort((a, b) => val(b) - val(a)).slice(0, R.PLAYOFF_TEAMS - 4);
+    for (const i of [...winners, ...rest]) made[i] += 1;
   }
   return made.map((m) => m / n);
 }

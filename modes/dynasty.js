@@ -28,7 +28,7 @@ const help = howToPlay('dynasty', 'Dynasty', [
   'When you lock in, the rival coach sees your order and gets one final swap. Think one step ahead.',
   'Your phone (Open phone button, or P): GMs call with trade offers until the deadline, some with draft picks. Text your squad before each game for +3 Aura, Clutch or Chaos. After a win the other coach texts you. Matchup is the dating app: a date is +2 Aura next game. Phone boosts last one game and stack to +5.',
   'Cards wear down. Tired cards fight weaker and can get hurt, so rotate your bench.',
-  'Win your division to make the playoffs. Win two more and you lift the Celestial Grail at the Zenith Clash.',
+  'Playoffs: 10 teams. The 4 division winners are seeds 1–4 and the next 2 best records are 5–6. Seeds 7–10 play a one-game play-in (7 vs 10, 8 vs 9) for the last two spots. Then quarterfinals, semifinals and the Zenith Clash, all one and done.',
   'Hype comes from winning fights. Aura comes from being seen: magazine picks and awards. Both carry over.',
   'Meet the front office\'s expectation or your job security drops. Miss it three seasons running and you\'re fired.',
   'Front Office: trade until the Week 8 deadline (and again after the season until draft day), sign emergency pickups, and stay under the hard salary cap (160 in season 1, up 5% every off-season). A max deal is 35 a season; deals near the max are supermax, and a team can carry 3.',
@@ -324,13 +324,14 @@ export async function render() {
       if (g) {
         const opp = team(g.home === L.user.team ? g.away : g.home);
         return h('section', { class: 'dy-next dy-panel' },
-          h('p', { class: 'label-spaced gold' }, L.playoffs.final === g ? 'THE ZENITH CLASH' : 'PLAYOFF SEMIFINAL'),
+          h('p', { class: 'label-spaced gold' }, R.roundLabel(L.playoffs, g) === 'THE ZENITH CLASH' ? 'THE ZENITH CLASH' : `PLAYOFF ${R.roundLabel(L.playoffs, g)}`),
+          h('p', { class: 'caption muted' }, R.roundLabel(L.playoffs, g) === 'PLAY-IN' ? 'One game. Win and you\'re in the quarterfinals; lose and your season is over.' : 'One and done.'),
           h('div', { class: 'dy-next-row' }, crest(opp, 56), h('p', { class: 'heading' }, opp.name)),
           h('button', { class: 'btn btn-primary btn-wide', onClick: () => openGamePlan() }, 'Game Plan'));
       }
       return h('section', { class: 'dy-next dy-panel' },
         h('p', { class: 'label-spaced gold' }, 'THE PLAYOFFS'),
-        h('p', { class: 'body-text' }, L.playoffs.seeds.includes(L.user.team) ? 'Your run is over. The rest of the playoffs are on.' : 'You missed the playoffs. The division winners play on.'),
+        h('p', { class: 'body-text' }, L.playoffs.seeds.includes(L.user.team) ? 'Your run is over. The rest of the playoffs are on.' : `You missed the playoffs. ${R.PLAYOFF_TEAMS} teams play on.`),
         h('button', { class: 'btn btn-primary btn-wide', onClick: finishPlayoffs }, 'Play out the playoffs'));
     }
     const last = L.history[0];
@@ -832,18 +833,22 @@ export async function render() {
     const them = team(trade.ti);
     trade.give = trade.give.filter((pid) => L.players[pid].team === t.i);
     trade.get = trade.get.filter((pid) => L.players[pid].team === them.i);
-    trade.givePicks = (trade.givePicks || []).filter((x) => O.pickOwner(L, x) === t.i);
-    trade.getPicks = (trade.getPicks || []).filter((x) => O.pickOwner(L, x) === them.i);
+    trade.givePicks = (trade.givePicks || []).filter((x) => O.anyPickOwner(L, x) === t.i);
+    trade.getPicks = (trade.getPicks || []).filter((x) => O.anyPickOwner(L, x) === them.i);
     const picksOpt = { givePicks: trade.givePicks, getPicks: trade.getPicks };
     const ev = O.evaluateTrade(L, them.i, trade.give, trade.get, picksOpt);
     const pickRows = (tm, list) => {
-      const owned = O.picksOwnedBy(L, tm.i);
+      const today = O.draftSlotsOwnedBy(L, tm.i);
+      const owned = [...today, ...(today.length ? [] : O.picksOwnedBy(L, tm.i))];
       if (!owned.length) return h('p', { class: 'caption muted dy-pad' }, 'No draft picks to trade.');
       return h('ul', { class: 'dy-list dy-pickable' }, owned.map((x) => h('li', {},
         h('label', { class: `dy-check${list.includes(x) ? ' is-on' : ''}` },
           h('input', { type: 'checkbox', checked: list.includes(x), onChange: () => { const i = list.indexOf(x); if (i >= 0) list.splice(i, 1); else list.push(x); drawOffice(); } }),
-          crest(team(x), 32),
-          h('span', { class: 'dy-list-text' }, h('span', {}, `${team(x).abbr} draft pick${x !== tm.i ? ` (from ${team(x).name})` : ''}`), h('span', { class: 'caption muted' }, `Projected No. ${O.projectedSlot(L, x)} · one round`))))));
+          O.isSlot(x) ? h('span', { class: 'dy-num' }, `#${O.slotOf(x) + 1}`) : crest(team(x), 32),
+          h('span', { class: 'dy-list-text' }, O.isSlot(x)
+            ? h('span', {}, `No. ${O.slotOf(x) + 1} pick · today${L.off.from && L.off.from[O.slotOf(x)] !== tm.i ? ` (from ${team(L.off.from[O.slotOf(x)]).abbr})` : ''}`)
+            : h('span', {}, `${team(x).abbr} draft pick${x !== tm.i ? ` (from ${team(x).name})` : ''}`),
+            h('span', { class: 'caption muted' }, O.isSlot(x) ? 'Draft day · one round' : `Projected No. ${O.projectedSlot(L, x)} · one round`))))));
     };
     const pick = (list, pid) => { const i = list.indexOf(pid); if (i >= 0) list.splice(i, 1); else if (list.length < 2) list.push(pid); else toast('Up to 2 cards each way.'); drawOffice(); };
     const col = (tm, list) => h('ul', { class: 'dy-list dy-pickable' }, players(tm).sort((a, b) => b.power - a.power).map((p) => h('li', {},
@@ -863,7 +868,7 @@ export async function render() {
       h('p', { class: 'caption muted' }, 'Cards go the same number each way (up to 2). Draft picks can go on top, or you can swap picks for picks. Rebuilds value picks most, contenders least.'),
       meter(ev.score, 50, ev.why),
       h('button', { class: 'btn btn-primary btn-wide', disabled: !ev.ok, onClick: async () => {
-        const side = (cards, pk) => [...cards.map((pid) => L.players[pid].name), ...pk.map((x) => `the ${team(x).abbr} pick`)].join(' + ');
+        const side = (cards, pk) => [...cards.map((pid) => L.players[pid].name), ...pk.map((x) => (O.isSlot(x) ? `the No. ${O.slotOf(x) + 1} pick` : `the ${team(x).abbr} pick`))].join(' + ');
         const ok = await confirmSheet({ title: 'MAKE THE TRADE?', message: `${side(trade.give, trade.givePicks)} for ${side(trade.get, trade.getPicks)}. Contracts move with the cards.`, confirmLabel: 'Trade' });
         if (!ok) return;
         O.doTrade(L, t.i, them.i, trade.give.slice(), trade.get.slice(), { givePicks: trade.givePicks.slice(), getPicks: trade.getPicks.slice() });
@@ -1443,7 +1448,7 @@ export async function render() {
     const p = L.players[m.cover.pid];
     return h('section', { class: 'dy-panel dy-osm-banner' },
       p ? pAvatar(p, 'md') : null,
-      h('div', { class: 'dy-list-text' }, h('p', { class: 'label-spaced gold' }, m.preseason ? `OSM · THE SEASON ${m.season} PRESEASON ISSUE IS OUT` : m.review ? `OSM · SEASON ${m.season} IN REVIEW IS OUT` : m.legacy ? 'OSM · THE FINAL ISSUE' : `OSM · ISSUE ${m.issue} IS OUT`), h('p', { class: 'heading' }, m.cover.line),
+      h('div', { class: 'dy-list-text' }, h('p', { class: 'label-spaced gold' }, m.playoff ? `OSM · THE ${m.issue} ISSUE IS OUT` : m.preseason ? `OSM · THE SEASON ${m.season} PRESEASON ISSUE IS OUT` : m.review ? `OSM · SEASON ${m.season} IN REVIEW IS OUT` : m.legacy ? 'OSM · THE FINAL ISSUE' : `OSM · ISSUE ${m.issue} IS OUT`), h('p', { class: 'heading' }, m.cover.line),
         m.spotlight?.pick ? h('p', { class: `caption ${m.spotlight.pick === 'aura' ? 'gold' : 'loss'}` }, `Your quote ran: +${MD.QUOTE_BOOST} ${m.spotlight.pick.toUpperCase()} for your roster for ${MD.QUOTE_WEEKS} weeks.`) : null),
       h('button', { class: 'btn btn-primary btn-sm', onClick: () => openMag(m) }, 'Read'));
   }
@@ -1454,8 +1459,8 @@ export async function render() {
     return h('button', { class: 'osm-thumb', style: `--c1:${t.c1};--c2:${t.c2}`, onClick: () => openMag(m), 'aria-label': `OSM season ${m.season} issue ${m.issue}` },
       h('span', { class: 'osm-thumb-mast' }, 'OSM'),
       p ? h('span', { class: 'osm-thumb-star' }, pAvatar(p, 'card')) : null,
-      m.legacy ? h('span', { class: 'osm-thumb-legacy' }, 'FINAL ISSUE') : m.preseason ? h('span', { class: 'osm-thumb-legacy' }, 'PRESEASON') : m.review ? h('span', { class: 'osm-thumb-legacy' }, 'SEASON REVIEW') : null,
-      h('span', { class: 'osm-thumb-meta' }, m.review || m.legacy || m.preseason ? `S${m.season}` : `S${m.season} · #${m.issue}`),
+      m.legacy ? h('span', { class: 'osm-thumb-legacy' }, 'FINAL ISSUE') : m.playoff ? h('span', { class: 'osm-thumb-legacy' }, m.issue) : m.preseason ? h('span', { class: 'osm-thumb-legacy' }, 'PRESEASON') : m.review ? h('span', { class: 'osm-thumb-legacy' }, 'SEASON REVIEW') : null,
+      h('span', { class: 'osm-thumb-meta' }, m.review || m.legacy || m.preseason || m.playoff ? `S${m.season}` : `S${m.season} · #${m.issue}`),
       !m.read ? h('span', { class: 'osm-new' }, 'NEW') : null);
   }
 
@@ -1644,6 +1649,52 @@ export async function render() {
     return pages;
   }
 
+  function playoffPages(m) {
+    const P = (pid) => (pid != null ? L.players[pid] : null);
+    const page = (cls, ...kids) => h('article', { class: `osm-page ${cls}` }, ...kids);
+    const folio = (n) => h('p', { class: 'osm-folio' }, `OSM · SEASON ${m.season} · ${m.issue} · ${n}`);
+    const pages = [];
+    const raceList = () => h('ol', { class: 'osm-power' }, m.race.map((pid, i) => { const p = P(pid); return p ? h('li', {}, h('span', { class: 'osm-rank' }, String(i + 1)), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name), h('span', { class: 'caption muted' }, `${p.role} · ${p.team != null ? team(p.team).abbr : ''}`)), h('span', { class: 'dy-num gold' }, R.oddsFor(i, 0, 0))) : null; }));
+    if (m.playoff === 'playin') {
+      const fav = team(m.cover.team); const cs = P(m.cover.pid);
+      pages.push(page('osm-cover', tinted(fav, fav, 'dy-arena osm-cover-bg'),
+        h('p', { class: 'osm-mast' }, 'OSM'), h('p', { class: 'osm-sub' }, `SEASON ${m.season} PLAYOFF ISSUE · THE FIELD IS SET`),
+        cs ? h('div', { class: 'osm-cover-star' }, pAvatar(cs, 'card')) : null,
+        h('div', { class: 'osm-cover-text' }, h('p', { class: 'osm-kicker' }, 'THE NO. 1 SEED'), h('h2', { class: 'osm-headline' }, fav.name.toUpperCase()), h('p', { class: 'osm-dek' }, m.cover.line)),
+        h('ul', { class: 'osm-teasers' }, [`Play-in: ${team(m.games[0].home).abbr} vs ${team(m.games[0].away).abbr}, ${team(m.games[1].home).abbr} vs ${team(m.games[1].away).abbr}`, m.mine && m.mine.seed ? `${me().name}: the No. ${m.mine.seed} seed` : null, 'Who just missed'].filter(Boolean).map((t) => h('li', {}, t))),
+        crest(fav, 56)));
+      pages.push(page('', h('p', { class: 'osm-section' }, 'THE FIELD'),
+        h('p', { class: 'osm-intro' }, 'Seeds 1–4 won their divisions. 5 and 6 are in. 7–10 play one game for the last two spots.'),
+        h('ol', { class: 'osm-power' }, m.field.map((x) => h('li', { class: me().i === x.team ? 'is-me' : '' }, h('span', { class: 'osm-rank' }, String(x.seed)), crest(team(x.team), 34),
+          h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, team(x.team).name), h('span', { class: 'caption muted' }, x.seed <= 4 ? 'Division champion' : x.seed <= 6 ? 'In' : 'Play-in')), h('span', { class: 'dy-num' }, `${x.w}-${x.l}`)))),
+        folio(2)));
+      pages.push(page('', h('p', { class: 'osm-section' }, 'THE PLAY-IN'),
+        h('p', { class: 'osm-intro' }, 'One game. Win and you\'re in the quarterfinals. Lose and the season is over.'),
+        ...m.games.map((g, i) => h('div', { class: 'osm-clash' }, crest(team(g.home), 80), h('div', { class: 'osm-clash-score' }, h('p', { class: 'heading' }, `${i === 0 ? '7 vs 10' : '8 vs 9'}`), h('p', { class: 'caption muted' }, `${team(g.home).abbr} ${g.odds}% · ${team(g.away).abbr} ${100 - g.odds}%`)), crest(team(g.away), 80))),
+        m.bubble.length ? h('p', { class: 'osm-section osm-section-sm' }, 'JUST MISSED') : null,
+        m.bubble.length ? h('ul', { class: 'osm-news' }, m.bubble.map((i) => h('li', {}, crest(team(i), 30), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, team(i).name), h('span', { class: 'caption muted' }, `${team(i).w}-${team(i).l}. So close.`))))) : null,
+        folio(3)));
+      pages.push(page('', h('p', { class: 'osm-section' }, 'THE GPT RACE'), h('p', { class: 'osm-intro' }, 'The Generational Player Trophy goes to the best player of the season.'), raceList(), folio(4)));
+    } else {
+      const a = team(m.cover.team); const b = team(m.cover.team2);
+      const pA = P(m.cover.pidA); const pB = P(m.cover.pidB);
+      pages.push(page('osm-cover', tinted(a, b, 'dy-arena osm-cover-bg'),
+        h('p', { class: 'osm-mast' }, 'OSM'), h('p', { class: 'osm-sub' }, `SEASON ${m.season} · THE ZENITH CLASH ISSUE`),
+        h('div', { class: 'osm-clash osm-clash-cover' }, pA ? pAvatar(pA, 'card') : crest(a, 90), trophy('The Celestial Grail', 120), pB ? pAvatar(pB, 'card') : crest(b, 90)),
+        h('div', { class: 'osm-cover-text' }, h('p', { class: 'osm-kicker' }, 'FOR THE CELESTIAL GRAIL'), h('h2', { class: 'osm-headline' }, `${a.abbr} VS ${b.abbr}`), h('p', { class: 'osm-dek' }, m.cover.line)),
+        h('ul', { class: 'osm-teasers' }, [`The odds: ${a.abbr} ${m.odds}%, ${b.abbr} ${100 - m.odds}%`, 'How they got here', m.mine?.inFinal ? 'Your shot at the Grail' : null].filter(Boolean).map((t) => h('li', {}, t)))));
+      const path = (t, list) => h('div', { class: 'osm-path' }, h('div', { class: 'osm-path-head' }, crest(t, 44), h('p', { class: 'heading' }, t.name)),
+        list.length ? h('ul', { class: 'osm-news' }, list.map((x) => h('li', {}, h('span', { class: 'caption muted' }, { playin: 'Play-in', quarters: 'Quarterfinal', semis: 'Semifinal' }[x.round]), h('span', { class: 'heading' }, `beat ${team(x.opp).abbr} ${x.score[0]}–${x.score[1]}`)))) : h('p', { class: 'caption muted' }, 'A bye straight through.'));
+      pages.push(page('', h('p', { class: 'osm-section' }, 'HOW THEY GOT HERE'), path(a, m.pathA), path(b, m.pathB), folio(2)));
+      pages.push(page('', h('p', { class: 'osm-section' }, 'THE STARS'),
+        ...[[a, m.stars[0]], [b, m.stars[1]]].map(([t, pids]) => h('div', {}, h('p', { class: 'osm-section osm-section-sm' }, t.name.toUpperCase()),
+          h('ul', { class: 'osm-potm' }, pids.map((pid) => { const p = P(pid); return p ? h('li', {}, h('div', { class: 'osm-potm-pic' }, pAvatar(p, 'card')), h('p', { class: 'heading' }, p.name), h('p', { class: 'caption muted' }, `${p.role} · Power ${R.effPower(L, p)}`)) : null; })))),
+        folio(3)));
+      pages.push(page('', h('p', { class: 'osm-section' }, 'THE GPT RACE'), raceList(), h('p', { class: 'osm-next' }, 'THE ZENITH CLASH IS NEXT'), folio(4)));
+    }
+    return pages;
+  }
+
   function preseasonPages(m) {
     const P = (pid) => (pid != null ? L.players[pid] : null);
     const page = (cls, ...kids) => h('article', { class: `osm-page ${cls}` }, ...kids);
@@ -1696,7 +1747,7 @@ export async function render() {
   async function openMag(m) {
     stopTimers();
     m.read = true; save();
-    const pages = m.preseason ? preseasonPages(m) : m.review ? reviewPages(m) : m.legacy ? [legacyCover(m.lg, (await loadPhotos()).coach), h('article', { class: 'osm-page osm-legacy-inner' }, h('p', { class: 'osm-section' }, 'THE CAREER'),
+    const pages = m.playoff ? playoffPages(m) : m.preseason ? preseasonPages(m) : m.review ? reviewPages(m) : m.legacy ? [legacyCover(m.lg, (await loadPhotos()).coach), h('article', { class: 'osm-page osm-legacy-inner' }, h('p', { class: 'osm-section' }, 'THE CAREER'),
       h('ul', { class: 'osm-power' }, m.lg.teams.map((x) => h('li', {}, h('img', { src: `art/afl/crests/${x.crest}.webp`, alt: '', style: 'width:36px;height:36px' }), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, x.name), h('span', { class: 'caption muted' }, `${x.seasons} season${x.seasons === 1 ? '' : 's'}`))))),
       h('p', { class: 'osm-intro' }, `${m.lg.w}-${m.lg.l} · ${m.lg.titles} Grail${m.lg.titles === 1 ? '' : 's'} · ${m.lg.playoffs} playoff trips. The legends are gone. The New Era starts now.`),
       h('p', { class: 'osm-mast osm-mast-sm' }, 'OSM'))] : magPages(m, (await loadPhotos()).coach);
@@ -1739,7 +1790,7 @@ export async function render() {
     function close() { document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onResize); tab = 'media'; drawHub(); }
     const prevCleanup = root._cleanup;
     root._cleanup = () => { document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onResize); prevCleanup(); root._cleanup = prevCleanup; };
-    fill(root, header(m.preseason ? `OSM · SEASON ${m.season} PRESEASON` : m.review ? `OSM · SEASON ${m.season} IN REVIEW` : m.legacy ? 'OSM · THE FINAL ISSUE' : `OSM · SEASON ${m.season} · ISSUE ${m.issue}`, close),
+    fill(root, header(m.playoff ? `OSM · SEASON ${m.season} · ${m.issue}` : m.preseason ? `OSM · SEASON ${m.season} PRESEASON` : m.review ? `OSM · SEASON ${m.season} IN REVIEW` : m.legacy ? 'OSM · THE FINAL ISSUE' : `OSM · SEASON ${m.season} · ISSUE ${m.issue}`, close),
       h('div', { class: 'osm-reader' }, book, h('div', { class: 'osm-controls' }, prev, count, next)));
     paint();
   }
@@ -1993,8 +2044,11 @@ export async function render() {
       po ? h('section', { class: 'dy-panel' },
         h('h2', { class: 'dy-h gold' }, 'PLAYOFFS'),
         h('div', { class: 'dy-bracket' },
-          ...po.semis.map((g) => bracketMatch('Semifinal', g)),
-          po.final ? bracketMatch('The Zenith Clash', po.final) : h('div', { class: 'dy-bk' }, h('p', { class: 'label-spaced' }, 'THE ZENITH CLASH'), h('p', { class: 'caption muted' }, 'Waiting on the semifinals'))),
+          ...(po.playin || []).map((g) => bracketMatch('Play-in', g)),
+          ...(po.quarters || []).map((g) => bracketMatch('Quarterfinal', g)),
+          ...(po.semis || []).map((g) => bracketMatch('Semifinal', g)),
+          po.final ? bracketMatch('The Zenith Clash', po.final) : h('div', { class: 'dy-bk' }, h('p', { class: 'label-spaced' }, 'THE ZENITH CLASH'), h('p', { class: 'caption muted' }, 'Waiting on the earlier rounds'))),
+        h('p', { class: 'caption muted' }, `Seeds: ${po.seeds.map((i, k) => `${k + 1}. ${team(i).abbr}`).join(' · ')}. Seeds 1–4 won their divisions. 7–10 play in.`),
         po.champion != null ? h('p', { class: 'heading gold' }, `${team(po.champion).name} won the Celestial Grail.`) : null) : null,
       R.DIVISIONS.map((d, di) => h('section', { class: 'dy-panel' },
         h('h2', { class: 'dy-h' }, `${d.toUpperCase()} DIVISION`),
@@ -2022,7 +2076,7 @@ export async function render() {
   }
 
   function ensurePending(g) {
-    const key = L.phase === 'playoffs' ? `po-${L.playoffs.final === g ? 'f' : 's'}` : `w${L.week}`;
+    const key = L.phase === 'playoffs' ? `po-${R.roundOf(L.playoffs)}-${g.home}-${g.away}` : `w${L.week}`;
     if (L.pending && L.pending.key === key) return L.pending;
     const oppI = g.home === L.user.team ? g.away : g.home;
     const rand = () => R.nextRand(L);
@@ -2064,7 +2118,7 @@ export async function render() {
     const opp = team(pd.opp); const t = me();
     const home = team(g.home);
     const rv = R.isRivalry(g.home, g.away, L);
-    const label = L.phase === 'playoffs' ? (L.playoffs.final === g ? 'THE ZENITH CLASH' : 'PLAYOFF SEMIFINAL') : `WEEK ${L.week}`;
+    const label = L.phase === 'playoffs' ? (R.roundLabel(L.playoffs, g) === 'THE ZENITH CLASH' ? 'THE ZENITH CLASH' : `PLAYOFF ${R.roundLabel(L.playoffs, g)}`) : `WEEK ${L.week}`;
     const mine = pd.mine.map((pid) => L.players[pid]);
     const theirs = (pd.final || pd.theirs).map((pid) => L.players[pid]);
     const swapped = pd.swap || [];
@@ -2237,7 +2291,8 @@ export async function render() {
       } else if (!rc.won) {
         next = h('button', { class: 'btn btn-primary btn-wide', onClick: finishPlayoffs }, 'Play out the playoffs');
       } else {
-        next = h('button', { class: 'btn btn-primary btn-wide', onClick: () => { tab = 'league'; drawHub(); } }, 'On to the Zenith Clash');
+        const ng = R.playoffGameForUser(L);
+        next = h('button', { class: 'btn btn-primary btn-wide', onClick: () => { tab = 'league'; drawHub(); } }, ng ? `On to the ${R.roundLabel(po, ng) === 'THE ZENITH CLASH' ? 'Zenith Clash' : R.roundLabel(po, ng).toLowerCase()}` : 'Back to the league');
       }
     } else {
       next = h('button', { class: 'btn btn-primary btn-wide', onClick: () => { tab = 'league'; drawHub(); } }, L.phase === 'playoffs' ? 'The regular season is over' : `On to week ${L.week}`);

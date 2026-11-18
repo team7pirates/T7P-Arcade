@@ -364,7 +364,7 @@ function boost(league, p, stat) {
 // v0.18.0: the phone (team texts, a rival coach's reply, a good date) adds a
 // little to the user's roster for the next game only. Capped at +5 a stat.
 export const PHONE_BOOST_MAX = 5;
-export const gameWeek = (league) => (league.phase === 'playoffs' ? WEEKS + (league.playoffs?.final ? 2 : 1) : league.week);
+export const gameWeek = (league) => (league.phase === 'playoffs' ? WEEKS + 1 + Math.max(0, ROUNDS.findIndex(([k]) => k === roundOf(league.playoffs || {}))) : league.week);
 export function phoneBoostNow(league) {
   const b = league.user?.phoneBoost;
   if (!b || b.season !== league.season || b.week !== gameWeek(league)) return null;
@@ -644,37 +644,88 @@ function weekNews(league, games) {
   return out.slice(0, 6);
 }
 
-// ---------- Playoffs ----------
+// ---------- Playoffs (v0.23.0: 10 teams, NFL/NBA mix) ----------
+// Seeds 1-4: the division winners. Seeds 5-6: the two best other records.
+// Play-in (one game, loser goes home): 7 vs 10 and 8 vs 9; the winners are
+// seeds 7 and 8. Then quarterfinals (1v8, 2v7, 3v6, 4v5), semifinals and the
+// Zenith Clash. A magazine comes out for the play-in and before the Clash.
+export const PLAYOFF_TEAMS = 10;
+export const ROUNDS = [['playin', 'PLAY-IN'], ['quarters', 'QUARTERFINAL'], ['semis', 'SEMIFINAL'], ['final', 'THE ZENITH CLASH']];
+const game = (home, away) => ({ home, away, result: null });
+const winnerOf = (g) => g.result.winner;
+const loserOf = (g) => (g.result.winner === g.home ? g.away : g.home);
 export function startPlayoffs(league) {
   league.phase = 'playoffs';
-  const winners = [0, 1, 2, 3].map((d) => divisionTable(league, d)[0]);
-  const seeds = winners.slice().sort((a, b) => (b.w - a.w) || ((b.rw - b.rl) - (a.rw - a.rl))).map((t) => t.i);
+  const byRecord = (a, b) => (b.w - a.w) || ((b.rw - b.rl) - (a.rw - a.rl)) || (strength(league, b) - strength(league, a));
+  const winners = [0, 1, 2, 3].map((d) => divisionTable(league, d)[0]).sort(byRecord);
+  const rest = standings(league).filter((t) => !winners.includes(t)).slice(0, PLAYOFF_TEAMS - 4);
+  const seeds = [...winners, ...rest].map((t) => t.i);
   league.playoffs = {
-    seeds,
-    semis: [{ home: seeds[0], away: seeds[3], result: null }, { home: seeds[1], away: seeds[2], result: null }],
-    final: null, champion: null,
+    seeds, round: 'playin',
+    playin: [game(seeds[6], seeds[9]), game(seeds[7], seeds[8])],
+    quarters: null, semis: null, final: null, champion: null,
   };
+  if (hooks.playoffIssue) hooks.playoffIssue(league, 'playin');
 }
+// Older saves (4-team playoffs) carry on with semis and the final only.
+export const roundOf = (po) => po.round || (po.final ? 'final' : 'semis');
+export const roundLabel = (po, g) => {
+  for (const [k, label] of ROUNDS) { const list = k === 'final' ? [po.final] : po[k]; if (list && list.includes(g)) return label; }
+  return 'PLAYOFFS';
+};
+export const roundGames = (po, k = roundOf(po)) => (k === 'final' ? (po.final ? [po.final] : []) : po[k] || []);
 export function playoffGameForUser(league) {
   const po = league.playoffs; const u = league.user.team;
-  if (!po) return null;
-  if (po.final && !po.final.result && (po.final.home === u || po.final.away === u)) return po.final;
-  if (!po.final) return po.semis.find((g) => !g.result && (g.home === u || g.away === u)) || null;
-  return null;
+  if (!po || po.champion != null) return null;
+  return roundGames(po).find((g) => !g.result && (g.home === u || g.away === u)) || null;
+}
+// Is the user still alive in the playoffs?
+export function userAlive(league) {
+  const po = league.playoffs; const u = league.user?.team;
+  if (!po || po.champion != null || u == null) return false;
+  if (!po.seeds.includes(u)) return false;
+  for (const [k] of ROUNDS) for (const g of roundGames(po, k)) if (g.result && loserOf(g) === u) return false;
+  return true;
+}
+function advance(league) {
+  const po = league.playoffs; const k = roundOf(po);
+  const games = roundGames(po, k);
+  if (!games.length || games.some((g) => !g.result)) return false;
+  if (k === 'playin') {
+    const b = [...po.seeds.slice(0, 6), winnerOf(po.playin[0]), winnerOf(po.playin[1])];
+    po.bracket = b;
+    po.quarters = [game(b[0], b[7]), game(b[1], b[6]), game(b[2], b[5]), game(b[3], b[4])];
+    po.round = 'quarters';
+  } else if (k === 'quarters') {
+    const q = po.quarters.map(winnerOf);
+    const seedOf = (t) => po.bracket.indexOf(t);
+    const pair = (a, c) => (seedOf(a) <= seedOf(c) ? game(a, c) : game(c, a));
+    po.semis = [pair(q[0], q[3]), pair(q[1], q[2])];
+    po.round = 'semis';
+  } else if (k === 'semis') {
+    po.final = game(winnerOf(po.semis[0]), winnerOf(po.semis[1]));
+    po.round = 'final';
+    if (hooks.playoffIssue) hooks.playoffIssue(league, 'clash');
+  } else if (k === 'final') {
+    po.champion = winnerOf(po.final);
+    po.round = 'done';
+  }
+  return true;
 }
 export function simPlayoffs(league, untilUser = true) {
   const rand = randOf(league); const po = league.playoffs; const u = league.user?.team;
-  for (const g of po.semis) {
-    if (g.result) continue;
-    if (untilUser && (g.home === u || g.away === u)) return;
-    playGame(league, g, { home: aiOrder(league, league.teams[g.home], rand), away: aiOrder(league, league.teams[g.away], rand) });
+  for (let guard = 0; guard < 10 && po.champion == null; guard++) {
+    for (const g of roundGames(po)) {
+      if (g.result) continue;
+      if (untilUser && (g.home === u || g.away === u)) return;
+      playGame(league, g, { home: aiOrder(league, league.teams[g.home], rand), away: aiOrder(league, league.teams[g.away], rand) });
+    }
+    if (!advance(league)) break;
   }
-  if (!po.final) po.final = { home: po.semis[0].result.winner, away: po.semis[1].result.winner, result: null };
-  if (!po.final.result) {
-    if (untilUser && (po.final.home === u || po.final.away === u)) return;
-    playGame(league, po.final, { home: aiOrder(league, league.teams[po.final.home], rand), away: aiOrder(league, league.teams[po.final.away], rand) });
-  }
-  po.champion = po.final.result.winner;
+}
+// Teams knocked out, round by round (for the draft order): [playin, quarters, semis].
+export function playoffLosers(po) {
+  return { playin: (po.playin || []).filter((g) => g.result).map(loserOf), quarters: (po.quarters || []).filter((g) => g.result).map(loserOf), semis: (po.semis || []).filter((g) => g.result).map(loserOf) };
 }
 
 // ---------- End of season ----------
@@ -696,7 +747,8 @@ export function endSeason(league) {
     score: [Math.max(...final.score), Math.min(...final.score)],
     record: `${champ.w}-${champ.l}`,
     prodigy: race[0].p.pid, prodigyName: race[0].p.name, prodigyTeam: race[0].p.team,
-    divisions: po.seeds.slice().sort((a, b) => league.teams[a].div - league.teams[b].div),
+    divisions: po.seeds.slice(0, 4).sort((a, b) => league.teams[a].div - league.teams[b].div),
+    field: po.seeds.slice(),
     roleAwards: roleAward, roleAwardTeams,
     standings: standings(league).map((t) => ({ i: t.i, w: t.w, l: t.l })),
   };

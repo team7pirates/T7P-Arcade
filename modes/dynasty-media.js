@@ -303,6 +303,43 @@ export function makePreseason(L) {
   return mag;
 }
 
+// ---------- Playoff issues (v0.23.0) ----------
+// 'playin': when the playoffs start (the field, the play-in games, who just
+// missed). 'clash': right before the Zenith Clash (the two paths, the stars,
+// the odds).
+export function makePlayoffIssue(L, kind) {
+  migrate(L);
+  const po = L.playoffs; if (!po) return null;
+  if (L.mags.some((m) => m.playoff === kind && m.season === L.season)) return null;
+  const top = (ti) => L.teams[ti].roster.map((pid) => L.players[pid]).filter((p) => p.injury <= 0).sort((a, b) => R.effPower(L, b) - R.effPower(L, a))[0];
+  const u = L.user?.team;
+  const mag = { playoff: kind, season: L.season, issue: kind === 'playin' ? 'PLAY-IN' : 'ZENITH CLASH', week: R.WEEKS + 1, read: false, potm: [], race: [], rivals: [], news: [] };
+  const race = R.awardRace(L).slice(0, 5).map(({ p }) => p.pid);
+  if (kind === 'playin') {
+    const fav = po.seeds[0];
+    const star = top(fav);
+    const all = R.standings(L).map((t) => t.i);
+    mag.cover = { team: fav, pid: star?.pid ?? null, line: `${L.teams[fav].name} are the No. 1 seed. Ten teams, one Grail.` };
+    mag.field = po.seeds.map((i, k) => ({ team: i, seed: k + 1, w: L.teams[i].w, l: L.teams[i].l }));
+    mag.games = po.playin.map((g) => ({ home: g.home, away: g.away, odds: Math.round(R.winChance(L, g.home, g.away) * 100) }));
+    mag.bubble = all.filter((i) => !po.seeds.includes(i)).slice(0, 2);
+    mag.race = race;
+    mag.mine = u == null ? null : { seed: po.seeds.indexOf(u) + 1, playin: po.seeds.indexOf(u) >= 6 };
+  } else {
+    const f = po.final; const a = f.home; const b = f.away;
+    const path = (ti) => ['playin', 'quarters', 'semis'].flatMap((k) => (po[k] || []).filter((g) => g.result && g.result.winner === ti).map((g) => ({ round: k, opp: g.home === ti ? g.away : g.home, score: [Math.max(...g.result.score), Math.min(...g.result.score)] })));
+    mag.cover = { team: a, team2: b, pid: top(a)?.pid ?? null, pidA: top(a)?.pid ?? null, pidB: top(b)?.pid ?? null, line: `${L.teams[a].name} vs ${L.teams[b].name} for the Celestial Grail.` };
+    mag.pathA = path(a); mag.pathB = path(b);
+    mag.odds = Math.round(R.winChance(L, a, b) * 100);
+    mag.stars = [a, b].map((ti) => L.teams[ti].roster.map((pid) => L.players[pid]).sort((x, y) => R.effPower(L, y) - R.effPower(L, x)).slice(0, 3).map((p) => p.pid));
+    mag.race = race;
+    mag.mine = u == null ? null : { inFinal: u === a || u === b };
+  }
+  L.mags.unshift(mag);
+  L.mags = L.mags.slice(0, 16);
+  return mag;
+}
+
 // ---------- The season review issue (after the Zenith Clash) ----------
 export function makeReview(L, row) {
   migrate(L);
@@ -333,3 +370,4 @@ export function makeReview(L, row) {
 }
 R.hooks.seasonEnd = (L, row) => makeReview(L, row);
 R.hooks.preseason = (L) => makePreseason(L);
+R.hooks.playoffIssue = (L, kind) => makePlayoffIssue(L, kind);

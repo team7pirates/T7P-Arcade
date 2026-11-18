@@ -85,7 +85,7 @@ export const TREE = [
 export const node = (id) => TREE.find((n) => n.id === id);
 export const TREE_MAX = TREE.reduce((n, x) => n + x.tiers * x.cost, 0); // 117
 export const POINTS_PER_FLOOR = 1;
-export const POINTS_PER_BOSS = 3;
+export const POINTS_PER_BOSS = 5;
 export const pointsForFloor = (floor) => (isBoss(floor) ? POINTS_PER_BOSS : POINTS_PER_FLOOR);
 export const treeCost = (tree = {}) => TREE.reduce((n, x) => n + (tree[x.id] || 0) * x.cost, 0);
 export const tierOf = (tree, id) => (tree && tree[id]) || 0;
@@ -111,7 +111,7 @@ export function treeFromBuild(b) {
 }
 
 // ---------- The Tower ----------
-export const BOSS_EVERY = 5;
+export const BOSS_EVERY = 10; // v0.23.0 (Khalil): bosses every 10th floor
 export const FUSION_HP = 3.5;     // a fused fighter has 3.5× a normal card's health
 export const HEAL_FLOOR = 0.20;   // after a normal floor
 export const HEAL_BOSS = 0.25;    // after a boss floor

@@ -5,7 +5,9 @@
 // whenever you like. At the end, see how your list compares with the
 // characters' Power Levels, then share it.
 
-import { h, fill, toast, avatar, closeSheet } from '../core/ui.js';
+import { h, fill, toast, avatar, closeSheet, confirmSheet } from '../core/ui.js';
+import { store } from '../core/store.js';
+import { sfx } from '../core/sfx.js';
 import { profile } from '../core/profile.js';
 import { records } from '../core/records.js';
 import { characters } from '../core/characters.js';
@@ -31,6 +33,16 @@ const help = howToPlay('blind-tier-list', 'Blind Tier List', [
 ]);
 
 let list = null;
+// v0.23.0: the list in progress is saved until you start a new one.
+const SAVE_KEY = 'save:blind-tier-list';
+const packList = (l) => ({ catId: l.cat.id, queue: l.queue.map((c) => c.id), index: l.index, revealed: l.revealed, placed: Object.fromEntries(Object.entries(l.placed).map(([k, v]) => [k, v.map((c) => c.id)])) });
+function unpackList(d) {
+  const cat = categories().find((c) => c.id === d.catId);
+  const queue = d.queue.map((id) => characters.get(id));
+  if (!cat || queue.some((c) => !c)) return null;
+  return { cat, queue, index: d.index, revealed: d.revealed, placed: Object.fromEntries(Object.entries(d.placed).map(([k, v]) => [k, v.map((id) => characters.get(id))])) };
+}
+const saveList = () => (list ? store.set(SAVE_KEY, packList(list)) : store.remove(SAVE_KEY));
 let lastList = null;
 let lastCategory = null;
 
@@ -71,9 +83,11 @@ export async function render() {
     return `${kind} · ${l.cat.label.toUpperCase()}`;
   }
 
+  if (!list) { const d = await store.get(SAVE_KEY, null); if (d) { list = unpackList(d); if (list && list.index > 0) toast(`Welcome back: ${list.index} of ${NEED} placed.`); } }
+
   // ---------- Placing ----------
   function drawList() {
-    if (!list) list = newList();
+    if (!list) { list = newList(); saveList(); }
     const l = list;
     if (l.index >= NEED) { finish(); return; }
     const c = l.queue[l.index];
@@ -82,13 +96,14 @@ export async function render() {
       modeHeader({ title: 'Blind Tier List', sub: 'RANK ON INSTINCT', onHelp: () => help.show(), onBack: () => go('menu') }),
       h('button', {
         class: `btl-cat${l.revealed ? ' is-revealed' : ''}`,
-        onClick: () => { if (!l.revealed) { l.revealed = true; drawList(); } },
+        onClick: () => { if (!l.revealed) { l.revealed = true; sfx.play('flip'); saveList(); drawList(); } },
         'aria-label': l.revealed ? `Category: ${l.cat.label}` : 'Reveal category',
       },
         h('span', { class: 'label-spaced' }, 'CATEGORY'),
         h('span', { class: 'btl-cat-name' }, l.revealed ? catLabel(l) : '? TAP TO REVEAL ?'),
       ),
-      h('p', { class: 'label-spaced btl-progress' }, `CHARACTER ${l.index + 1} OF ${NEED}`),
+      h('div', { class: 'tt-saved' }, h('p', { class: 'label-spaced btl-progress' }, `CHARACTER ${l.index + 1} OF ${NEED}`),
+        l.index > 0 ? h('button', { class: 'btn btn-secondary btn-sm', onClick: startNew }, 'Start a new list') : null),
       h('div', { class: 'btl-now' },
         avatar(c, characters, 'lg'),
         h('div', { class: 'btl-now-text' },
@@ -137,13 +152,22 @@ export async function render() {
     if (l.placed[tier].length >= t.slots) return;
     l.placed[tier].push(l.queue[l.index]);
     l.index += 1;
+    sfx.play('pick');
+    saveList();
     drawList();
+  }
+
+  async function startNew() {
+    const ok = await confirmSheet({ title: 'START A NEW LIST?', message: `This list (${list.index} of ${NEED} placed) won't count.`, confirmLabel: 'Start new' });
+    if (!ok) return;
+    list = newList(); await saveList(); drawList();
   }
 
   // ---------- Results ----------
   async function finish() {
     const l = list;
     list = null;
+    await saveList();
     l.revealed = true;
     const rating = ratingTiers(l.queue);
     let agree = 0;
@@ -157,6 +181,7 @@ export async function render() {
       return r;
     });
     lastList = { ...l, rating, agree, newBest };
+    sfx.play(newBest ? 'fanfare' : agree >= 5 ? 'win' : 'gong');
     drawResult();
   }
 
@@ -188,7 +213,7 @@ export async function render() {
       h('h3', { class: 'label-spaced set-title' }, 'BY POWER LEVEL'),
       pyramid(ratingBoard, {}),
       h('div', { class: 'result-actions' },
-        h('button', { class: 'btn btn-primary', onClick: () => { lastList = null; list = newList(); drawList(); } }, 'New list'),
+        h('button', { class: 'btn btn-primary', onClick: () => { lastList = null; list = newList(); saveList(); drawList(); } }, 'New list'),
         h('button', { class: 'btn btn-secondary', onClick: share }, 'Share'),
         h('button', { class: 'btn btn-secondary', onClick: () => go('menu') }, 'Menu'),
       ),
