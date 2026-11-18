@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.20.0",
+      "date": "2026-11-18",
+      "title": "Off-season trades, coaching carousel, preseason OSM",
+      "items": [
+        "The GPP is now the GPT: the Generational Player Trophy.",
+        "Trades open again after the season and stay open until draft day. Look for Make a trade at the top of the off-season screens. GMs can call with offers too.",
+        "AI coaches now have careers. They retire, and they get fired if they miss expectations, judged the same way you are. New coaches are hired, and sometimes a fired coach gets a second chance. You'll see it under Coaching Changes in the retirements step and in the news.",
+        "A preseason OSM issue comes out before Week 1 with the Power 10, division picks, a Zenith Clash pick, GPT favorites, rookies to watch, the off-season's biggest moves, and your outlook.",
+        "Draft scouting: a deep scout now shows 💎 (a gem: Star or Superstar, at least 2x growth), nothing (solid: could be any of the three), or 💔 (a bust: always Normal, 1x). Power stays hidden until the draft.",
+        "Re-signing: pick the number of seasons and see the total and your cap space after signing right away.",
+        "Free agency: filter by career year (Rookie, Year 2, 3, 4, 5+) together with role, like Rookie Speedster, and sort by Power, youngest or most experienced.",
+        "On phones, drag the phone button anywhere on the screen. It stays where you leave it."
+      ]
+    },
+    {
       "version": "0.19.0",
       "date": "2026-11-17",
       "title": "Scrolling fixed, move saves offline, fresher texts",

@@ -176,7 +176,7 @@ export function makeIssue(L) {
     teasers: [
       power[0] ? `No. 1: ${L.teams[power[0].i].name} (${power[0].w}-${power[0].l})` : null,
       risers[0] && risers[0].prevRank - risers[0].rank > 0 ? `Rising: ${risers[0].name}, up ${risers[0].prevRank - risers[0].rank}` : null,
-      race[0] ? `GPP race: ${race[0].p.name} leads` : null,
+      race[0] ? `GPT race: ${race[0].p.name} leads` : null,
       R.hooks.issueTeaser ? R.hooks.issueTeaser(L) : null,
     ].filter(Boolean).slice(-3),
     potm: potm.map((p) => ({ pid: p.pid, team: p.team, role: p.role, dmg: p.stats.dmg, ko: p.stats.ko, w: p.stats.w, l: p.stats.l })),
@@ -270,6 +270,39 @@ R.hooks.seasonRow = (L, row) => {
   row.rivals = Object.fromEntries(Object.entries(L.rivalHolders).map(([k, v]) => [k, v.team]));
 };
 
+// ---------- The preseason issue (v0.20.0): before Week 1 ----------
+// Power rankings by roster, division picks, a Zenith Clash pick, GPT
+// favorites, rookies to watch, the off-season's biggest moves and coaching
+// changes, and your outlook.
+export function makePreseason(L) {
+  migrate(L);
+  if (L.mags.some((m) => m.preseason && m.season === L.season)) return null;
+  const st = (t) => R.strength(L, t);
+  const ranked = L.teams.slice().sort((a, b) => st(b) - st(a));
+  const power = ranked.slice(0, 10).map((t) => ({ team: t.i, s: Math.round(st(t)), stage: t.stage }));
+  const divPicks = R.DIVISIONS.map((_, d) => ranked.find((t) => t.div === d)?.i).filter((i) => i != null);
+  const fav = ranked[0];
+  const second = ranked.find((t) => t.div !== fav.div) || ranked[1];
+  const active = Object.values(L.players).filter((p) => p.team != null && !p.retired);
+  const gpt = active.slice().sort((a, b) => (b.power + b.aura * 0.1) - (a.power + a.aura * 0.1)).slice(0, 5).map((p) => p.pid);
+  const rookies = active.filter((p) => p.draftSeason === L.season - 1 && p.career <= 1).sort((a, b) => (a.draftPick || 99) - (b.draftPick || 99)).slice(0, 5).map((p) => p.pid);
+  const moves = L.news.filter((n) => n.off && ['TRADE', 'SIGNED', 'COACHING', 'DRAFT', 'RETIRED', 'PANTHEON'].includes(n.kind)).slice(0, 8).map((n) => ({ kind: n.kind, team: n.team, title: n.title }));
+  const coaching = L.news.filter((n) => n.off && n.kind === 'COACHING').map((n) => ({ team: n.team, title: n.title }));
+  const u = L.user; const mine = u ? L.teams[u.team] : null;
+  const star = L.players[fav.roster.slice().sort((x, y) => L.players[y].power - L.players[x].power)[0]];
+  const mag = {
+    preseason: true, season: L.season, issue: 'PRESEASON', week: 0, read: false,
+    cover: { pid: star?.pid ?? null, team: fav.i, line: `${fav.name} are the team to beat. Can anyone stop ${star ? star.name : 'them'}?` },
+    teasers: [`Our Zenith Clash pick: ${fav.abbr} vs ${second.abbr}`, gpt[0] != null ? `GPT favorite: ${L.players[gpt[0]].name}` : null, mine ? `${mine.name}: ranked No. ${ranked.indexOf(mine) + 1}` : null].filter(Boolean),
+    power, divPicks, clash: [fav.i, second.i], gpt, rookies, moves, coaching,
+    mine: mine ? { team: mine.i, rank: ranked.indexOf(mine) + 1, stage: mine.stage, security: u.security, expect: u.expect || mine.stage } : null,
+    potm: [], race: [], rivals: [], news: [],
+  };
+  L.mags.unshift(mag);
+  L.mags = L.mags.slice(0, 14);
+  return mag;
+}
+
 // ---------- The season review issue (after the Zenith Clash) ----------
 export function makeReview(L, row) {
   migrate(L);
@@ -285,7 +318,7 @@ export function makeReview(L, row) {
   const mag = {
     review: true, season: row.season, issue: 'REVIEW', week: R.WEEKS, read: false,
     cover: { pid: champStars[0] ?? null, team: row.champion, line: `${champ.name} win the Celestial Grail, ${row.score[0]}–${row.score[1]} over ${L.teams[row.runnerUp].name}.` },
-    teasers: [`GPP: ${row.prodigyName}`, `Best record: ${best.name} (${best.w}-${best.l})`, mine ? `${L.teams[mine.team].abbr}: ${mine.w}-${mine.l}` : null].filter(Boolean),
+    teasers: [`GPT: ${row.prodigyName}`, `Best record: ${best.name} (${best.w}-${best.l})`, mine ? `${L.teams[mine.team].abbr}: ${mine.w}-${mine.l}` : null].filter(Boolean),
     row: { champion: row.champion, runnerUp: row.runnerUp, score: row.score, coach: row.coach, record: row.record, divisions: row.divisions || [],
       prodigy: row.prodigy, prodigyName: row.prodigyName, prodigyTeam: row.prodigyTeam, roleAwards: row.roleAwards, roleAwardTeams: row.roleAwardTeams,
       awakening: row.awakening ?? null, phoenix: row.phoenix ?? null, coachOfYear: row.coachOfYear, rivals: row.rivals || {} },
@@ -299,3 +332,4 @@ export function makeReview(L, row) {
   return mag;
 }
 R.hooks.seasonEnd = (L, row) => makeReview(L, row);
+R.hooks.preseason = (L) => makePreseason(L);

@@ -129,7 +129,7 @@ function buildOffer(L, rand, wantPick) {
     if (!cands.length) continue;
     cands.sort((a, b) => b.score - a.score);
     const c = cands[Math.floor(rand() * Math.min(3, cands.length))];
-    return { id: 0, ti: t.i, kind, ...c, season: L.season, week: L.week };
+    return { id: 0, ti: t.i, kind, ...c, season: L.season, week: L.week, phase: L.phase };
   }
   return null;
 }
@@ -167,7 +167,7 @@ function expireOffers(L) {
   for (const th of ph.threads) {
     if (th.pending?.type !== 'trade') continue;
     const o = ph.offers.find((x) => x.id === th.pending.offer);
-    if (!o || o.season !== L.season || o.week < L.week - 1 || !O.tradeOpen(L)) { th.pending = null; sys(th, 'Offer expired.'); }
+    if (!o || o.phase !== L.phase || (L.phase === 'season' && (o.season !== L.season || o.week < L.week - 1)) || !O.tradeOpen(L)) { th.pending = null; sys(th, 'Offer expired.'); }
   }
 }
 
@@ -233,6 +233,12 @@ export function afterWeek(L, games) {
   if (D.dating(ph).matches.length) D.refreshPrompts(ph, dateCtx(L));
   trim(ph);
 }
+// The off-season, until draft day: a GM may call at each step.
+export function offseasonOffer(L) {
+  if (!L.user || !O.tradeOpen(L)) return false;
+  phoneOf(L); expireOffers(L);
+  return Math.random() < 0.55 ? offerEvent(L, Math.random) : false;
+}
 // After a playoff game the user is still alive in.
 export function afterPlayoffGame(L, g) {
   if (!L.user || !L.phone) return;
@@ -285,13 +291,14 @@ export function reply(L, key, optionId) {
 export function accept(L, off) {
   if (!off) return { ok: false, why: 'The offer is gone.' };
   const me = L.user.team;
-  if (!O.tradeOpen(L)) return { ok: false, why: 'the trade deadline has passed.' };
+  if (!O.tradeOpen(L)) return { ok: false, why: 'trades are closed right now.' };
   if (off.give.some((pid) => L.players[pid]?.team !== me) || off.get.some((pid) => L.players[pid]?.team !== off.ti)) return { ok: false, why: 'one of those cards has moved.' };
   if (!legal(L, off.ti, off.give, off.get)) return { ok: false, why: 'the league won\'t approve it (series limit, injury or cap).' };
   if (off.pickTi != null) {
     const from = off.pickTo === me ? off.ti : me;
     if (O.pickOwner(L, off.pickTi) !== from) return { ok: false, why: 'that pick isn\'t theirs to trade anymore.' };
   }
+  if ((off.phase || 'season') !== L.phase) return { ok: false, why: 'that offer is from before the season ended.' };
   O.doTrade(L, me, off.ti, off.give, off.get);
   let text = `Trade done: ${off.get.map((pid) => L.players[pid].name).join(' + ')} join the ${L.teams[me].name}.`;
   if (off.pickTi != null) {

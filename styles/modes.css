@@ -1524,3 +1524,15 @@ html { overflow-x: clip; } .screen { overflow-x: clip; }
 .save-pick-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--surface-2, rgba(255,255,255,.05)); cursor: pointer; }
 .save-pick-row input { width: 20px; height: 20px; accent-color: var(--brand-gold); }
 .save-pick-text { display: flex; flex-direction: column; }
+/* v0.20.0: drag the phone button on touch screens */
+@media (pointer: coarse) { .ph-open { touch-action: none; } }
+.ph-open.is-moved { z-index: 60; }
+.ph-open.is-dragging { opacity: .85; transform: scale(1.08); animation: none; }
+.dy-tag { flex: none; padding: 3px 8px; border-radius: 999px; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.1em; border: 1px solid currentColor; }
+.dy-tag.loss { color: var(--danger, #ff5c7a); } .dy-tag.gold { color: var(--brand-gold); }
+/* v0.20.0: preseason issue */
+.osm-meter { height: 12px; border-radius: 999px; background: rgba(255,255,255,.18); overflow: hidden; margin: 10px 0; }
+.osm-meter span { display: block; height: 100%; background: var(--brand-gold); }
+.osm-power li.is-me { background: rgba(240,192,96,.18); }
+.dy-fa-filters { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.dy-off-trade { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-radius: var(--radius-md); background: rgba(240,192,96,.1); border: 1px solid rgba(240,192,96,.35); margin-bottom: var(--space-3); }

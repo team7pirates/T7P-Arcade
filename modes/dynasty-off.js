@@ -102,8 +102,13 @@ function prospectName(rand, used) {
 }
 
 function makeProspect(L, f, rand, used) {
+  // v0.20.0 (Khalil): a deep scout shows 💎 (a gem: Star or Superstar, so
+  // at least 2x growth), nothing (solid: could be any of the three), or a
+  // broken 💎 (a bust: always Normal, 1x).
   const gen = rand() < 0.05;
   const bust = !gen && rand() < 0.12;
+  const gem = gen || (!bust && rand() < 0.13);
+  const dev = gen ? 2 : bust ? 0 : gem ? (rand() < 0.2 ? 2 : 1) : (() => { const x = rand(); return x < 0.8 ? 0 : x < 0.95 ? 1 : 2; })();
   const power = 60 + Math.floor(rand() * 17);
   const potential = gen ? 94 + Math.floor(rand() * 6) : bust ? power + Math.floor(rand() * 3) : Math.min(94, power + 6 + Math.floor(rand() * 15));
   const est = (potential - 62) / 7 + (rand() - 0.5) * 1.8;
@@ -112,24 +117,30 @@ function makeProspect(L, f, rand, used) {
     pid: L.nextPid++, cid: f.cid, name: prospectName(rand, used), series: f.series, franchise: f.franchise, portrait: !!f.portrait,
     role: f.role, second: f.second || null, power, potential,
     aura: 40 + Math.floor(rand() * 20), clutch: 40 + Math.floor(rand() * 25), chaos: 30 + Math.floor(rand() * 40),
-    dev: gen ? 2 : rand() < 0.75 ? 0 : 1, iron, career: 0, careerLen: iron ? 9 + Math.floor(rand() * 2) : 4 + Math.floor(rand() * 3),
+    dev, iron, career: 0, careerLen: iron ? 9 + Math.floor(rand() * 2) : 4 + Math.floor(rand() * 3),
     lowKey: rand() < 0.25, hype: 50, fatigue: 0, injury: 0, mileage: 0, team: null, contract: null, growth: 0,
     stats: { gp: 0, dmg: 0, ko: 0, sp: 0, w: 0, l: 0 }, lastStats: null,
-    prospect: true, stars: clamp(Math.round(est), 1, 5), scout: 0, gen, bust, aiEye: potential + Math.round((rand() - 0.5) * 8),
+    prospect: true, stars: clamp(Math.round(est), 1, 5), scout: 0, gen, bust, gem, aiEye: potential + Math.round((rand() - 0.5) * 8),
   };
 }
 
+// The deep-scout read. Older saves have no gem flag: Star+ counts as a gem.
+export const isGem = (p) => !p.bust && (p.gem ?? (p.gen || p.dev >= 1));
+export const scoutTag = (p) => (p.bust ? 'Broken diamond' : isGem(p) ? 'Diamond' : 'No read');
+export const TAG_ICON = { Diamond: '💎', 'Broken diamond': '💔', 'No read': '—' };
+export const TAG_HELP = { Diamond: 'A gem: Star or Superstar, at least 2x growth', 'Broken diamond': 'A bust: always Normal, 1x growth, tops out early', 'No read': 'Solid: could turn out Normal, Star or Superstar' };
 // What the board shows you about a prospect.
 export function prospectView(p) {
+  if (p.bust && p.dev) p.dev = 0; // older saves: a bust is always Normal
   return {
     stars: p.stars, role: p.role, world: p.series,
     potential: p.scout >= 1 ? p.potential : null,
-    tag: p.scout >= 2 ? (p.gen ? 'Generational Talent' : p.bust ? 'Bust risk' : 'Solid') : null,
+    tag: p.scout >= 2 ? scoutTag(p) : null,
   };
 }
 
 // Scouting: 6 points (3/4 of a week) reveals potential; a second report
-// (the upgraded scout) reveals Generational Talent or Bust risk.
+// (the upgraded scout) reveals 💎 gem, nothing (solid) or 💔 bust.
 export function scout(L, pid) {
   const p = L.players[pid]; const u = L.user;
   if (!p || !p.prospect || p.scout >= 2) return { ok: false, why: 'Nothing more to learn.' };
@@ -192,10 +203,11 @@ export function startOffseason(L) {
   if (inducted.length) news(L, { kind: 'PANTHEON', team: L.players[inducted[0]].team ?? 0, title: `${inducted.map((pid) => L.players[pid].name).join(', ')} enter${inducted.length === 1 ? 's' : ''} the Generational Pantheon`, text: 'Retired at 95+ Power. The AFL will not see their like again.' });
   const big = retired.slice().sort((a, b) => b.power - a.power)[0];
   if (big) news(L, { kind: 'RETIRED', team: big.team ?? 0, title: `${big.name} retires after ${big.seasons} seasons`, text: `${retired.length} cards called it a career this off-season.` });
+  const coaching = coachCarousel(L);
   const legacy = LG.checkEnd(L, retired);
   const steps = legacy ? ['retire', 'legacy', ...OFF_STEPS.slice(1)] : OFF_STEPS.slice();
   if (legacy) news(L, { kind: 'END OF AN ERA', team: L.players[L.lastLegends[0]]?.team ?? L.user.team, title: `${L.players[L.lastLegends[0]]?.name || 'The last legend'} retires. The legends are gone.`, text: 'The last of the original AFL characters has called it a career.' });
-  L.off = { step: L.user?.security === 'Fired' ? 'fired' : 'retire', steps, legacy, retired, inducted, order: null, pick: 0, picks: [], fa: null };
+  L.off = { step: L.user?.security === 'Fired' ? 'fired' : 'retire', steps, legacy, retired, inducted, coaching, order: null, pick: 0, picks: [], fa: null };
   return L.off;
 }
 
@@ -234,6 +246,68 @@ export function nextStep(L) {
   return o.step;
 }
 
+// ---------- AI coaches: hot seats, firings, retirements (v0.20.0) ----------
+// Each AI coach has a career like a player: a set length, after which they
+// retire. They're judged like you: rebuilds must improve, few-pieces teams
+// must win 7 or make the playoffs, contenders must make the playoffs. Three
+// misses and they're fired (two misses is a coin flip for a contender). A new
+// coach is hired: sometimes a fired coach gets a second chance.
+export function ensureCoach(L, t) {
+  if (t.coach && t.coach.name === t.coachName) return t.coach;
+  const r = () => R.nextRand(L);
+  const len = 6 + Math.floor(r() * 12);
+  t.coach = { name: t.coachName, career: Math.floor(r() * (len - 1)), len, tenure: 1 + Math.floor(r() * 4), miss: r() < 0.3 ? (r() < 0.35 ? 2 : 1) : 0, titles: 0, wins: 0, lastWins: t.w || 0, hired: L.season };
+  return t.coach;
+}
+function newCoachName(L) {
+  const used = new Set(L.teams.map((t) => t.coachName));
+  for (let k = 0; k < 50; k++) {
+    const n = `${NF[Math.floor(R.nextRand(L) * NF.length)]} ${NL[Math.floor(R.nextRand(L) * NL.length)]}`;
+    if (!used.has(n) && !(L.coachPool || []).some((c) => c.name === n)) return n;
+  }
+  return `Coach ${L.season}-${Math.floor(R.nextRand(L) * 999)}`;
+}
+export function coachCarousel(L) {
+  const changes = [];
+  const seeds = L.playoffs?.seeds || [];
+  L.coachPool = L.coachPool || [];
+  for (const t of L.teams) {
+    if (L.user && t.i === L.user.team) continue;
+    const c = ensureCoach(L, t);
+    const made = seeds.includes(t.i);
+    const champ = L.playoffs?.champion === t.i;
+    const met = t.stage === 'contender' ? made : t.stage === 'few' ? (t.w >= 7 || made) : (t.w > (c.lastWins ?? 0) || made);
+    c.miss = met ? 0 : c.miss + 1;
+    c.career += 1; c.tenure += 1; c.wins += t.w; if (champ) c.titles += 1;
+    c.lastWins = t.w;
+    let why = null;
+    if (c.career >= c.len || (champ && c.career >= c.len - 3 && R.nextRand(L) < 0.35)) why = 'retired';
+    else if (!champ && (c.miss >= 3 || (c.miss >= 2 && t.stage === 'contender' && R.nextRand(L) < 0.5))) why = 'fired';
+    if (!why) continue;
+    const old = { ...c };
+    if (why === 'fired') L.coachPool.push({ name: c.name, career: c.career, len: c.len, titles: c.titles, wins: c.wins, from: t.i, season: L.season });
+    // Hire: a second-chance coach 35% of the time, otherwise a new name.
+    const pool = L.coachPool.filter((x) => x.from !== t.i && x.career < x.len - 1 && x.season < L.season + 1);
+    let hire;
+    if (pool.length && R.nextRand(L) < 0.35) {
+      const pick = pool[Math.floor(R.nextRand(L) * pool.length)];
+      L.coachPool = L.coachPool.filter((x) => x !== pick);
+      hire = { name: pick.name, career: pick.career, len: pick.len, tenure: 0, miss: 0, titles: pick.titles, wins: pick.wins, lastWins: t.w, hired: L.season + 1, second: L.teams[pick.from].name };
+    } else {
+      const len = 6 + Math.floor(R.nextRand(L) * 12);
+      hire = { name: newCoachName(L), career: 0, len, tenure: 0, miss: 0, titles: 0, wins: 0, lastWins: t.w, hired: L.season + 1 };
+    }
+    t.coachName = hire.name; t.coach = hire;
+    const ch = { team: t.i, why, old: old.name, seasons: old.tenure, titles: old.titles, hire: hire.name, second: hire.second || null, record: `${t.w}-${t.l}` };
+    changes.push(ch);
+    news(L, why === 'retired'
+      ? { kind: 'COACHING', team: t.i, title: `${old.name} retires. ${t.name} hire ${hire.name}`, text: `${old.name} walks away after ${old.career} seasons on the sideline${old.titles ? ` and ${old.titles} title${old.titles > 1 ? 's' : ''}` : ''}. ${hire.second ? `${hire.name} gets a second chance after ${hire.second}.` : `${hire.name} is a first-time head coach.`}` }
+      : { kind: 'COACHING', team: t.i, title: `${t.name} fire ${old.name}`, text: `A ${t.w}-${t.l} season was the last straw. ${hire.second ? `${hire.name}, formerly of ${hire.second}, takes over.` : `${hire.name} takes over.`}` });
+  }
+  L.coachPool = L.coachPool.slice(-20);
+  return changes;
+}
+
 // ---------- Fired: pick a new job ----------
 export function jobsAfterFiring(L) {
   return R.openJobs(L).filter((i) => i !== L.user.team);
@@ -241,7 +315,8 @@ export function jobsAfterFiring(L) {
 export function changeJob(L, ti) {
   const u = L.user;
   const old = L.teams[u.team];
-  old.coachName = `${NF[Math.floor(R.nextRand(L) * NF.length)]} ${NL[Math.floor(R.nextRand(L) * NL.length)]}`;
+  old.coachName = newCoachName(L);
+  old.coach = null; ensureCoach(L, old); old.coach.career = 0; old.coach.tenure = 0;
   const t = L.teams[ti];
   const last = L.history[0];
   const rank = last.standings.findIndex((s) => s.i === ti) + 1;
@@ -574,6 +649,7 @@ export function startNextSeason(L) {
   const t = L.teams[L.user.team];
   if (t.roster.length !== ROSTER_SIZE) return { ok: false, why: `Your roster needs exactly ${ROSTER_SIZE} cards (you have ${t.roster.length}).` };
   R.resetForSeason(L);
+  if (R.hooks.preseason) R.hooks.preseason(L);
   const era = LG.seasonStartNews(L);
   if (era) news(L, { ...era, team: L.user.team });
   for (const tm of L.teams) {
@@ -584,7 +660,15 @@ export function startNextSeason(L) {
 }
 
 // ---------- In season: trades (deadline after Week 8) ----------
-export const tradeOpen = (L) => L.phase === 'season' && L.week <= R.TRADE_DEADLINE;
+// Trades: in season through the deadline, and again in the off-season until
+// draft day (v0.20.0).
+export const PRE_DRAFT = ['fired', 'retire', 'legacy', 'awards', 'resign', 'upgrade'];
+export const offseasonTrades = (L) => L.phase === 'offseason' && PRE_DRAFT.includes(L.off?.step);
+export const tradeOpen = (L) => (L.phase === 'season' && L.week <= R.TRADE_DEADLINE) || offseasonTrades(L);
+export const tradeClosedWhy = (L) => (L.phase === 'offseason'
+  ? 'Trades are closed from the draft until next season. They open again in Week 1.'
+  : L.phase === 'season' ? `The trade deadline (after Week ${R.TRADE_DEADLINE}) has passed. Trades open again after the season, until draft day.`
+  : 'Trades are closed for the playoffs. They open again after the season, until draft day.');
 
 // What a card is worth to a team, by its stage (Khalil's rule):
 // rebuilds want youth, potential and cap space; contenders want Power now;
@@ -602,11 +686,15 @@ export function tradeValue(L, p, t) {
 // give: user's pids, get: their pids. Same number each way keeps rosters at 10.
 export function evaluateTrade(L, ti, give, get) {
   const me = L.teams[L.user.team]; const them = L.teams[ti];
-  if (!tradeOpen(L)) return { ok: false, score: 0, why: `The trade deadline (after Week ${R.TRADE_DEADLINE}) has passed.` };
+  if (!tradeOpen(L)) return { ok: false, score: 0, why: tradeClosedWhy(L) };
   if (!give.length || give.length !== get.length) return { ok: false, score: 0, why: 'Trade the same number of cards each way.' };
   const gp = give.map((pid) => L.players[pid]); const tp = get.map((pid) => L.players[pid]);
   for (const p of tp) if (seriesCount(L, me, p.series, give) + tp.filter((q) => q.series === p.series).length > MAX_PER_SERIES) return { ok: false, score: 0, why: `You'd have more than ${MAX_PER_SERIES} from ${p.series}.` };
   for (const p of gp) if (seriesCount(L, them, p.series, get) + gp.filter((q) => q.series === p.series).length > MAX_PER_SERIES) return { ok: false, score: 0, why: `They'd have more than ${MAX_PER_SERIES} from ${p.series}.` };
+  if (L.phase === 'offseason') {
+    const up = [...gp, ...tp].find((p) => (p.contract?.left ?? 1) <= 0);
+    if (up) return { ok: false, score: 0, why: `${up.name}'s contract is up. ${up.team === me.i ? 'Re-sign them first.' : 'They are headed to free agency.'}` };
+  }
   if (gp.some((p) => p.injury > 0)) return { ok: false, score: 0, why: 'They won\'t take an injured card.' };
   const inV = gp.reduce((n, p) => n + tradeValue(L, p, them), 0);
   const outV = tp.reduce((n, p) => n + tradeValue(L, p, them), 0);

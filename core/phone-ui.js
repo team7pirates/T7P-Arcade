@@ -27,12 +27,54 @@ const keyLabel = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() 
 //   dateCtx() -> { rand, turn, where, when, perk, turnLabel } | null (null: no dates right now),
 //   onDate(person), shortcutWhere: 'Forbidden Fusion'
 // }
+// v0.20.0: on touch screens, drag the phone button anywhere; it remembers
+// where you left it. On PC it stays in the corner.
+const POS_KEY = 't7p:phoneButton';
+function makeDraggable(btn, onDrag) {
+  const touch = () => matchMedia('(pointer: coarse)').matches;
+  const clamp = (x, y) => [Math.max(6, Math.min(innerWidth - btn.offsetWidth - 6, x)), Math.max(6, Math.min(innerHeight - btn.offsetHeight - 6, y))];
+  const place = (x, y) => { const [cx, cy] = clamp(x, y); btn.style.position = 'fixed'; btn.style.left = `${cx}px`; btn.style.top = `${cy}px`; btn.style.right = 'auto'; btn.style.bottom = 'auto'; btn.classList.add('is-moved'); return [cx, cy]; };
+  const restore = () => {
+    if (!touch()) return;
+    try { const p = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); if (p) requestAnimationFrame(() => place(p.x * innerWidth, p.y * innerHeight)); } catch { /* ignore */ }
+  };
+  let start = null;
+  btn.addEventListener('pointerdown', (e) => {
+    if (!touch() || e.pointerType === 'mouse') return;
+    const r = btn.getBoundingClientRect();
+    start = { x: e.clientX, y: e.clientY, bx: r.left, by: r.top, moving: false, id: e.pointerId };
+  });
+  btn.addEventListener('pointermove', (e) => {
+    if (!start || e.pointerId !== start.id) return;
+    const dx = e.clientX - start.x; const dy = e.clientY - start.y;
+    if (!start.moving && Math.hypot(dx, dy) < 10) return;
+    if (!start.moving) { start.moving = true; try { btn.setPointerCapture(e.pointerId); } catch { /* ignore */ } btn.classList.add('is-dragging'); }
+    e.preventDefault();
+    place(start.bx + dx, start.by + dy);
+  });
+  const end = (e) => {
+    if (!start || e.pointerId !== start.id) return;
+    if (start.moving) {
+      onDrag();
+      const r = btn.getBoundingClientRect();
+      try { localStorage.setItem(POS_KEY, JSON.stringify({ x: r.left / innerWidth, y: r.top / innerHeight })); } catch { /* ignore */ }
+      btn.classList.remove('is-dragging');
+    }
+    start = null;
+  };
+  btn.addEventListener('pointerup', end); btn.addEventListener('pointercancel', end);
+  addEventListener('resize', () => { if (btn.classList.contains('is-moved')) { const r = btn.getBoundingClientRect(); place(r.left, r.top); } });
+  restore();
+}
+
 export function createPhone(opts) {
   const APPS = (opts.apps || ['messages', 'dating', 'settings']).map((id) => [id, ...ALL_APPS[id]]);
   let open = false; let app = 'home'; let threadKey = null; let capturing = false;
   const screen = h('div', { class: 'ph-screen' });
   const badge = h('span', { class: 'ph-badge', hidden: true });
-  const btn = h('button', { class: 'ph-open', 'aria-label': 'Open phone', onClick: () => toggle() }, h('span', { 'aria-hidden': 'true' }, '📱'), h('span', { class: 'ph-open-text' }, 'Open phone'), badge);
+  let dragged = false;
+  const btn = h('button', { class: 'ph-open', 'aria-label': 'Open phone', onClick: () => { if (dragged) { dragged = false; return; } toggle(); } }, h('span', { 'aria-hidden': 'true' }, '📱'), h('span', { class: 'ph-open-text' }, 'Open phone'), badge);
+  makeDraggable(btn, () => { dragged = true; });
   const toastEl = h('div', { class: 'ph-toast', role: 'status', 'aria-live': 'polite' });
   const frame = h('div', { class: 'ph-frame', role: 'dialog', 'aria-modal': 'false', 'aria-label': 'Phone', hidden: true },
     h('div', { class: 'ph-notch' }), screen,

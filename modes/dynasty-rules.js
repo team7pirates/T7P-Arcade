@@ -78,7 +78,7 @@ export const RIVALRIES = [
 ];
 
 export const AWARDS = {
-  prodigy: 'The Generational Prodigy Player',
+  prodigy: 'The Generational Player Trophy',
   Striker: 'The Vanguard Blade', Tank: 'The Obsidian Shield', Speedster: 'The Phantom Step Award',
   Mystic: 'The Aether Eye', Tactician: 'The Cipher Scroll',
   coach: "The Grandmaster's Cloak", awakening: 'The Awakening Award', phoenix: 'The Phoenix Rebirth Trophy',
@@ -88,7 +88,7 @@ export const AWARDS = {
 export const TROPHY_ART = {
   "The Pirate's Bounty": 'pirates-bounty', 'The Silent Dagger': 'silent-dagger', 'The Blood Moon Mask': 'blood-moon',
   'The Silicon Katana': 'silicon-katana', 'The Eclipse Relic': 'eclipse-relic', 'The Shattered Prism': 'shattered-prism',
-  'The Celestial Grail': 'grail', 'The Generational Prodigy Player': 'prodigy', 'The Generational Prodigy Award': 'prodigy',
+  'The Celestial Grail': 'grail', 'The Generational Prodigy Player': 'prodigy', 'The Generational Player Trophy': 'prodigy', 'The Generational Prodigy Award': 'prodigy',
   'The Vanguard Blade': 'vanguard', 'The Obsidian Shield': 'obsidian', 'The Phantom Step Award': 'phantom',
   'The Aether Eye': 'aether', 'The Cipher Scroll': 'cipher',
   "The Grandmaster's Cloak": 'cloak', 'The Awakening Award': 'awakening', 'The Phoenix Rebirth Trophy': 'phoenix',
@@ -550,7 +550,7 @@ function growthTick(league, rand) {
     text: potm.map((pid) => league.players[pid].name).join(', ') + '.' });
 }
 
-// The Generational Prodigy race: damage, KOs and wins, weighted.
+// The Generational Player Trophy race: damage, KOs and wins, weighted.
 export function awardRace(league) {
   return Object.values(league.players).filter((p) => p.team != null && p.stats.gp > 0)
     .map((p) => {
