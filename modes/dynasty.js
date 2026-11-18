@@ -712,7 +712,7 @@ export async function render() {
           h('span', { class: 'dy-rstats' },
             h('span', { class: 'dy-num dy-big' }, String(eff)),
             eff !== p.power ? h('span', { class: 'caption muted' }, `base ${p.power}`) : null,
-            usable(p) ? h('span', { class: 'dy-sp-badge' }, `+${usable(p)} SP`) : null,
+            usable(p) ? h('span', { class: 'dy-sp-badge' }, `+${usable(p)} SP`) : locked(p) ? h('span', { class: 'dy-sp-badge is-locked', title: 'At max: needs an upgrade' }, `🔒 ${locked(p)} SP`) : null,
             fatigueBar(p),
             p.injury > 0 ? h('span', { class: 'dy-inj' }, `OUT ${p.injury} WK`) : null)));
       }))));
@@ -725,7 +725,8 @@ export async function render() {
   }
 
   // ---------- Skill points (v0.21.0) ----------
-  const usable = (p) => Math.max(0, Math.min(p.sp || 0, 99 - p.power));
+  const usable = (p) => R.usablePoints(p);
+  const locked = (p) => Math.max(0, (p.sp || 0) - usable(p));
   function skillPanel(t = me()) {
     const pts = R.teamPoints(L, t);
     const auto = !!L.user.autoSpend;
@@ -737,11 +738,12 @@ export async function render() {
           if (L.user.autoSpend) { const n = R.spendAll(L, t); if (n) toast(`Auto spent ${n} point${n > 1 ? 's' : ''} on Power.`); }
           await save(); drawHub();
         } }), h('span', {}, 'Auto upgrade'))),
-      h('p', { class: 'caption muted' }, auto ? 'Auto is on: growth goes straight into Power, like the AI teams.' : 'Growth every 3 weeks and Star/Superstar upgrades give each card skill points. 1 point = +1 Power, up to 99. Points past 99 stay on the card but can\'t be used.'),
-      !auto && withPts.length ? h('ul', { class: 'dy-list' }, withPts.map((p) => h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `Power ${p.power} · ${p.sp} point${p.sp === 1 ? '' : 's'}${usable(p) < p.sp ? ` (${p.sp - usable(p)} past 99)` : ''}`)),
-        h('span', { class: 'btn-row' },
-          h('button', { class: 'btn btn-secondary btn-sm', disabled: !usable(p), onClick: async () => { R.spendPoints(p, 1); sfx.play('tap'); await save(); drawHub(); } }, '+1'),
-          h('button', { class: 'btn btn-primary btn-sm', disabled: !usable(p), onClick: async () => { const n = R.spendPoints(p); sfx.play('correct'); await save(); toast(`${p.name}: +${n} Power.`); drawHub(); } }, `Spend ${usable(p)}`)))))
+      h('p', { class: 'caption muted' }, auto ? 'Auto is on: points go into Power as soon as there\'s room under each card\'s max, like the AI teams.' : 'Growth every 3 weeks gives each card skill points: 1 point = +1 Power, up to that card\'s max. Points past the max wait, unspent, until a Star or Superstar upgrade raises it (Star: up to +10, Superstar: +5 or +10, never past 99).'),
+      !auto && withPts.length ? h('ul', { class: 'dy-list' }, withPts.map((p) => h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `Power ${p.power} · max ${R.maxOf(p)} · ${p.sp} point${p.sp === 1 ? '' : 's'}${locked(p) ? ` (${locked(p)} waiting for an upgrade)` : ''}`)),
+        usable(p) ? h('span', { class: 'btn-row' },
+          h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { R.spendPoints(p, 1); sfx.play('tap'); await save(); drawHub(); } }, '+1'),
+          h('button', { class: 'btn btn-primary btn-sm', onClick: async () => { const n = R.spendPoints(p); sfx.play('correct'); await save(); toast(`${p.name}: +${n} Power.`); drawHub(); } }, `Spend ${usable(p)}`))
+          : h('span', { class: 'caption muted dy-why' }, R.maxOf(p) >= 99 ? '🔒 At 99' : `🔒 At max · ${p.dev < 2 && p.career <= 4 ? 'upgrade to raise it' : 'can\'t be upgraded'}`))))
         : !auto ? h('p', { class: 'caption muted' }, 'No skill points right now.') : null,
       !auto && pts ? h('button', { class: 'btn btn-secondary btn-wide', onClick: async () => { const n = R.spendAll(L, t); await save(); toast(`+${n} Power across the roster.`); drawHub(); } }, `Spend all ${pts}`) : null);
   }
@@ -755,8 +757,8 @@ export async function render() {
         h('div', { class: 'dy-psheet-top' }, pAvatar(p, 'card'),
           h('dl', { class: 'dy-bio' }, [
             ['Team', p.team != null ? team(p.team).name : 'Free agent'], ['Role', `${p.role}${p.second ? ` / ${p.second}` : ''}`], ['Series', p.series],
-            ['Power', `${R.effPower(L, p)} (base ${p.power})`], own ? ['Potential', `about ${potLow}–${potHigh}`] : null,
-            own && p.sp ? ['Skill points', `${p.sp}${usable(p) < p.sp ? ` (${p.sp - usable(p)} past 99, can't be used)` : ''}`] : null,
+            ['Power', `${R.effPower(L, p)} (base ${p.power})`], own ? ['Max', `${R.maxOf(p)}${R.maxOf(p) >= 99 ? ' (the cap)' : ' · a Star or Superstar upgrade can raise it'}`] : null,
+            own && p.sp ? ['Skill points', `${p.sp}${locked(p) ? ` (${locked(p)} waiting for an upgrade to raise the max)` : ''}`] : null,
             ['Dev trait', DEV_LABEL[p.dev]], ['Career', `Season ${p.career}`],
             p.revealed && (p.gen || p.bust) ? ['Scouting', p.gen ? 'Generational Talent' : 'Bust'] : p.draftPick && p.scout >= 2 ? ['Draft scouting', `${O.TAG_ICON[O.scoutTag(p)]} ${O.scoutTag(p)}`] : null,
             p.draftPick ? ['Drafted', `No. ${p.draftPick}, season ${p.draftSeason}`] : null,
@@ -1271,7 +1273,7 @@ export async function render() {
     const used = t.upgrades || 0;
     offFrame('UPGRADES', h('div', { class: 'dy-off-body' },
       capPanel(t),
-      h('p', { class: 'body-text' }, `Invest in development: Normal → Star → Superstar. One step per card each off-season, up to ${O.UPGRADES_PER_TEAM} a team, only in a card's first 4 seasons. Each step comes with skill points: a Star upgrade gives up to +10, a Superstar upgrade +5 or +10 (1 point = +1 Power, max 99; extra points stay on the card). Salary follows growth speed, 1x / 2x / 3x, but never more than +6 a season per step, and the raise has to fit under the hard cap. You also find out if they are a Generational Talent or a bust.`),
+      h('p', { class: 'body-text' }, `Invest in development: Normal → Star → Superstar. One step per card each off-season, up to ${O.UPGRADES_PER_TEAM} a team, only in a card's first 4 seasons. Each step raises the card's max: Star by up to +10, Superstar by +5 or +10 (never past 99). Skill points the card banked at its old max can then be spent. Salary follows growth speed, 1x / 2x / 3x, but never more than +6 a season per step, and the raise has to fit under the hard cap. You also find out if they are a Generational Talent or a bust.`),
       h('p', { class: 'label-spaced' }, `${used} OF ${O.UPGRADES_PER_TEAM} USED`),
       h('ul', { class: 'dy-list' }, ps.map((p) => {
         const chk = O.canUpgrade(L, p);
@@ -1281,7 +1283,7 @@ export async function render() {
             const ok = await confirmSheet({ title: `${DEV_LABEL[p.dev + 1].toUpperCase()}: ${p.name.toUpperCase()}?`, message: `Cap hit goes from ${c.hitNow} to ${c.hitAfter} for the ${c.left} season${c.left > 1 ? 's' : ''} left (+${c.extra} a season).`, confirmLabel: 'Upgrade' });
             if (!ok) return;
             const r = O.upgrade(L, p.pid); await save();
-            toast(`${r.gen ? `${p.name} is a GENERATIONAL TALENT.` : r.bust ? `${p.name} looks like a bust. The upgrade can't fix that.` : `${p.name} is now a ${DEV_LABEL[p.dev]}.`} +${r.points} skill points${L.user.autoSpend ? ' (spent)' : ''}.`);
+            toast(`${r.gen ? `${p.name} is a GENERATIONAL TALENT.` : r.bust ? `${p.name} looks like a bust. The upgrade can't fix that.` : `${p.name} is now a ${DEV_LABEL[p.dev]}.`} Max ${r.max - r.raise} → ${r.max}${p.sp ? `: ${R.usablePoints(p)} banked point${R.usablePoints(p) === 1 ? '' : 's'} can go in now` : ''}.`);
             offUpgrade();
           } }, `→ ${DEV_LABEL[p.dev + 1]} · +${c.extra}`)
           : h('span', { class: 'caption muted dy-why' }, p.upgraded === L.season ? `Upgraded${p.gen ? ' · Generational' : p.bust ? ' · Bust' : ''}` : chk.why),

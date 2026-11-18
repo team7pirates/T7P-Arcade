@@ -423,15 +423,15 @@ export function upgrade(L, pid) {
   const c = upgradeCost(p);
   p.contract = { total: r1(c.hitAfter * c.left), years: c.left, left: c.left };
   p.dev += 1; p.upgraded = L.season; t.upgrades = (t.upgrades || 0) + 1;
-  if (!p.bust) p.potential = Math.min(99, p.potential + 3);
   p.revealed = true; // upgrading shows whether the card is a Generational Talent or a bust
-  // v0.21.0 (Khalil): the upgrade comes with skill points. Star: up to +10.
-  // Superstar: +5 or +10. Points past 99 stay on the card, unused.
+  // v0.21.0 (Khalil): the upgrade raises the card's max. Star: up to +10.
+  // Superstar: +5 or +10. Never past 99. Banked skill points can then fill it.
   const roll = R.nextRand(L);
-  const pts = p.dev === 1 ? 2 + Math.floor(roll * 9) : roll < 0.6 ? 5 : 10;
-  p.sp = (p.sp || 0) + pts;
+  const raise = p.dev === 1 ? 2 + Math.floor(roll * 9) : roll < 0.6 ? 5 : 10;
+  const before = R.maxOf(p);
+  p.potential = Math.min(99, Math.max(p.potential, p.power) + raise);
   if (!R.manualPoints(L, p)) R.spendPoints(p);
-  return { ok: true, gen: !!p.gen, bust: !!p.bust, points: pts };
+  return { ok: true, gen: !!p.gen, bust: !!p.bust, raise: R.maxOf(p) - before, max: R.maxOf(p) };
 }
 function aiUpgrades(L) {
   for (const t of L.teams) {

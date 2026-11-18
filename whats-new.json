@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.21.1",
+      "date": "2026-11-18",
+      "title": "Skill points work like Khalil planned",
+      "items": [
+        "Dynasty: every card has a max. Skill points can only raise Power up to that max. Points earned past it stay banked, unspent, until a Star or Superstar upgrade raises the max.",
+        "Star upgrades raise the max by up to 10 and Superstar upgrades by 5 or 10, never past 99. Banked points can go in right away.",
+        "The roster shows each card's max, how many points are waiting for an upgrade, and a 🔒 when a card is at its max."
+      ]
+    },
+    {
       "version": "0.21.0",
       "date": "2026-11-18",
       "title": "Talent Tree, skill points and a hard cap",

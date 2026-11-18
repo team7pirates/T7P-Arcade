@@ -1591,3 +1591,4 @@ html { overflow-x: clip; } .screen { overflow-x: clip; }
 .ff-tcore-name { margin: 2px 0 0; font-family: var(--font-display); font-weight: 800; font-size: .8rem; letter-spacing: .06em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 @media (max-width: 860px) { .ff-tcore .avatar { width: 40px; height: 40px; } .ff-tcore .caption { font-size: .55rem; } }
 @media (max-width: 860px) { .ff-tbranch { display: none; } }
+.dy-sp-badge.is-locked { background: rgba(255,255,255,.08); color: var(--ink-3, #aaa); }

@@ -531,18 +531,21 @@ export function endWeek(league) {
   if (hooks.afterWeekPhone) hooks.afterWeekPhone(league, games);
 }
 
-// v0.21.0 (Khalil): skill points. On your team, growth turns into skill
-// points each card keeps; you spend them on Power (1 point = +1, up to 99),
-// or turn on Auto and the game spends them for you. AI teams always spend.
-// Points past 99 stay on the card; they just can't be used.
+// v0.21.0 (Khalil): skill points. Growth turns into skill points every card
+// banks. Points only go into Power up to the card's max (its potential, never
+// past 99). Past the max they wait, unspent, until a Star or Superstar
+// upgrade raises the max. On your team you spend them yourself (or turn on
+// Auto); AI teams always spend.
 export const manualPoints = (league, p) => !!league.user && p.team === league.user.team && !league.user.autoSpend;
+export const maxOf = (p) => Math.min(99, Math.max(p.power, p.potential));
+export const usablePoints = (p) => Math.max(0, Math.min(p.sp || 0, maxOf(p) - p.power));
 export function spendPoints(p, n = Infinity) {
-  const can = Math.max(0, Math.min(p.sp || 0, n, 99 - p.power));
+  const can = Math.max(0, Math.min(usablePoints(p), n));
   p.power += can; p.sp = (p.sp || 0) - can;
   return can;
 }
 export function teamPoints(league, team) {
-  return team.roster.reduce((n, pid) => n + Math.min(league.players[pid].sp || 0, 99 - league.players[pid].power), 0);
+  return team.roster.reduce((n, pid) => n + usablePoints(league.players[pid]), 0);
 }
 export function spendAll(league, team) {
   let n = 0; for (const pid of team.roster) n += spendPoints(league.players[pid]);
@@ -565,12 +568,9 @@ function growthTick(league, rand) {
     if (top.has(p.pid) && g > -0.5) g += 1;
     if (league.user && p.team === league.user.team && focus === 'power') g += 0.5;
     p.growth += g;
-    if (manualPoints(league, p)) {
-      while (p.growth >= 1 && p.power + (p.sp || 0) < p.potential) { p.sp = (p.sp || 0) + 1; p.growth -= 1; }
-    } else {
-      if (p.sp) spendPoints(p);
-      while (p.growth >= 1 && p.power < p.potential) { p.power += 1; p.growth -= 1; }
-    }
+    // Growth always banks points, even past the max; they wait for an upgrade.
+    while (p.growth >= 1) { p.sp = Math.min(60, (p.sp || 0) + 1); p.growth -= 1; }
+    if (!manualPoints(league, p)) spendPoints(p);
     if (p.growth >= 1) p.growth = 0.99;
     while (p.growth <= -1) { p.power = Math.max(30, p.power - 1); p.growth += 1; }
     if (league.user && p.team === league.user.team && focus === 'clutch' && rand() < 0.5) p.clutch = Math.min(100, p.clutch + 1);
