@@ -9,6 +9,9 @@ import { records } from '../records.js';
 import { back, refresh } from '../router.js';
 import { APP_VERSION } from '../version.js';
 import { music } from '../music.js';
+import { playtime, fmtTime } from '../playtime.js';
+import { MODES } from '../modes.js';
+import { go } from '../router.js';
 
 export function renderSettings() {
   const s = settings.value;
@@ -37,6 +40,16 @@ export function renderSettings() {
       ),
     ),
 
+    group('Time played',
+      timePlayed(),
+      h('p', { class: 'caption muted setting-note' }, 'Counts only while you\'re actively playing: it stops after 2 minutes with no taps or keys. Kept on this device.'),
+    ),
+
+    group('Playtest',
+      h('p', { class: 'body-text setting-note' }, 'Help shape the game: a short questionnaire, about 5 minutes. Your time played is added for you.'),
+      h('button', { class: 'btn btn-primary', onClick: () => go('feedback') }, '📝 Fill out the questionnaire'),
+    ),
+
     group('Saves',
       h('p', { class: 'body-text setting-note' },
         store.persistent
@@ -62,6 +75,18 @@ export function pageHeader(title) {
     h('h1', { class: 'title' }, title),
     h('span', { class: 'icon-btn-spacer' }),
   );
+}
+
+// v0.26.0: total, today, this week, then each mode.
+function timePlayed() {
+  const pt = playtime.value;
+  const name = (id) => (id === 'menu' ? 'Menus and settings' : MODES.find((m) => m.id === id)?.name || id);
+  const modes = Object.entries(pt.modes).filter(([, n]) => n >= 60).sort((a, b) => b[1] - a[1]);
+  return h('div', { class: 'pt-box' },
+    h('div', { class: 'pt-stats' },
+      [['TOTAL', fmtTime(pt.total)], ['TODAY', fmtTime(playtime.today())], ['LAST 7 DAYS', fmtTime(playtime.week())]].map(([k, v]) => h('div', { class: 'pt-stat' }, h('p', { class: 'pt-v' }, v), h('p', { class: 'label-spaced pt-k' }, k)))),
+    modes.length ? h('ul', { class: 'pt-modes' }, modes.map(([id, n]) => h('li', {}, h('span', {}, name(id)), h('b', {}, fmtTime(n)),
+      h('span', { class: 'pt-bar', style: `--w:${Math.round((n / modes[0][1]) * 100)}%`, 'aria-hidden': 'true' })))) : null);
 }
 
 function group(title, ...children) {

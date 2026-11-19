@@ -12,6 +12,7 @@ import { openIconPicker } from './icon-picker.js';
 import { openGetTheApp } from './get-app.js';
 import { openRecords } from './records.js';
 import { store } from '../store.js';
+import { shouldNudge, snooze, never, status as feedbackStatus, playtestDay, NUDGE } from '../feedback.js';
 
 export function renderMenu() {
   const flagships = MODES.filter((m) => m.flagship);
@@ -22,6 +23,10 @@ export function renderMenu() {
   const art = {};
   flagships.forEach((m) => { art[m.id] = h('span', { class: 'mode-art', 'aria-hidden': 'true' }); });
   fillArt(art);
+  const nudge = h('div', { class: 'menu-nudge-slot' });
+  fillNudge(nudge);
+  const dayChip = h('span', { class: 'menu-playtest' });
+  feedbackStatus().then((st) => { const d = st.welcomed ? playtestDay(st) : st.submitted ? null : 1; if (d) dayChip.textContent = `PLAYTEST · DAY ${d} OF ${NUDGE.weekDays}`; });
   const extra = (label, ic, onClick) => h('button', { class: 'menu-iconbtn', onClick }, h('span', { class: 'menu-iconbtn-ic', 'aria-hidden': 'true' }, ic), h('span', {}, label));
 
   return h('section', { class: 'menu screen' },
@@ -32,6 +37,7 @@ export function renderMenu() {
     ),
 
     h('div', { class: 'menu-top' }, renderIconCard(), cont),
+    nudge,
 
     h('nav', { class: 'mode-grid', 'aria-label': 'Game modes' },
       h('div', { class: 'mode-flagships' }, flagships.map((m) => modeTile(m, art[m.id]))),
@@ -44,14 +50,29 @@ export function renderMenu() {
       extra('Changelog', '📜', () => go('changelog')),
       extra('Ratings', '❓', openRatingInfo),
       extra('About', 'ⓘ', () => go('about')),
+      extra('Feedback', '📝', () => go('feedback')),
       install.installed ? null : extra('Get the app', '⬇️', openGetTheApp),
     ),
 
     h('footer', { class: 'statusbar' },
       h('span', {}, `OPERATIVE: ${profile.displayName}`),
+      dayChip,
       h('span', {}, `${characters.count} CHARACTERS`),
     ),
   );
+}
+
+// v0.26.0: after the playtest week, a small card asks for the questionnaire.
+async function fillNudge(slot) {
+  if (!(await shouldNudge())) return;
+  const card = h('div', { class: 'menu-nudge', role: 'region', 'aria-label': 'Playtest questionnaire' },
+    h('span', { class: 'menu-nudge-ic', 'aria-hidden': 'true' }, '📝'),
+    h('span', { class: 'menu-nudge-text' }, h('b', {}, 'Your playtest week is up. Got 5 minutes?'), h('span', { class: 'caption muted' }, 'A short questionnaire. Your answers decide what gets fixed next.')),
+    h('span', { class: 'menu-nudge-btns' },
+      h('button', { class: 'btn btn-primary btn-sm', onClick: () => go('feedback') }, 'Fill it out'),
+      h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { await snooze(); card.remove(); } }, 'Not now'),
+      h('button', { class: 'menu-nudge-never', onClick: async () => { await never(); card.remove(); } }, 'Don\'t ask again')));
+  slot.replaceWith(card);
 }
 
 function renderIconCard() {

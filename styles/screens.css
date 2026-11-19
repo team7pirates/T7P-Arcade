@@ -266,3 +266,50 @@ legend.set-text + .segmented { clear: both; }
   .mode-flagships .mode-tile { min-height: 110px; }
   .mode-art img { height: 100%; opacity: .4; }
 }
+
+/* v0.26.0: playtest questionnaire, time played, the menu nudge */
+.menu-nudge { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: 12px 16px; border-radius: var(--radius-md); border: 1px solid var(--brand-gold); background: color-mix(in srgb, var(--brand-gold) 10%, var(--surface)); }
+.menu-nudge-ic { font-size: 1.6rem; }
+.menu-nudge-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px; }
+.menu-nudge-btns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.menu-nudge-never { border: 0; background: none; color: var(--ink-muted); font: inherit; font-size: .78rem; text-decoration: underline; cursor: pointer; padding: 6px; }
+.menu-playtest { color: var(--brand-gold); }
+.fb-welcome { display: flex; flex-direction: column; gap: var(--space-3); text-align: center; align-items: center; }
+.fb-welcome .body-text, .fb-welcome .caption { margin: 0; }
+.fb .set-group { margin-bottom: var(--space-4); }
+.fb-intro .body-text, .fb-intro .caption { margin: 0 0 6px; }
+.fb-q { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); }
+.fb-q:first-of-type { border-top: 0; }
+.fb-qtext { margin: 0; font-weight: 600; }
+.fb-qn { color: var(--brand-gold); }
+.fb-scale { display: flex; gap: 6px; }
+.fb-n { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; }
+.fb-n.is-on { background: var(--brand-gold); color: #1a1206; border-color: var(--brand-gold); }
+.fb-ends { display: flex; justify-content: space-between; max-width: 264px; margin: 4px 0 0; }
+.fb-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.fb-chip { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+.fb-chip.is-on { border-color: var(--brand-gold); background: color-mix(in srgb, var(--brand-gold) 18%, var(--surface)); }
+.fb-text, .fb-select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(0,0,0,.25); color: var(--ink); font: inherit; resize: vertical; }
+.fb-select { max-width: 360px; }
+.fb-text:focus, .fb-select:focus { outline: 2px solid var(--brand-gold); outline-offset: 1px; }
+.fb-modes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.fb-mode { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(110px, 160px); gap: 10px; align-items: center; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid var(--border); }
+.fb-mode.is-unplayed { opacity: .7; }
+.fb-mode-name { margin: 0; font-weight: 700; }
+.fb-mode .fb-n { width: 38px; height: 38px; }
+.fb-send { display: flex; justify-content: center; padding: var(--space-3) 0 var(--space-6); }
+.fb-done { text-align: center; display: flex; flex-direction: column; gap: var(--space-3); align-items: center; }
+.fb-done-big { font-size: 3rem; margin: 0; }
+.pt-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pt-stat { text-align: center; padding: 10px 6px; border-radius: 12px; background: rgba(255,255,255,.04); }
+.pt-stat p { margin: 0; }
+.pt-v { font-family: var(--font-display); font-weight: 800; font-size: 1.25rem; }
+.pt-k { font-size: .6rem; opacity: .75; }
+.pt-modes { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pt-modes li { position: relative; isolation: isolate; display: flex; justify-content: space-between; padding: 6px 10px; border-radius: 8px; overflow: hidden; }
+.pt-bar { position: absolute; inset: 0 auto 0 0; width: var(--w); background: color-mix(in srgb, var(--brand-gold) 14%, transparent); z-index: -1; }
+.pt-modes li > span:first-child, .pt-modes li > b { position: relative; }
+@media (max-width: 640px) {
+  .fb-mode { grid-template-columns: 1fr; }
+  .fb-mode .fb-n { width: 44px; height: 44px; }
+}

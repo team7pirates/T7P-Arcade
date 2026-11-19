@@ -17,12 +17,31 @@ import { renderAbout } from './screens/about.js';
 import { renderChangelog } from './screens/changelog.js';
 import { renderFightLab } from './screens/fight-lab.js';
 import { runCleanup } from './cleanup.js';
+import { renderFeedback } from './screens/feedback.js';
+import { playtime } from './playtime.js';
+import { startOutbox, status as feedbackStatus, markWelcomed } from './feedback.js';
+import { sheet } from './ui.js';
 
 registerScreen('menu', renderMenu);
 registerScreen('settings', renderSettings);
 registerScreen('about', renderAbout);
 registerScreen('changelog', renderChangelog);
 registerScreen('fight-lab', renderFightLab, { live: true });
+registerScreen('feedback', renderFeedback);
+
+// v0.26.0: new players get one welcome that asks them to play for a week,
+// then fill out the questionnaire.
+async function welcomeOnce() {
+  const s = await feedbackStatus();
+  if (s.welcomed) return;
+  await markWelcomed();
+  const w = sheet({ title: 'WELCOME TO THE PLAYTEST', center: true, content: h('div', { class: 'fb-welcome' },
+    h('p', { class: 'fb-done-big' }, '🎮'),
+    h('p', { class: 'body-text' }, 'Thanks for testing T7P Arcade! Please play for a week: any modes, whenever you like.'),
+    h('p', { class: 'body-text' }, 'After the week, a short questionnaire (about 5 minutes) shows up on the main menu. Your honest answers decide what gets fixed and added next.'),
+    h('p', { class: 'caption muted' }, 'Want to answer early? It\'s in Settings and on the main menu any time.'),
+    h('button', { class: 'btn btn-primary btn-wide', onClick: () => w.close() }, 'Let\'s play')) });
+}
 
 function drawPetals() {
   const box = document.querySelector('.petals');
@@ -51,7 +70,10 @@ async function boot() {
   } catch {
     return; // the loading screen is showing the error and a Try again button
   }
+  playtime.start();
   await startRouter('menu');
+  startOutbox();
+  setTimeout(() => { welcomeOnce().catch(() => {}); }, 900);
   install.onChange(refresh);
   markAppReady();
   // Every 2 days: trim old clutter from the saves and say what happened.

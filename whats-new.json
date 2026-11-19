@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.26.0",
+      "date": "2026-11-18",
+      "title": "Playtest questionnaire and time played",
+      "items": [
+        "Playtesters: please play for a week, then fill out the questionnaire! New players see a short welcome that explains it, and the bottom of the main menu counts the days (PLAYTEST · DAY 3 OF 7).",
+        "The questionnaire is built into the game: about 5 minutes, with tap-to-rate questions, a rating and one word for each mode, and room to say what got boring or broke. Your answers save as you go, so you can leave and come back.",
+        "Send it and it goes straight to the developer. No internet? It's saved on your device and sends itself the next time you're online.",
+        "After your playtest week, a small card on the main menu asks for it. It never pops up in the middle of a game. Not now hides it for 3 days, and Don't ask again turns it off. You can fill it out early from Settings or the new Feedback button on the menu.",
+        "New in Settings: Time played. Your total, today, the last 7 days, and time in each mode. It only counts while you're actively playing and stops after 2 minutes with no taps or keys."
+      ]
+    },
+    {
       "version": "0.25.0",
       "date": "2026-11-18",
       "title": "The new foldable phone, social apps, and a working back button",
