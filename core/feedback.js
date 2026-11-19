@@ -2,10 +2,8 @@
 // ask.
 //
 // Sending: the game has no server, so answers go through FormSubmit
-// (formsubmit.co), which emails them to Khalil. The very first submission
-// sends him an activation email from FormSubmit; nothing is delivered until
-// he clicks it. After that, FormSubmit gives him a random alias he can put in
-// FEEDBACK_TO so the address isn't in the public code.
+// (formsubmit.co), which emails them to Khalil. The form is activated and
+// FEEDBACK_TO is FormSubmit's random alias, not his address.
 // No internet? The answers wait in the outbox and go out the next time the
 // app is online.
 //
@@ -23,7 +21,9 @@ import { playtime, fmtTime } from './playtime.js';
 import { APP_VERSION } from './version.js';
 import { MODES } from './modes.js';
 
-export const FEEDBACK_TO = 'khalilhale94@gmail.com';
+// FormSubmit's random alias for Khalil's inbox (v0.26.1), so his address
+// isn't in the public code.
+export const FEEDBACK_TO = '94237ee80cf66493c72478d769104a4f';
 const ENDPOINT = () => `https://formsubmit.co/ajax/${FEEDBACK_TO}`;
 const STATUS = 'feedback:status';
 const DRAFT = 'feedback:draft';
