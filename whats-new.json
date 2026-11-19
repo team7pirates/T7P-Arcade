@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.33.0",
+      "date": "2026-11-19",
+      "title": "Dynasty: the Time Chamber",
+      "items": [
+        "New on the Roster tab: the Time Chamber. Put bench cards inside during the season and they bank skill points every week. Young cards grow faster, and a veteran mentor at the same role helps.",
+        "The Chamber trains past a card's limits: its points also raise the card's max, so they always turn into Power. In testing, a Chamber card gained about +4 Power a season against under +1 on the bench.",
+        "The catch: cards inside can't play, they pick up fatigue, and there's a 5% chance a week they get hurt. Each card can bank only 3 Chamber points a season at level 1 (4 at level 2, 5 at level 3).",
+        "Upgrade the Chamber with cap space: level 2 (2 slots) costs 2, level 3 (3 slots) costs 3.5 more, as dead money this season. The level stays with your team.",
+        "The Chamber empties when the season ends."
+      ]
+    },
+    {
       "version": "0.32.0",
       "date": "2026-11-19",
       "title": "Fusion: bounty requests",

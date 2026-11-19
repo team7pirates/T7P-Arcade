@@ -1996,3 +1996,15 @@ body:has(.osm-page) .ph-open:not(.is-moved) { display: none; }
 
 /* v0.32.0: Fusion jobs */
 .ff-job { border-color: rgba(255, 196, 0, .45); background: rgba(255, 196, 0, .07); }
+
+/* v0.33.0: Dynasty Time Chamber */
+.dy-chamber { border: 1px solid rgba(140, 110, 255, .35); background: linear-gradient(160deg, rgba(120, 90, 255, .10), rgba(0,0,0,0) 60%); }
+.dy-ch-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.dy-ch-head .dy-h { margin: 0; }
+.dy-ch-slots { display: grid; gap: 8px; margin-top: 10px; }
+.dy-ch-slot { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+.dy-ch-slot.is-empty { justify-content: center; border-style: dashed; color: inherit; font: inherit; cursor: pointer; opacity: .8; }
+.dy-ch-slot.is-empty:hover { opacity: 1; background: rgba(140, 110, 255, .10); }
+.dy-ch-plus { font-size: 1.3rem; font-weight: 800; }
+.dy-ch-slot .dy-list-text { flex: 1; min-width: 0; }
+.dy-inj.is-chamber { background: rgba(140, 110, 255, .25); color: #d9ceff; }

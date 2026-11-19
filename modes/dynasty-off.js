@@ -175,6 +175,7 @@ export function classWorlds(L) {
 
 // ---------- 1. Start: age, contracts, cap check, retirements ----------
 export function startOffseason(L) {
+  for (const p of Object.values(L.players)) delete p.chamber; // v0.33.0: the Time Chamber empties
   migrate(L);
   L.phase = 'offseason';
   // A new league year: the cap (and every new contract) grows 5%.

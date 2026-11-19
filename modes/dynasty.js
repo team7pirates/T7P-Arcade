@@ -22,6 +22,7 @@ import { sfx } from '../core/sfx.js';
 import * as DP from './dynasty-phone.js';
 import * as T from './dynasty-tamper.js';
 import * as W from './dynasty-waivers.js';
+import * as CH from './dynasty-chamber.js';
 import { createPhone } from '../core/phone-ui.js';
 
 const help = howToPlay('dynasty', 'Dynasty', [
@@ -33,7 +34,7 @@ const help = howToPlay('dynasty', 'Dynasty', [
   'Playoffs: 10 teams. The 4 division winners are seeds 1–4 and the next 2 best records are 5–6. Seeds 7–10 play a one-game play-in (7 vs 10, 8 vs 9) for the last two spots. Then quarterfinals, semifinals and the Zenith Clash, all one and done.',
   'Hype comes from winning fights. Aura comes from being seen: magazine picks and awards. Both carry over.',
   'Meet the front office\'s expectation or your job security drops. Miss it three seasons running and you\'re fired.',
-  'Front Office: trade until the Week 8 deadline (and again after the season until draft day), release cards and sign free agents into open spots (the waiver wire, through Week 10), and stay under the hard salary cap (160 in season 1, up 5% every off-season). A max deal is 35 a season; deals near the max are supermax, and a team can carry 3.',
+  'Front Office: trade until the Week 8 deadline (and again after the season until draft day), release cards and sign free agents into open spots (the waiver wire, through Week 10), grow bench cards in the Time Chamber (Roster tab), and stay under the hard salary cap (160 in season 1, up 5% every off-season). A max deal is 35 a season; deals near the max are supermax, and a team can carry 3.',
   'Each time you open a save you get the Weekly Recap, then the Weekly Preview. Tick "Don\'t show again this week" to skip them; both are also on the Next Game card.',
   'Draft: you earn 8 scouting points a week. 6 points reveals a prospect\'s potential; a deep scout shows 💎 (a gem: Star or Superstar, 2x growth or more), nothing (solid: could be any of the three) or 💔 a broken diamond (a bust: Normal, 1x). Power stays hidden until they are drafted.',
   'Off-season: retirements, awards night, re-sign (one Franchise Tag), up to 2 development upgrades, a one-round draft, then 3 rounds of free agency.',
@@ -745,6 +746,7 @@ export async function render() {
         h('div', {}, h('p', { class: 'label-spaced' }, 'SALARY CAP'), h('p', { class: 'stat' }, String(R.capOf()))),
         h('div', {}, h('p', { class: 'label-spaced' }, pay > R.capOf() ? 'OVER BY' : 'CAP SPACE'), h('p', { class: `stat ${pay > R.capOf() ? 'loss' : 'win'}` }, String(Math.abs(Math.round((R.capOf() - pay) * 10) / 10))))),
       skillPanel(t),
+      chamberPanel(),
       h('p', { class: 'caption muted' }, 'Contracts are a total over seasons, split evenly: that split is the cap hit. Tap a card for details.'),
       h('ul', { class: 'dy-roster' }, ps.map((p) => {
         const eff = R.effPower(L, p);
@@ -759,8 +761,56 @@ export async function render() {
             eff !== p.power ? h('span', { class: 'caption muted' }, `base ${p.power}`) : null,
             usable(p) ? h('span', { class: 'dy-sp-badge' }, `+${usable(p)} SP`) : locked(p) ? h('span', { class: 'dy-sp-badge is-locked', title: 'At max: needs an upgrade' }, `🔒 ${locked(p)} SP`) : null,
             fatigueBar(p),
-            p.injury > 0 ? h('span', { class: 'dy-inj' }, `OUT ${p.injury} WK`) : null)));
+            p.injury > 0 ? h('span', { class: 'dy-inj' }, `OUT ${p.injury} WK`) : null,
+            CH.isIn(L, p) ? h('span', { class: 'dy-inj is-chamber' }, '⏳ CHAMBER') : null)));
       }))));
+  }
+
+  // v0.33.0: the Time Chamber (grow bench cards in season).
+  function chamberPanel() {
+    if (!CH.isOpen(L)) return null;
+    const t = me(); const lv = CH.level(L); const inf = CH.info(L);
+    const inside = CH.inside(L); const nx = CH.nextUpgrade(L);
+    const last = L.chamberLast?.season === L.season ? L.chamberLast : null;
+    const slots = [];
+    for (let k = 0; k < inf.slots; k++) {
+      const p = inside[k];
+      slots.push(p
+        ? h('div', { class: 'dy-ch-slot is-full' }, pAvatar(p),
+          h('span', { class: 'dy-list-text' }, h('span', {}, p.name),
+            h('span', { class: 'caption muted' }, `${p.role} · Power ${p.power} · ~${CH.weekly(L, p).toFixed(1)} pts/week${CH.mentorOf(L, p) ? ` · mentor ${CH.mentorOf(L, p).name}` : ''}`),
+            h('span', { class: 'caption gold' }, `${CH.gained(L, p)} of ${inf.cap} Chamber points this season`)),
+          h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { CH.leave(L, p.pid); await save(); toast(`${p.name} is out of the Chamber and can play.`); drawRoster(); } }, 'Take out'))
+        : h('button', { class: 'dy-ch-slot is-empty', onClick: () => chamberSheet() }, h('span', { class: 'dy-ch-plus' }, '+'), h('span', {}, 'Put a card in the Chamber')));
+    }
+    return h('section', { class: 'dy-panel dy-chamber' },
+      h('div', { class: 'dy-ch-head' }, h('h2', { class: 'dy-h' }, `⏳ TIME CHAMBER · LEVEL ${lv}`),
+        nx ? h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => {
+          const ok = await confirmSheet({ title: `UPGRADE TO LEVEL ${nx.level}?`, message: `${nx.slots} slots, faster growth (${nx.growth} a week) and up to ${nx.cap} points per card each season. It costs ${nx.cost} in cap space this season (dead money). The level stays with your team.`, confirmLabel: `Upgrade · ${nx.cost} cap` });
+          if (!ok) return;
+          const r = CH.upgrade(L); if (!r.ok) { toast(r.why); return; }
+          await save(); toast(`Time Chamber is level ${r.level}.`); drawRoster();
+        } }, `Upgrade · ${nx.cost} cap`) : h('span', { class: 'caption gold' }, 'MAX LEVEL')),
+      h('p', { class: 'caption muted' }, `Train bench cards in season. Each week inside they bank skill points (young cards faster, more with a veteran mentor at their role) and the Chamber raises their max so the points turn into Power. Cards inside can't play, gain fatigue and have a ${Math.round(CH.INJURY * 100)}% chance a week of getting hurt. Up to ${inf.cap} Chamber points per card each season.`),
+      h('div', { class: 'dy-ch-slots' }, slots),
+      last && last.out.length ? h('p', { class: 'caption' }, `Last week: ${last.out.map((o) => `${L.players[o.pid].name} ${o.hurt ? `got hurt (${o.hurt} wk)` : o.maxed ? 'hit the limit' : o.pts ? `+${o.pts} SP` : 'trained'}`).join(' · ')}`) : null);
+  }
+
+  function chamberSheet() {
+    const t = me();
+    const list = players(t).filter((p) => !CH.isIn(L, p)).sort((a, b) => (b.potential - b.power) - (a.potential - a.power) || a.power - b.power);
+    const s = sheet({
+      title: 'INTO THE TIME CHAMBER',
+      content: h('div', {},
+        h('p', { class: 'body-text' }, 'Who trains? They sit out games while inside.'),
+        h('ul', { class: 'dy-list' }, list.map((p) => {
+          const c = CH.canEnter(L, p.pid);
+          return pLine(p, h('button', { class: 'btn btn-primary btn-sm', disabled: !c.ok, title: c.ok ? '' : c.why, onClick: async () => {
+            const r = CH.enter(L, p.pid); if (!r.ok) { toast(r.why); return; }
+            s.close(); await save(); toast(`${p.name} enters the Time Chamber.`); drawRoster();
+          } }, 'Train'), `${p.role} · Power ${p.power} · season ${p.career} · ~${CH.weekly(L, p).toFixed(1)} pts/week${CH.mentorOf(L, p) ? ' · has a mentor' : ''}${c.ok ? '' : ` · ${c.why}`}`);
+        }))),
+    });
   }
 
   function fatigueBar(p) {
@@ -2295,9 +2345,9 @@ export async function render() {
     const s = sheet({
       title: `SWAP OUT ${L.players[pd.mine[i]].name.toUpperCase()}`,
       content: h('ul', { class: 'dy-list dy-bench' }, bench.map((p) => h('li', {}, h('button', {
-        class: 'dy-bench-btn', disabled: p.injury > 0,
+        class: 'dy-bench-btn', disabled: !R.available(p),
         onClick: async () => { pd.mine[i] = p.pid; s.close(); await save(); drawGamePlan(g); },
-      }, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: `caption ${ROLE_CLASS(p.role)}` }, `${p.role} · ${R.effPower(L, p)}${p.injury ? ` · injured ${p.injury} wk` : ''}`)), fatigueBar(p))))),
+      }, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: `caption ${ROLE_CLASS(p.role)}` }, `${p.role} · ${R.effPower(L, p)}${p.injury ? ` · injured ${p.injury} wk` : CH.isIn(L, p) ? ' · in the Time Chamber' : ''}`)), fatigueBar(p))))),
     });
   }
 

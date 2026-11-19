@@ -376,7 +376,8 @@ function phoneBoost(league, p, stat) {
   return b ? Math.min(PHONE_BOOST_MAX, b[stat] || 0) : 0;
 }
 
-export const available = (p) => p.injury <= 0;
+// v0.33.0: a card in the Time Chamber can't play either.
+export const available = (p) => p.injury <= 0 && !(p.chamber && p.chamber.team === p.team);
 
 // AI picks its five: one of each role if it can, skipping the worn down.
 export function aiStarters(league, team) {
@@ -533,6 +534,8 @@ export function endWeek(league) {
   if (league.week <= TRADE_DEADLINE && hooks.aiTrade) hooks.aiTrade(league, rand);
   // Growth and Aura every 3 weeks.
   if (league.week % MAG_EVERY === 0) growthTick(league, rand);
+  // v0.33.0: the Time Chamber trains (before waivers, so its injuries count).
+  if (hooks.chamber) hooks.chamber(league, rand);
   // v0.31.0: waiver claims, then make sure the user can field 5.
   if (hooks.waivers) hooks.waivers(league, rand);
   if (hooks.afterWeek) hooks.afterWeek(league, games);
