@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.32.0",
+      "date": "2026-11-19",
+      "title": "Fusion: bounty requests",
+      "items": [
+        "After you clear a floor, people may text you a job: win the next floor fast, clear it barely scratched, take out a danger floor, survive 5 floors in a row, or beat the next boss.",
+        "Take one job at a time. Finish it for extra Bounty (it counts as sponsor money, so it earns talent points too) and followers, and the sender likes you more.",
+        "Fail it, or go down with it open, and they think less of you and you lose a few followers. Jobs from your own company pay more, but failing them costs reputation.",
+        "Your active job shows on the Tower. Ignore a request and it expires when you start the next floor.",
+        "The Forbidden Fusion help is updated for the fighter creator, the new health, contracts and jobs."
+      ]
+    },
+    {
       "version": "0.31.0",
       "date": "2026-11-19",
       "title": "Dynasty: the waiver wire",

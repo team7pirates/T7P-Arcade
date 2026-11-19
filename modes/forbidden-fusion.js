@@ -44,12 +44,12 @@ const HOF_SIZE = 10;
 const fmt = (n) => Math.round(n).toLocaleString();
 
 const help = howToPlay('forbidden-fusion', 'Forbidden Fusion', [
-  'Forge one fighter on the Your Fighter screen. Pick any character as its face, give it a name, and choose a main role and a second role.',
+  'Create your fighter: a name and face (any character), an origin (Street Brawler, Prodigy, Soldier, Rich Kid or Legacy), a main and second role, and a personality. Origins and personalities change your stats, followers and contract pay.',
   'Your main role sets your special move: Striker Finisher, Tank Iron Wall, Speedster Blitz, Mystic Hex or Tactician Counterplay. The role wheel still counts in every fight.',
   'The Talent Tree: four branches (Power, Aura, Clutch, Hunter) around a core. Every node has tiers; spend talent points to raise them. You start with 30 points and earn 1 a floor (5 on a boss floor), double on Hard. Sponsor money counts too: every 25 Bounty a sponsor pays is another point.',
   'Spend points between floors. Anything you buy during a climb is locked in until the climb ends. Between climbs you can respec for free.',
   'The second ring (the ✦ button beside the tree): one big node per branch, Unbreakable, Domain Expansion, Last Stand and Sponsor Magnet. A branch\'s big node opens once both of its nodes are maxed. You can own 2 of the 4, and you have to max the first before you start the second.',
-  'Climb the Tower: one fight per floor. A fused fighter has 3.5 times a normal card\'s health, and it carries over. You get 20% back after each floor and 25% after a boss.',
+  'Climb the Tower: one fight per floor. A fused fighter has twice a normal card\'s health, and it carries over. You get 40% back after each floor and 45% after a boss. Watch for DANGER floors: tougher fights that pay 40% more.',
   'Every 10th floor is a boss. Past floor 10 the Omega swarms send two, then three cards at you.',
   'Clearing floors earns Bounty: more as you climb, half again for an underdog win, and double on Hard. Bounty is your score and your Hall of Fame.',
   'Roles lock when you save your fighter. Changing the main role later costs 10 talent points and the second role 5, for good.',
@@ -58,6 +58,8 @@ const help = howToPlay('forbidden-fusion', 'Forbidden Fusion', [
   'Matchup, the dating app: like profiles, chat, and ask your matches out. A date is +5 Aura for your next floor (one per floor).',
   'Followers stay with you between climbs: every 2,500 is +1 Aura in the Tower, up to +10.',
   'Five save files: each has its own fighter, Bounty, Hall of Fame, followers and phone.',
+  'Contracts: before each climb, three companies offer 10, 20 or 30 floors. They pay Bounty for every floor you clear and a bonus when you finish. Ask for more and they may agree, meet you halfway or walk. Lose before the deal is done and it falls through (no bonus, reputation down). Break it with a buyout, or climb as a free agent at minimum pay until a company texts you.',
+  'Jobs: after a floor, someone may text you a bounty request: win the next floor fast, take barely any damage, clear a danger floor, survive 5 floors or beat a boss. Take one at a time. Finish it for extra Bounty and followers; fail and they think less of you (or your company docks your reputation).',
   'Lose a fight and the climb ends. Your best climbs go into the Hall of Fame.',
 ]);
 
@@ -768,6 +770,14 @@ export async function render() {
   }
 
   // v0.29.0: your deal for this climb, with a way out (for a price).
+  // v0.32.0: the job you took, if any.
+  function jobStrip(r) {
+    const j = r.job; if (!j) return null;
+    const left = j.type === 'streak' ? ` · ${Math.max(0, j.until - r.floor)} floor${j.until - r.floor === 1 ? '' : 's'} to go` : '';
+    return h('div', { class: 'ff-contract ff-job' }, h('span', { class: 'ff-contract-ic' }, '🎯'),
+      h('span', { class: 'ff-contract-text' }, h('strong', {}, `JOB · ${FP.jobText(j)}`), h('span', { class: 'caption muted' }, `For ${j.name} · +${j.pay} Bounty${left} · fail and ${j.company ? 'your reputation drops' : 'they think less of you'}`)));
+  }
+
   function contractStrip(r) {
     const c = r.contract;
     if (c && c.status === 'active') {
@@ -814,6 +824,7 @@ export async function render() {
           tags.length ? h('ul', { class: 'rule-chips' }, tags.map((t) => h('li', { class: t === 'HARD' || t.startsWith('BOSS') ? 'bad' : '' }, t))) : null,
         ),
         contractStrip(r),
+        jobStrip(r),
         h('div', { class: 'ff-me panel' },
           avatar(me, characters, 'md'),
           h('div', { class: 'ff-me-text' },
@@ -901,12 +912,13 @@ export async function render() {
     let bounty = Math.round(base.bounty * (r.next.mult || 1) * (r.restPenalty ? FP.REST_PENALTY : 1) * (1 + (r.build.talents?.bounty || 0)));
     r.restPenalty = false;
     const before = result.endHp[0];
+    const startHp = r.hp;
     const hp = healAfter(fl, before, r.maxHp, r.build.talents?.heal || 0);
     r.floor = fl;
     r.hp = hp;
     // v0.28.0: pay your backup out of this floor's Bounty.
     const allyName = r.ally && r.ally.floor === fl ? r.ally.name : null;
-    let contractPay = 0; let contractDone = null;
+    let contractPay = 0; let contractDone = null; let jobOut = null;
     const fee = r.phone ? FP.settleAlly(r, fl, bounty) : 0;
     bounty -= fee;
     r.runBounty += bounty;
@@ -926,6 +938,10 @@ export async function render() {
       contractPay = cp.pay + cp.bonus; contractDone = cp.done ? r.contract : null;
       if (cp.done) { data.rep = (data.rep || 0) + 1; data.contractsDone = (data.contractsDone || 0) + 1; }
       r.runBounty += contractPay;
+      // v0.32.0: a job you took (paid like sponsor money).
+      const myTurns = result.events.filter((e) => e.t === 'turn' && e.side === 'A').length;
+      jobOut = FP.jobFloor(r, fl, { myTurns, lost: Math.max(0, (startHp - before) / r.maxHp) });
+      r.runBounty += jobOut.pay; data.rep = (data.rep || 0) + jobOut.repDelta;
       if (PD.dating(r.phone).matches.length) PD.refreshPrompts(r.phone, dateCtx(r));
       const sponsor = r.runBounty - runBefore;
       data.lifetimeBounty += sponsor;
@@ -940,9 +956,10 @@ export async function render() {
       data.followers = r.phone.followers;
     }
     planFloor(r);
+    if (r.phone) FP.jobOffer(r, { rand: Math.random, roster: characters.list.filter((c) => !c.retired && c.powerLevel) });
     await saveData();
     await saveRun();
-    return { floor: fl, bounty, underdog, healed: hp - before, hp, boss: isBoss(fl), gained: budget() - budgetBefore, fee, allyName, contractPay, contractDone, contract: r.contract };
+    return { job: jobOut, floor: fl, bounty, underdog, healed: hp - before, hp, boss: isBoss(fl), gained: budget() - budgetBefore, fee, allyName, contractPay, contractDone, contract: r.contract };
   }
 
   function drawCleared(o) {
@@ -957,6 +974,8 @@ export async function render() {
         o.underdog ? h('p', { class: 'new-best' }, 'UNDERDOG WIN · ×1.5') : null,
         o.fee ? h('p', { class: 'caption muted' }, `After paying ${o.allyName} ${fmt(o.fee)} for the backup.`) : null,
         o.contractPay ? h('p', { class: o.contractDone ? 'new-best' : 'caption gold' }, o.contractDone ? `CONTRACT COMPLETE · +${fmt(o.contractPay)} from ${o.contractDone.name} (bonus included)` : `+${fmt(o.contractPay)} from ${o.contract && o.contract.status === 'active' ? o.contract.name : 'free-agent pay'}`) : null,
+        o.job?.done ? h('p', { class: 'new-best' }, `JOB DONE · +${fmt(o.job.pay)} from ${o.job.job.name}${o.job.repDelta > 0 ? ' · reputation +1' : ''}`) : null,
+        o.job?.failed ? h('p', { class: 'caption loss' }, `JOB FAILED · ${o.job.why}${o.job.repDelta < 0 ? ' Reputation −1.' : ''}`) : null,
         o.gained > 0 ? h('p', { class: 'new-best' }, `+${o.gained} TALENT POINT${o.gained === 1 ? '' : 'S'}`) : null,
       ),
       h('div', { class: 'ff-me panel' },
@@ -977,6 +996,8 @@ export async function render() {
   async function finishRun(lost) {
     const r = run;
     if (r.phone) { data.lastPhone = r.phone; data.followers = r.phone.followers; }
+    // v0.32.0: an open job fails.
+    if (r.job) { r.jobLost = { name: r.job.name, text: FP.jobText(r.job), company: !!r.job.company }; data.rep = (data.rep || 0) + FP.jobLost(r); }
     // v0.29.0: an unfinished contract falls through.
     if (r.contract && r.contract.status === 'active') {
       r.contract.status = 'failed';
@@ -1033,6 +1054,8 @@ export async function render() {
         h('p', { class: 'heading' }, titleFor(r.floor)),
         r.newBest ? h('p', { class: 'new-best' }, 'NEW PERSONAL BEST') : null,
         r.place ? h('p', { class: 'caption' }, `Hall of Fame: #${r.place}`) : null,
+        r.jobLost ? h('p', { class: 'caption loss' }, `Job failed: ${r.jobLost.text} for ${r.jobLost.name}.${r.jobLost.company ? ' Reputation −1.' : ''}`) : null,
+        r.jobsDone ? h('p', { class: 'caption gold' }, `Jobs done this climb: ${r.jobsDone}.`) : null,
         r.contractFailed ? h('p', { class: 'ff-danger' }, h('strong', {}, 'DEAL FELL THROUGH'), ` ${r.contractFailed.name}: floor ${r.contractFailed.done} of ${r.contractFailed.len}. No ${r.contractFailed.bonus} bonus, and your reputation drops.`) : null,
       ),
       h('div', { class: 'result-stats' },

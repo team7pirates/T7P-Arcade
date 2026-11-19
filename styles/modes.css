@@ -1993,3 +1993,6 @@ body:has(.osm-page) .ph-open:not(.is-moved) { display: none; }
 .dy-wire .dy-sub { margin: 14px 0 6px; font-size: .78rem; opacity: .85; }
 .dy-wire .dy-chips { margin-bottom: 8px; }
 .dy-wire .btn[disabled] { opacity: .45; }
+
+/* v0.32.0: Fusion jobs */
+.ff-job { border-color: rgba(255, 196, 0, .45); background: rgba(255, 196, 0, .07); }

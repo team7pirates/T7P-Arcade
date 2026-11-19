@@ -515,6 +515,15 @@ export function reply(r, key, optionId, ctx) {
       sys(t, `CONTRACT: ${p.offer.len} floors with ${p.offer.name} at ${p.offer.pay} a floor.`);
       line = `Signed with ${p.offer.name}: ${p.offer.len} floors.`;
     } else { back('Your call. Door\'s open.'); line = 'You stay a free agent.'; }
+  } else if (p.type === 'job') {
+    // v0.32.0: bounty requests.
+    if (o.id === 'accept' && !r.job) {
+      r.job = { ...p.job };
+      back(pick(['Bet. Don\'t let me down.', 'Say less. I\'ll be watching.', 'That\'s what I like to hear.'], Math.random));
+      sys(t, `JOB: ${jobText(r.job)} · +${r.job.pay} Bounty.`);
+      line = `Job taken: ${jobText(r.job)}.`;
+    } else if (o.id === 'accept') { back('You already got a job going. Finish that first.'); line = 'One job at a time.'; }
+    else { back('Your loss. Somebody else will take it.'); line = 'Job passed.'; }
   } else if (p.type === 'rest') {
     if (o.id === 'rest') {
       r.hp = Math.min(r.maxHp, Math.round(r.hp + r.maxHp * REST_HEAL));
@@ -600,3 +609,112 @@ export function markRead(r, key) {
   if (t) { r.phone.unread = Math.max(0, r.phone.unread - t.unread); t.unread = 0; }
 }
 export { BOSS_EVERY };
+
+// ---------- v0.32.0: bounty requests (jobs) ----------
+// After a cleared floor, someone may text you a job. One at a time.
+//   fast    - win the next floor in N of your turns or fewer
+//   clean   - clear the next floor losing no more than X% of your health
+//   danger  - clear the danger floor coming up (only when there is one)
+//   streak  - clear the next 5 floors
+//   boss    - take down the boss on floor X (when one is 1-4 floors away)
+// Jobs pay Bounty (it counts as sponsor money) and followers, and the sender
+// likes you more. Fail and you lose bond (or reputation, if it was your
+// company) and a few followers. Ignore a request and it expires when you
+// start the next floor. Targets come from sims: about a coin flip.
+export const JOB_CHANCE = 0.35;
+export const JOB_TURNS = [0, 3, 5, 7, 10, 12];
+export const JOB_LOSS = [0, 0.22, 0.38, 0.52, 0.66, 0.76];
+const JOB_MULT = { fast: 1.1, clean: 1.1, danger: 0.7, streak: 1.3, boss: 0.8 };
+export const STREAK_FLOORS = 5;
+export const jobPay = (floor, type, hard) => Math.round((6 + floor * 0.5) * JOB_MULT[type] * (hard ? 2 : 1));
+const nextBoss = (from) => Math.ceil(from / BOSS_EVERY) * BOSS_EVERY;
+
+export function jobText(j) {
+  if (j.type === 'fast') return `Win floor ${j.floor} in ${j.turns} turns or fewer`;
+  if (j.type === 'clean') return `Clear floor ${j.floor} losing no more than ${Math.round(j.loss * 100)}% of your health`;
+  if (j.type === 'danger') return `Clear the danger floor (floor ${j.floor})`;
+  if (j.type === 'streak') return `Clear floors ${j.floor} to ${j.until}`;
+  return `Take down the floor ${j.floor} boss`;
+}
+const JOB_ASK = {
+  fast: ['Got money on you finishing floor {floor} quick. {turns} turns or less. You in? {pay} Bounty.', 'Bet you can\'t end floor {floor} in {turns} turns. Prove me wrong and {pay} Bounty is yours.'],
+  clean: ['Floor {floor}. Walk out with barely a scratch, no more than {loss}% of your health gone, and I\'ll pay {pay}.', 'People say you take too many hits. Clear floor {floor} losing {loss}% or less. {pay} Bounty says you can\'t.'],
+  danger: ['That danger floor ({floor}) has everyone scared. Clear it and I pay {pay} Bounty on top.', 'Floor {floor} is a danger floor. Nobody wants it. Take it out for me: {pay} Bounty.'],
+  streak: ['Five floors straight, {floor} to {until}. No dying. {pay} Bounty when you\'re done.', 'Show me you\'re for real: clear {floor} through {until} and I\'ll send {pay}.'],
+  boss: ['The floor {floor} boss owes me. Take them down and {pay} Bounty is yours.', 'Somebody has to humble the floor {floor} boss. {pay} Bounty if it\'s you.'],
+};
+// Offer a job (from clearFloor, after the next floor is planned).
+export function jobOffer(r, ctx) {
+  const ph = r.phone; const rand = ctx.rand;
+  if (!ph || r.job || r.floor < 2 || rand() > JOB_CHANCE) return null;
+  if (ph.threads.some((t) => t.pending?.type === 'job')) return null;
+  const nx = r.next; const n = Math.min(5, nx.foeIds.length); const boss = isBoss(nx.floor);
+  const types = ['fast', 'clean', 'streak'];
+  if (nx.danger) types.push('danger', 'danger');
+  const bf = nextBoss(nx.floor);
+  if (bf - nx.floor <= 3) types.push('boss');
+  const type = pick(types, rand);
+  const j = { type, floor: type === 'boss' ? bf : nx.floor, pay: jobPay(nx.floor, type, r.hard), offered: nx.floor };
+  if (type === 'fast') j.turns = JOB_TURNS[n] + (boss ? 0 : 0);
+  if (type === 'clean') j.loss = Math.min(0.8, JOB_LOSS[n] + (boss ? 0.05 : 0));
+  if (type === 'streak') j.until = nx.floor + STREAK_FLOORS - 1;
+  // Who asks: your company sometimes (danger or boss jobs), else someone you've met.
+  let who;
+  if (r.contract?.status === 'active' && (type === 'danger' || type === 'boss') && rand() < 0.6) { who = coWho(r.contract); j.company = true; j.pay = Math.round(j.pay * 1.2); }
+  else {
+    const mets = (ph.met || []).filter((m) => m.cid != null && !nx.foeIds.includes(m.cid) && !(ph.threads.find((t) => t.key === m.key)?.pending));
+    const c = mets.length && rand() < 0.6 ? pick(mets, rand) : pick((ctx.roster || []).filter((x) => !nx.foeIds.includes(x.id)), rand);
+    if (!c) return null;
+    who = c.key ? { key: c.key, name: c.name, cid: c.cid, kind: c.kind || 'rival' } : { key: `c${c.id}`, name: c.name, cid: c.id, kind: 'rival' };
+  }
+  j.key = who.key; j.name = who.name; j.cid = who.cid ?? null;
+  const t = say(ph, who, fill(pick(JOB_ASK[type], rand), { floor: j.floor, until: j.until, turns: j.turns, loss: Math.round((j.loss || 0) * 100), pay: j.pay }), r.floor);
+  t.pending = { type: 'job', job: j, options: [
+    { id: 'accept', tone: 'accept', text: 'Deal. Watch me.', hint: `${jobText(j)} · +${j.pay} Bounty · fail and ${j.company ? 'your reputation drops' : 'they think less of you'}` },
+    { id: 'decline', tone: 'decline', text: 'Not this time.', hint: 'No risk' },
+  ] };
+  return j;
+}
+
+function jobDone(r, j) {
+  const ph = r.phone;
+  const t = thread(ph, { key: j.key, name: j.name, cid: j.cid, kind: j.company ? 'sponsor' : 'rival' });
+  t.msgs.push({ from: 'them', text: pick(['Knew you had it. Sent. 💰', 'That\'s what I\'m talking about. Bounty sent.', 'Okay, you\'re the real deal. Paid in full.'], Math.random) });
+  sys(t, `JOB DONE: +${j.pay} Bounty.`);
+  if (!j.company) addBond(ph, j.key, 'accept');
+  gainFollowers(ph, 40 + j.pay * 6);
+  r.jobsDone = (r.jobsDone || 0) + 1;
+}
+function jobFailed(r, j, why) {
+  const ph = r.phone;
+  const t = thread(ph, { key: j.key, name: j.name, cid: j.cid, kind: j.company ? 'sponsor' : 'rival' });
+  t.msgs.push({ from: 'them', text: pick(['Wow. I really thought you had that.', 'Cost me money. Don\'t text me for a while.', 'All talk, huh?'], Math.random) });
+  sys(t, `JOB FAILED: ${why}${j.company ? ' Your reputation drops.' : ''}`);
+  if (!j.company) addBond(ph, j.key, 'hostile');
+  gainFollowers(ph, -Math.round(ph.followers * 0.02));
+  r.jobsFailed = (r.jobsFailed || 0) + 1;
+}
+
+// After a floor you won. Returns { pay, done, failed, job, repDelta }.
+export function jobFloor(r, fl, m) {
+  const out = { pay: 0, done: false, failed: false, job: r.job || null, repDelta: 0 };
+  const ph = r.phone; if (!ph) return out;
+  // Requests you didn't answer expire once their floor is fought.
+  for (const t of ph.threads) if (t.pending?.type === 'job' && t.pending.job.offered <= fl) { t.pending = null; sys(t, 'Offer expired.'); }
+  const j = r.job; if (!j) return out;
+  let done = false; let fail = null;
+  if (j.type === 'fast' && fl === j.floor) { if (m.myTurns <= j.turns) done = true; else fail = `You took ${m.myTurns} turns.`; }
+  else if (j.type === 'clean' && fl === j.floor) { if (m.lost <= j.loss + 0.001) done = true; else fail = `You lost ${Math.round(m.lost * 100)}% of your health.`; }
+  else if ((j.type === 'danger' || j.type === 'boss') && fl === j.floor) done = true;
+  else if (j.type === 'streak' && fl >= j.until) done = true;
+  if (done) { jobDone(r, j); out.pay = j.pay; out.done = true; if (j.company) out.repDelta = 1; r.job = null; }
+  else if (fail) { jobFailed(r, j, fail); out.failed = true; out.why = fail; if (j.company) out.repDelta = -1; r.job = null; }
+  return out;
+}
+// The climb ended with a job still open. Returns the reputation change.
+export function jobLost(r) {
+  const j = r.job; if (!j || !r.phone) return 0;
+  jobFailed(r, j, 'You went down before finishing it.');
+  r.job = null;
+  return j.company ? -1 : 0;
+}
