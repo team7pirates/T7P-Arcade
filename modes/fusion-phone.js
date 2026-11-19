@@ -15,7 +15,9 @@
 //     half health, win a callout). Finish it for Bounty and followers.
 //   - Your trainer checks in when you're hurt: rest (heal 12% now, next floor
 //     pays 20% less) or push on.
-//   - Fans and haters DM you; replies move your followers.
+//   - v0.25.0: fans and haters @ you on Chirp (the bird app) instead of
+//     texting; reply from the post. Big wins go up on Lenz, and the people
+//     you beat send Boo snaps.
 //   - v0.18.0: the people you beat text you after the fight. GLOAT for
 //     followers, but they want a rematch 3 floors later (a revenge callout:
 //     +3 Power, Bounty ×1.5). Show RESPECT and they send you a tip: +4 Aura
@@ -26,6 +28,7 @@
 // Tower (up to +10).
 
 import { floorPower, isBoss, swarmSize, BOSS_EVERY } from './fusion-rules.js';
+import { chirp, lenzPost, snap, answerPost } from '../core/phone-core.js';
 
 export const MAX_FOLLOWER_AURA = 10;
 export const FOLLOWERS_PER_AURA = 2500;
@@ -52,7 +55,7 @@ function fresh(r, arr, rand) {
 
 // ---------- Phone state ----------
 export function newPhone(followers = 0) {
-  return { threads: [], feed: [], news: [], deals: [], followers, unread: 0, notes: [], seq: 1 };
+  return { threads: [], feed: [], lenz: [], snaps: [], gallery: [], news: [], deals: [], followers, unread: 0, notes: [], seq: 1 };
 }
 export function thread(ph, who) {
   let t = ph.threads.find((x) => x.key === who.key);
@@ -74,9 +77,8 @@ function note(ph, title, text, app, key = null) {
   ph.notes.unshift({ id: ph.seq++, title, text, app, key });
   ph.notes = ph.notes.slice(0, 6);
 }
-function post(ph, who, text, likes, floor, cid = null) {
-  ph.feed.unshift({ id: ph.seq++, who, text, likes, floor, cid });
-  ph.feed = ph.feed.slice(0, 60);
+function post(ph, who, text, likes, floor, cid = null, extra = {}) {
+  return chirp(ph, { who, text, likes, floor, cid, when: `Floor ${floor}`, verified: who === '@AGN_Wire', ...extra });
 }
 function headline(ph, title, text, floor) {
   ph.news.unshift({ id: ph.seq++, title, text, floor });
@@ -163,6 +165,8 @@ export function afterFloor(r, ctx) {
 
   // The fighter you just beat has something to say.
   beatenEvent(r, ctx);
+  lenzEvent(r, ctx);
+  snapEvent(r, ctx);
   // One main event: what decides the next floor.
   const bossNext = isBoss(next);
   const bossAfter = isBoss(next + 1);
@@ -270,13 +274,54 @@ function dealEvent(r, ctx) {
 function fanEvent(r, ctx) {
   const hater = ctx.rand() < 0.45;
   const name = pick(FAN_NAMES, ctx.rand);
-  const who = { key: `fan-${name}`, name, kind: hater ? 'hater' : 'fan' };
-  const t = say(r.phone, who, fill(fresh(r, hater ? HATERS : FANS, ctx.rand), { floor: ctx.floor }), ctx.floor);
+  const handle = `@${String(ctx.me).replace(/[^\w]/g, '') || 'you'}`;
+  const text = `${handle} ${fill(fresh(r, hater ? HATERS : FANS, ctx.rand), { floor: ctx.floor })}`;
+  const t = post(r.phone, name, text, 20 + Math.floor(ctx.rand() * (hater ? 120 : 400)), ctx.floor, null, { mention: true, hater });
   t.pending = { type: hater ? 'hater' : 'fan', options: hater
     ? [{ id: 'clap', tone: 'hostile', text: fresh(r, CLAP, ctx.rand), hint: 'Followers +150 (spicy), small chance it backfires' },
       { id: 'ignore', tone: 'humble', text: fresh(r, IGNORE, ctx.rand), hint: 'Followers +60' }]
     : [{ id: 'love', tone: 'humble', text: fresh(r, LOVE, ctx.rand), hint: 'Followers +100' },
       { id: 'flex', tone: 'hostile', text: fresh(r, FLEX, ctx.rand), hint: 'Followers +80' }] };
+}
+
+// v0.25.0: reply to an @ on Chirp. Returns a short line for a toast.
+export function replyPost(r, id, optionId, ctx) {
+  const ph = r.phone; const p = (ph.feed || []).find((x) => x.id === id);
+  if (!p || !p.pending) return null;
+  const o = p.pending.options.find((x) => x.id === optionId);
+  if (!o) return null;
+  const type = p.pending.type;
+  let line = ''; let back = null;
+  if (type === 'hater' && o.id === 'clap') {
+    if (ctx.rand() < 0.2) { gainFollowers(ph, -120); back = 'LOL screenshot taken. Everybody saw that.'; line = 'That backfired. −120 followers.'; }
+    else { gainFollowers(ph, 150); back = '...'; line = '+150 followers.'; }
+  } else { const n = o.id === 'love' ? 100 : o.id === 'flex' ? 80 : 60; gainFollowers(ph, n); back = o.id === 'ignore' ? 'whatever' : '!!!!! 😭'; line = `+${n} followers.`; }
+  answerPost(ph, id, o.text, back, p.who);
+  p.likes += Math.round(20 + ctx.rand() * 80);
+  return line;
+}
+
+// ---------- Lenz and Boo ----------
+const MY_LENZ = ['Floor {floor}. Still standing. 🗼', 'Another one. Floor {floor} ✅', 'They said I\'d stop at {floor}. 🤫', 'Boss down. Who\'s next? 👑', 'Callout answered. 📸', 'Hard work, floor {floor}.'];
+const CHAR_LENZ = ['Training day. 💪', 'Somebody up there is climbing fast. I\'m watching.', 'Rest day. Don\'t get used to it.', 'Warming up for whoever\'s next.', 'New gear, same energy.', 'Tower view hits different tonight.', 'Floor talk is cheap. See you up there.'];
+const SNAP_LOST = ['still sore from that 😤', 'run it back soon', 'my trainer is yelling at me rn', 'ok you hit hard', 'not posting that fight 💀', 'GG. ice bath time 🧊'];
+function lenzEvent(r, ctx) {
+  const ph = r.phone; const { floor, rand } = ctx;
+  if (!ph.lenz) ph.lenz = [];
+  if (ctx.boss || ctx.callout || floor % 5 === 0) {
+    const cap = fill(ctx.boss ? MY_LENZ[3] : ctx.callout ? MY_LENZ[4] : fresh(r, MY_LENZ.slice(0, 3).concat(MY_LENZ[5]), rand), { floor });
+    lenzPost(ph, { who: ctx.me, cid: r.build?.faceId ?? null, caption: cap, likes: Math.round(ph.followers * (0.08 + rand() * 0.06)) + 40, when: `Floor ${floor}`, mine: true,
+      comments: [{ who: pick(FAN_NAMES, rand), text: fill(pick(FANS, rand), { floor }) }, ...(rand() < 0.5 ? [{ who: pick(FAN_NAMES, rand), text: fill(pick(HATERS, rand), { floor }) }] : [])] });
+  }
+  if (rand() < 0.35) {
+    const c = pick(ctx.roster.filter((x) => x.portrait), rand);
+    if (c) lenzPost(ph, { who: c.name, cid: c.id, caption: fresh(r, CHAR_LENZ, rand), likes: 300 + Math.floor(rand() * 9000), when: `Floor ${floor}`, verified: (c.powerLevel || 0) >= 85 });
+  }
+}
+function snapEvent(r, ctx) {
+  const foe = ctx.foes?.[0];
+  if (!foe || ctx.rand() > 0.4) return;
+  snap(r.phone, { from: foe.name, cid: foe.id ?? null, caption: fresh(r, SNAP_LOST, ctx.rand), when: `Floor ${ctx.floor}` });
 }
 
 // ---------- Replies ----------

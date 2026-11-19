@@ -149,14 +149,62 @@ function newRun(hard) {
   return r;
 }
 
+// v0.25.0: the phone's Calendar and Wallet.
+const PLAN_LABEL = { callout: ['Callout', 'callout'], revenge: ['Rematch', 'callout'], lieutenant: ['The boss\'s lieutenant', 'boss'], crew: ['The crew (boss floor)', 'boss'], boss: ['Boss fight', 'boss'] };
+function fusionCalendar() {
+  const r = run;
+  if (!r) return data ? [{ when: 'NOW', title: 'No climb going', text: `Best floor so far: ${bestFloor(data) || '—'}` }] : [];
+  const next = r.next?.floor ?? r.floor + 1;
+  const out = [];
+  const seen = new Set();
+  const add = (floor, title, text, tag) => { const k = `${floor}${title}`; if (seen.has(k)) return; seen.add(k); out.push({ floor, when: `FLOOR ${floor}`, title, text, tag }); };
+  add(next, r.next?.type && PLAN_LABEL[r.next.type] ? PLAN_LABEL[r.next.type][0] : 'Next fight', 'Up next', r.next?.type && PLAN_LABEL[r.next.type] ? PLAN_LABEL[r.next.type][1] : '');
+  for (const [f, p] of Object.entries(r.plan || {})) if (Number(f) > next && PLAN_LABEL[p.type]) add(Number(f), PLAN_LABEL[p.type][0], '', PLAN_LABEL[p.type][1]);
+  let b = next; while (!isBoss(b)) b += 1;
+  add(b, 'Boss floor', `Bosses every ${FP.BOSS_EVERY} floors`, 'boss');
+  if (r.revenge) add(r.revenge.floor, `${r.revenge.name} wants a rematch`, 'From around this floor', 'callout');
+  if (r.tip?.floor >= next) add(r.tip.floor, `+${r.tip.aura} Aura tip`, 'From a fighter you showed respect', '');
+  if (r.dateBoost?.floor >= next) add(r.dateBoost.floor, `+${FP.DATE_AURA} Aura from your date`, '', '');
+  for (const d of (r.phone?.deals || []).filter((x) => x.status === 'active')) out.push({ floor: next + 0.5, when: 'DEAL', title: d.brand, text: `${d.label}${d.task === 'clear3' ? ` · ${d.progress}/3` : ''}`, tag: 'deal' });
+  return out.sort((a, z) => a.floor - z.floor);
+}
+function fusionWallet() {
+  if (!data) return null;
+  const r = run;
+  const deals = (r?.phone?.deals || data.lastPhone?.deals || []).filter((d) => d.status === 'done');
+  return {
+    big: r ? ['BOUNTY THIS CLIMB', fmtN(r.runBounty)] : ['LIFETIME BOUNTY', fmtN(data.lifetimeBounty || 0)],
+    note: r ? `Floor ${r.floor}${r.hard ? ' · Hard' : ''}` : 'Start a climb to earn more.',
+    rows: [
+      ['Lifetime Bounty', fmtN(data.lifetimeBounty || 0)],
+      ['Talent points to spend', String(Math.max(0, pointsLeft()))],
+      ['Sponsor money this climb', fmtN(r?.dealBounty || 0)],
+      ['Sponsor deals paid', String(deals.length)],
+      ['Followers', fmtN((r?.phone || data.lastPhone)?.followers ?? data.followers ?? 0)],
+    ],
+  };
+}
+
 export async function render() {
   await profile.update({ lastMode: 'forbidden-fusion' });
   await migrateOld();
   const root = h('section', { class: 'screen mode fusion' });
   let fightView = null;
   const phone = createPhone({
-    apps: ['messages', 'dating', 'buzz', 'news', 'deals', 'settings'],
+    apps: ['messages', 'chirp', 'lenz', 'boo', 'dating', 'news', 'deals', 'calendar', 'wallet', 'photos', 'settings'],
     shortcutWhere: 'Forbidden Fusion',
+    followerNote: 'every 2,500 is +1 Aura in the Tower (max +10)',
+    me: () => ({ name: run?.build?.name || data?.build?.name || 'You', cid: (run?.build || data?.build)?.faceId ?? null }),
+    onPostReply: (id, optionId) => {
+      if (!run) return null;
+      const line = FP.replyPost(run, id, optionId, { rand: Math.random });
+      data.followers = run.phone.followers;
+      saveRun(); saveData();
+      if (view === 'tower') drawTower();
+      return line;
+    },
+    calendar: () => fusionCalendar(),
+    wallet: () => fusionWallet(),
     getPhone: () => (!data ? null : run?.phone || data.lastPhone || null),
     save: () => { if (run) saveRun(); else if (data) saveData(); },
     widgets: (ph) => [[run ? `F${run.next?.floor ?? run.floor}` : '—', 'FLOOR'], [fmtN(ph?.followers || 0), 'FOLLOWERS'], [`+${FP.followerAura(ph?.followers || 0) + (run ? FP.phoneAura(run) : 0)}`, 'AURA']],

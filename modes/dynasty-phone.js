@@ -13,10 +13,14 @@
 //     show RESPECT (+2 Aura next game).
 //   - Matchup (core/phone-dating.js): a date is +2 Aura next game.
 // Phone boosts only count for the next game and stack to +5 a stat.
+//   - v0.25.0: fans post about your games on Chirp (the bird app). When one
+//     @s your team you can answer: HYPE THE FANS (+1 Aura next game) or CLAP
+//     BACK (+1 Chaos). Wins go up on Lenz, and your fighters send Boo snaps.
+//     Texts stay in Messages.
 
 import * as R from './dynasty-rules.js';
 import * as O from './dynasty-off.js';
-import { basePhone, pick, fresh, fillIn, say, mine, back, sys, note, trim } from '../core/phone-core.js';
+import { basePhone, pick, fresh, fillIn, say, mine, back, sys, note, trim, chirp, lenzPost, snap, answerPost } from '../core/phone-core.js';
 import * as D from '../core/phone-dating.js';
 
 export const CHAT_BOOST = 3;
@@ -40,6 +44,7 @@ const RESPECT = ['Your team made it close. Good luck the rest of the way.', 'Tha
 function phoneOf(L) {
   if (!L.phone) L.phone = basePhone({ offers: [] });
   if (!L.phone.offers) L.phone.offers = [];
+  if (L.phone.followers == null) L.phone.followers = 4000 + Math.floor(Math.random() * 3000);
   return L.phone;
 }
 const mineTeam = (L) => L.teams[L.user.team];
@@ -207,6 +212,69 @@ function coachEvent(L, g) {
   ] };
 }
 
+// ---------- v0.25.0: Chirp, Lenz and Boo ----------
+const FAN_HANDLES = ['@CouchCoachAFL', '@ArenaRatTV', '@RealityCheckAFL', '@BracketBrain', '@SeasonTicketSam', '@AFLBarbershop', '@HotTakeHana', '@FilmRoomFrank', '@TopRopeTalk', '@NoCapStats'];
+const WIN_POSTS = ['{tag} looked unstoppable today. {score} over {opp}.', 'Somebody check on {opp}. {tag} did not play nice.', '{tag} are the real deal and I\'m tired of pretending they aren\'t.', 'That {score} win was a statement. {tag} 🔥', 'Coach of the year talk starts NOW. {tag}', 'Every week {tag} find a new way to win.'];
+const LOSS_POSTS = ['{tag} lost to {opp}?? Fire somebody.', '{score}. I need a minute. {tag}', '{tag} fans, we don\'t talk about this one.', 'Overrated. {tag} folded against {opp}.', 'That lineup was a choice, {tag}.', 'Rough night for {tag}. Bounce back or bust.'];
+const NEUTRAL = ['Power rankings are a joke this week. Fight me.', 'This league is so much fun right now.', 'Who\'s winning the Grail? Wrong answers only.', 'Trade deadline brain is taking over.', 'Best fight of the week was not even close.', 'Somebody tell me why the refs keep calling it early.'];
+const FAN_LOVE = ['Been rocking with {tag} since day one 💜', '{tag} got the best squad in the league no debate', 'I\'d run through a wall for this team. {tag}', 'Front row next home game. {tag} let\'s gooo'];
+const FAN_HATE = ['{tag} are a one-season wonder.', 'Can\'t wait for {tag} to fall off.', '{tag} fans are the loudest and the wrongest.', 'Lucky. Every. Week. {tag}'];
+const HYPE_FANS = ['Love you all. See you at the next one. 💜', 'This team plays for you. Keep showing up.', 'Best fans in the AFL. Simple as that.'];
+const CLAP_BACK = ['Check the standings and get back to me.', 'Save this post. You\'ll want to delete it later.', 'Keep watching. I know you will.'];
+const LENZ_WIN = ['Big win. Bigger week. 📸', 'Game day energy. ✅', 'Player of the game. 🏆', 'Locker room was loud tonight.'];
+const SNAP_SQUAD = ['coach look at this ice bath 🥶', 'film room again?? 😴', 'gym at 6am, who\'s coming', 'pre-game fit check 🔥', 'we locked in coach 🔒', 'bus ride vibes 🎧'];
+const tagOf = (t) => `@${t.abbr}AFL`;
+function socialAfterGame(L, g) {
+  const ph = phoneOf(L); const me = mineTeam(L); const rand = Math.random;
+  const when = L.phase === 'playoffs' ? 'Playoffs' : `Week ${R.gameWeek(L) - 1 || 1}`;
+  if (g?.result) {
+    const won = g.result.winner === me.i;
+    const opp = L.teams[g.home === me.i ? g.away : g.home];
+    const s = g.result.score; const sc = g.home === me.i ? s : [s[1], s[0]];
+    const v = { tag: tagOf(me), opp: opp.name, score: `${sc[0]}-${sc[1]}` };
+    chirp(ph, { who: pick(FAN_HANDLES, rand), text: fillIn(line(L, won ? WIN_POSTS : LOSS_POSTS), v), likes: 40 + Math.floor(rand() * 900), when });
+    if (rand() < 0.6) chirp(ph, { who: pick(FAN_HANDLES, rand), text: fillIn(line(L, won ? LOSS_POSTS : WIN_POSTS), { ...v, tag: tagOf(opp), opp: me.name }), likes: 10 + Math.floor(rand() * 300), when });
+    ph.followers = Math.max(0, ph.followers + (won ? 250 + Math.floor(rand() * 400) : -Math.floor(rand() * 150)));
+    if (won) {
+      const best = roster(L, me).filter((p) => p.portrait).sort((a, b) => (b.ovr || b.power || 0) - (a.ovr || a.power || 0));
+      const star = best.length ? pick(best.slice(0, 4), rand) : null;
+      if (star) lenzPost(ph, { who: me.name, cid: star.cid, caption: `${line(L, LENZ_WIN)} ${star.name} vs ${opp.name}.`, likes: Math.round(ph.followers * (0.06 + rand() * 0.05)), when, mine: true, verified: true,
+        comments: [{ who: pick(FAN_HANDLES, rand), text: fillIn(pick(FAN_LOVE, rand), v) }] });
+    }
+    // One fan @s you directly.
+    if (rand() < 0.7) {
+      const hater = !won ? rand() < 0.7 : rand() < 0.35;
+      const p = chirp(ph, { who: pick(FAN_HANDLES, rand), text: fillIn(line(L, hater ? FAN_HATE : FAN_LOVE), v), likes: 5 + Math.floor(rand() * 200), when, mention: true, hater });
+      p.pending = { type: 'fan', season: L.season, week: R.gameWeek(L), options: [
+        { id: 'hype', tone: 'hype', text: line(L, HYPE_FANS), hint: '+1 Aura for your fighters next game' },
+        { id: 'clap', tone: 'hostile', text: line(L, CLAP_BACK), hint: '+1 Chaos next game' },
+      ] };
+    }
+  } else if (rand() < 0.5) chirp(ph, { who: pick(FAN_HANDLES, rand), text: line(L, NEUTRAL), likes: 20 + Math.floor(rand() * 400), when });
+  const top = (L.news || [])[0];
+  if (top && top.title && top.title !== ph.lastNewsChirp) { ph.lastNewsChirp = top.title; chirp(ph, { who: '@AFL', text: top.title, likes: 800 + Math.floor(rand() * 4000), when, verified: true }); }
+  // A fighter sends a snap.
+  if (rand() < 0.45) {
+    const ps = roster(L, me).filter((p) => p.portrait && p.injury <= 0);
+    const p = ps.length ? pick(ps, rand) : null;
+    if (p) snap(ph, { from: p.name, cid: p.cid, caption: line(L, SNAP_SQUAD), when });
+  }
+  // Old mentions you didn't answer close after a week.
+  for (const x of ph.feed || []) if (x.pending && (x.pending.season !== L.season || x.pending.week < R.gameWeek(L))) x.pending = null;
+}
+export function replyPost(L, id, optionId) {
+  const ph = phoneOf(L);
+  const p = (ph.feed || []).find((x) => x.id === id);
+  if (!p || !p.pending) return null;
+  const o = p.pending.options.find((x) => x.id === optionId);
+  if (!o) return null;
+  const stat = o.id === 'hype' ? 'aura' : 'chaos';
+  addBoost(L, stat, 1);
+  ph.followers += o.id === 'hype' ? 120 : 60;
+  answerPost(ph, id, o.text, o.id === 'hype' ? '!!! 😭💜' : 'ok coach chill 💀', p.who);
+  return `+1 ${stat[0].toUpperCase()}${stat.slice(1)} next game.`;
+}
+
 // ---------- After each week (hooked into endWeek) ----------
 export function afterWeek(L, games) {
   if (!L.user) return;
@@ -216,6 +284,7 @@ export function afterWeek(L, games) {
   expireOffers(L);
   const g = games?.find((x) => x.home === L.user.team || x.away === L.user.team);
   if (rand() < 0.75) coachEvent(L, g);
+  socialAfterGame(L, g);
   if (O.tradeOpen(L)) {
     if (ph.shop) { if (offerEvent(L, rand, true)) ph.shop = false; }
     else if (rand() < OFFER_CHANCE) offerEvent(L, rand);
@@ -235,6 +304,7 @@ export function offseasonOffer(L) {
 export function afterPlayoffGame(L, g) {
   if (!L.user || !L.phone) return;
   coachEvent(L, g);
+  socialAfterGame(L, g);
   if (L.playoffs && L.playoffs.champion == null) squadEvent(L);
 }
 

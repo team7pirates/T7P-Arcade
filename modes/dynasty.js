@@ -79,6 +79,32 @@ function tinted(t1, t2, cls = 'dy-arena') {
 }
 const team = (i) => L.teams[i];
 const me = () => L.teams[L.user.team];
+// v0.25.0: the phone's Calendar and Wallet.
+function dynastyCalendar() {
+  if (!L?.user) return [];
+  const u = L.user.team; const out = [];
+  if (L.phase === 'season') {
+    for (let w = L.week; w <= Math.min(R.WEEKS, L.week + 5); w += 1) {
+      const g = R.userGame(L, w);
+      if (!g) { out.push({ when: `WEEK ${w}`, title: 'Bye week', text: '' }); continue; }
+      const opp = L.teams[g.home === u ? g.away : g.home];
+      out.push({ when: `WEEK ${w}`, title: `${g.home === u ? 'vs' : 'at'} ${opp.name}`, text: `${opp.w}-${opp.l}${w === L.week ? ' · next up' : ''}`, tag: w === L.week ? 'callout' : '' });
+      if (w === R.TRADE_DEADLINE) out.push({ when: `WEEK ${w}`, title: 'Trade deadline', text: 'Last week to make trades', tag: 'deal' });
+    }
+    out.push({ when: 'AFTER WK ' + R.WEEKS, title: 'Playoffs', text: '10 teams, play-in first', tag: 'boss' });
+  } else if (L.phase === 'playoffs') out.push({ when: 'NOW', title: 'Playoffs', text: 'One and done', tag: 'boss' });
+  else out.push({ when: 'NOW', title: 'Off-season', text: 'Re-sign, free agency, then the draft', tag: 'deal' });
+  return out;
+}
+function dynastyWallet() {
+  if (!L?.user) return null;
+  const t = me(); const pay = R.payroll(L, t); const cap = R.capNow();
+  return {
+    big: ['CAP SPACE', (Math.round((cap - pay) * 10) / 10).toFixed(1)],
+    note: `${t.name} · Season ${L.season}`,
+    rows: [['Salary cap', cap.toFixed(1)], ['Payroll', pay.toFixed(1)], ['Supermax deals', `${R.supermaxCount(L, t)}/${R.SUPERMAX_LIMIT}`], ['Biggest deal allowed', R.maxDeal().toFixed(1)], ['Draft picks', String(O.picksOwnedBy(L, L.user.team).length)], ['Fans on Chirp', (L.phone?.followers || 0).toLocaleString()]],
+  };
+}
 const players = (t) => t.roster.map((pid) => L.players[pid]);
 
 export async function render() {
@@ -88,8 +114,19 @@ export async function render() {
   let carouselTimer = null;
   // v0.18.0: the phone (GM trade calls, team chat, Matchup).
   const phone = createPhone({
-    apps: ['messages', 'dating', 'settings'],
+    apps: ['messages', 'chirp', 'lenz', 'boo', 'dating', 'news', 'calendar', 'wallet', 'photos', 'settings'],
     shortcutWhere: 'Dynasty',
+    me: () => ({ name: L?.user ? me().name : 'You', cid: null }),
+    onPostReply: (id, optionId) => {
+      if (!L) return null;
+      const line = DP.replyPost(L, id, optionId);
+      save();
+      if (document.querySelector('.dy-hub3, .dy-next')) drawHub();
+      return line;
+    },
+    news: () => (L?.news || []).slice(0, 30).map((n) => ({ src: `${n.kind || 'AFL'} · ${n.off ? 'OFF-SEASON' : n.week ? `WEEK ${n.week}` : `SEASON ${L.season}`}`, title: n.title, text: n.text })),
+    calendar: () => dynastyCalendar(),
+    wallet: () => dynastyWallet(),
     getPhone: () => (L && L.user ? DP.ensure(L) : null),
     save: () => save(),
     getKey: () => L?.user?.phoneKey || 'p',

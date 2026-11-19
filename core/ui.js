@@ -82,6 +82,42 @@ export function avatar(c, chars, size = 'md') {
   return el;
 }
 
+// v0.24.1: the phone's back button (or a swipe back) closes the top pop-up
+// instead of leaving the app. While any pop-up is open, one history step
+// is added (v0.25.0: one shared step, so swapping pop-ups never misfires).
+// onBack() can return 'stay' to handle the back press itself (the phone uses
+// that to go from a chat back to the list, then home, then closed).
+const backStack = [];
+let armed = false;  // our one history step is on top
+let skipPops = 0;
+function disarmSoon() {
+  // Wait a tick: a pop-up that closes and opens the next one keeps the step.
+  setTimeout(() => {
+    if (backStack.length || !armed) return;
+    armed = false;
+    if (history.state && history.state.t7pOverlay) { skipPops += 1; history.back(); }
+  }, 0);
+}
+export function pushBack(onBack) {
+  const entry = { onBack };
+  backStack.push(entry);
+  if (!armed) { try { history.pushState({ t7pOverlay: true }, ''); armed = true; } catch { /* ignore */ } }
+  return function release() {
+    const i = backStack.indexOf(entry);
+    if (i < 0) return;
+    backStack.splice(i, 1);
+    disarmSoon();
+  };
+}
+addEventListener('popstate', () => {
+  if (skipPops) { skipPops -= 1; return; }
+  armed = false;
+  const top = backStack.pop();
+  if (!top) return;
+  if (top.onBack() === 'stay') backStack.push(top);
+  if (backStack.length && !armed) { try { history.pushState({ t7pOverlay: true }, ''); armed = true; } catch { /* ignore */ } }
+});
+
 // Bottom sheet (a panel that slides up). Returns { close, body }.
 let openSheet = null;
 
@@ -99,8 +135,10 @@ export function sheet({ title, content, onClose, wide = false, center = false })
   const scrim = h('div', { class: `scrim${center ? ' scrim-center' : ''}` }, panel);
   append(body, [content]);
 
+  let release = null;
   function close() {
     if (!scrim.isConnected) return;
+    if (release) { const r = release; release = null; r(); }
     document.removeEventListener('keydown', onKey);
     scrim.classList.add('closing');
     const done = () => { scrim.remove(); };
@@ -116,6 +154,7 @@ export function sheet({ title, content, onClose, wide = false, center = false })
   scrim.addEventListener('click', (e) => { if (e.target === scrim) close(); });
   document.addEventListener('keydown', onKey);
   root.append(scrim);
+  release = pushBack(() => { release = null; close(); });
   requestAnimationFrame(() => {
     const first = panel.querySelector('[data-autofocus], input, button:not(.icon-btn), [tabindex="0"]') || closeBtn;
     first.focus({ preventScroll: true });

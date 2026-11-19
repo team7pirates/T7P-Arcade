@@ -27,6 +27,9 @@ function trimPhone(ph, count) {
   }
   if (Array.isArray(ph.offers) && ph.offers.length > 8) ph.offers = ph.offers.slice(0, 8);
   for (const k of ['feed', 'news']) if (Array.isArray(ph[k]) && ph[k].length > 30) { count.posts += ph[k].length - 30; ph[k] = ph[k].slice(0, 30); }
+  // v0.25.0: the social apps.
+  for (const [k, n] of [['lenz', 20], ['gallery', 40]]) if (Array.isArray(ph[k]) && ph[k].length > n) { count.posts += ph[k].length - n; ph[k] = ph[k].slice(0, n); }
+  if (Array.isArray(ph.snaps)) { const keep = ph.snaps.filter((x, i) => !x.seen || i < 10); count.posts += ph.snaps.length - keep.length; ph.snaps = keep; }
   if (Array.isArray(ph.deals)) ph.deals = ph.deals.filter((d, i) => d.status === 'offer' || d.status === 'active' || i < 10);
   if (ph.used && Object.keys(ph.used).length > 200) ph.used = {};
 }

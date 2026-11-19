@@ -1,6 +1,23 @@
 {
   "releases": [
     {
+      "version": "0.25.0",
+      "date": "2026-11-18",
+      "title": "The new foldable phone, social apps, and a working back button",
+      "items": [
+        "The phone is now a foldable. It takes over the whole screen when you open it. On PC, press Unfold to open it up into the big inner screen, and Fold to close it again. It remembers how you left it.",
+        "A real home screen: a clock widget with your stats, your apps in a grid, a dock along the bottom, and your notifications.",
+        "Change the wallpaper in the phone's Settings: six colors, four arenas, your icon, any character, or upload your own photo. The wallpaper is the same in every mode.",
+        "Messages is for texts only now. Anything posted with an @ goes to the new social apps instead.",
+        "Chirp (the bird app): fans and haters post about you. When someone @s you it shows up under Mentions, and you can reply right from the post. In Fusion, replies still move your followers. In Dynasty, HYPE THE FANS gives +1 Aura next game and CLAP BACK gives +1 Chaos.",
+        "Lenz (the photo app): your big wins get posted with fan comments, and other fighters post too.",
+        "Boo (the ghost app): fighters send you snaps. Open one and you get 5 seconds before it's gone. It stays saved in Photos.",
+        "Also new: Calendar (your next floors and boss floor in Fusion, your schedule and the trade deadline in Dynasty), Wallet (your Bounty and talent points in Fusion, your cap space and payroll in Dynasty), Photos and News. Dynasty's phone now has every app.",
+        "Unfolded, Messages shows your chats and the open conversation side by side.",
+        "The phone's back button (or a swipe back) now closes the open pop-up or the phone instead of leaving the app. Inside the phone, back goes up one screen at a time."
+      ]
+    },
+    {
       "version": "0.24.0",
       "date": "2026-11-18",
       "title": "New main menu and the Talent Tree's second ring",
