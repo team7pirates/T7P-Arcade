@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.34.1",
+      "date": "2026-11-19",
+      "title": "Dynasty playoff bye fix",
+      "items": [
+        "Fixed: a top-6 seed sits out the play-in with a bye, but Dynasty said your run was over and Play out the playoffs simulated your games for you. Now you see your seed and a Sim the play-in button, then you play your quarterfinal yourself.",
+        "Play out the playoffs never simulates a game you're still alive for."
+      ]
+    },
+    {
       "version": "0.34.0",
       "date": "2026-11-19",
       "title": "Mystic elements and save codes",

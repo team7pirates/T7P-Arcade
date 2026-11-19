@@ -373,6 +373,14 @@ export async function render() {
           h('div', { class: 'dy-next-row' }, crest(opp, 56), h('p', { class: 'heading' }, opp.name)),
           h('button', { class: 'btn btn-primary btn-wide', onClick: () => openGamePlan() }, 'Game Plan'));
       }
+      // v0.34.1: a top-6 seed sits out the play-in. That's a bye, not the end.
+      if (R.userAlive(L)) {
+        const seed = L.playoffs.seeds.indexOf(L.user.team) + 1;
+        return h('section', { class: 'dy-next dy-panel' },
+          h('p', { class: 'label-spaced gold' }, `PLAYOFFS · NO. ${seed} SEED`),
+          h('p', { class: 'body-text' }, `You earned a bye through the ${R.roundLabel(L.playoffs, R.roundGames(L.playoffs)[0]).toLowerCase()}. Seeds 7 to 10 play for the last two spots; then you play your quarterfinal.`),
+          h('button', { class: 'btn btn-primary btn-wide', onClick: async () => { R.simPlayoffs(L, true); await save(); toast('The play-in is done. Your quarterfinal is up.'); drawHub(); } }, 'Sim the play-in'));
+      }
       return h('section', { class: 'dy-next dy-panel' },
         h('p', { class: 'label-spaced gold' }, 'THE PLAYOFFS'),
         h('p', { class: 'body-text' }, L.playoffs.seeds.includes(L.user.team) ? 'Your run is over. The rest of the playoffs are on.' : `You missed the playoffs. ${R.PLAYOFF_TEAMS} teams play on.`),
@@ -2467,6 +2475,8 @@ export async function render() {
   }
 
   async function finishPlayoffs() {
+    // Never sim a game the user should play (v0.34.1).
+    if (R.userAlive(L)) { R.simPlayoffs(L, true); await save(); drawHub(); return; }
     R.simPlayoffs(L, false);
     const row = R.endSeason(L);
     recordSeason(row);
