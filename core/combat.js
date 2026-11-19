@@ -18,6 +18,8 @@
 //   Chaos        → how much each hit swings: up to ±8% extra
 // The deciding round is any round where a side is one win from the match.
 
+import { FX, elementOf } from './elements.js';
+
 export const ROLES = ['Striker', 'Tank', 'Speedster', 'Mystic', 'Tactician'];
 
 // Approved role wheel: each role beats two and loses to two.
@@ -35,7 +37,7 @@ export const SPECIALS = {
   Striker: { name: 'Finisher', text: 'A huge hit for 2× damage.' },
   Tank: { name: 'Iron Wall', text: 'Heals 15% health and halves the next hit taken.' },
   Speedster: { name: 'Blitz', text: 'Two fast hits at 0.7× each.' },
-  Mystic: { name: 'Hex', text: 'A 1.2× hit that burns for 9% health on each of the next 2 turns.' },
+  Mystic: { name: 'Hex', text: 'A 1.3× hit that leaves the Mystic\'s element: Burn, Freeze, Shock or Drain, each taking 2-4% health a turn with its own extra effect.' },
   Tactician: { name: 'Counterplay', text: 'A 1.2× hit that often stuns: the target loses its next turn.' },
 };
 
@@ -50,7 +52,7 @@ export const TUNING = {
   tankHp: 1.22,           // Tanks have 22% more health
   speedsterFirst: 0.58,   // Speedsters usually strike first
   finisher: 2.0,
-  burn: 0.09,             // Hex burn per turn (share of max health)
+  hex: 1.3,               // v0.34.0: Hex hit (its element effects live in core/elements.js)
   blitz: 0.7,
   tacticianStunChance: 0.9, // Counterplay stuns 90% of the time
   chaosSpread: 0.08,      // Chaos 100 adds up to ±8% more
@@ -154,7 +156,7 @@ function runRound(sides, round, deciding, rand, events, startHp, ally = null) {
     state[s] = {
       lineup: sides[s].map((f, i) => {
         const hp = s === 'A' && startHp && startHp[i] != null ? Math.max(1, Math.min(f.maxHp, Math.round(startHp[i]))) : f.maxHp;
-        return { ...f, hp, meter: f.startMeter || 0, burn: 0, guard: false, stunned: false, clutchUsed: false, out: false, saves: f.unbreak || 0, firstSpDone: false };
+        return { ...f, hp, meter: f.startMeter || 0, fx: null, guard: false, stunned: false, clutchUsed: false, out: false, saves: f.unbreak || 0, firstSpDone: false };
       }),
       idx: 0,
     };
@@ -191,15 +193,28 @@ function runRound(sides, round, deciding, rand, events, startHp, ally = null) {
       if (foe.out) { turnSide = foeSide; continue; }
     }
 
-    // Burn ticks at the start of the burned card's turn.
-    if (me.burn > 0) {
-      const dmg = Math.round((me.maxHp / (me.hpMult || 1)) * TUNING.burn);
-      me.burn -= 1;
-      if (applyDamage(state, side, me, dmg, deciding, rand, events, 'burn')) {
+    // v0.34.0: a Mystic's element ticks at the start of the affected card's turn.
+    if (me.fx) {
+      const d = FX[me.fx.el];
+      const dmg = Math.max(1, Math.round((me.maxHp / (me.hpMult || 1)) * d.pct));
+      const el = me.fx.el;
+      me.fx.turns -= 1;
+      const ended = me.fx.turns <= 0;
+      if (ended) me.fx = null;
+      if (d.meter) { me.meter = Math.max(0, me.meter - d.meter); events.push({ t: 'meter', side, value: Math.round(me.meter) }); }
+      const ko = applyDamage(state, side, me, dmg, deciding, rand, events, el);
+      // Drain heals whoever is fighting for the Mystic's side.
+      if (el === 'drain') {
+        const src = active(foeSide);
+        const amt = src && !src.out ? Math.min(src.maxHp - src.hp, Math.round(dmg * (d.heal || 1))) : 0;
+        if (amt > 0) { src.hp += amt; events.push({ t: 'heal', side: foeSide, heal: amt, hp: src.hp }); }
+      }
+      if (ko) {
         if (nextCard(state, side, events)) return done(foeSide);
         turnSide = foeSide;
         continue;
       }
+      if (ended) events.push({ t: 'status-end', side, status: el });
     }
 
     if (me.stunned) {
@@ -207,7 +222,7 @@ function runRound(sides, round, deciding, rand, events, startHp, ally = null) {
       events.push({ t: 'stunned', side });
     } else {
       const auraBoost = (deciding ? TUNING.auraDmgDeciding : TUNING.auraDmg) * (me.aura / 100);
-      const base = me.atk * (1 + roleBonus(me, foe) + auraBoost);
+      const base = me.atk * (1 + roleBonus(me, foe) + auraBoost) * (me.fx?.el === 'frost' ? 1 - FX.frost.soften : 1);
       const swing = () => {
         const spread = TUNING.hitSpread + TUNING.chaosSpread * (me.chaos / 100);
         return 1 + (rand() * 2 - 1) * spread;
@@ -240,8 +255,12 @@ function runRound(sides, round, deciding, rand, events, startHp, ally = null) {
         ko = hit(TUNING.blitz, { first: true });
         if (!ko) ko = hit(TUNING.blitz, { second: true });
       } else if (me.mainRole === 'Mystic') {
-        ko = hit(1.2);
-        if (!ko) { foe.burn = 2; events.push({ t: 'status', side: foeSide, status: 'burn', turns: 2 }); }
+        ko = hit(TUNING.hex);
+        if (!ko) {
+          const el = elementOf(me);
+          foe.fx = { el, turns: FX[el].turns };
+          events.push({ t: 'status', side: foeSide, status: el, turns: FX[el].turns });
+        }
       } else if (me.mainRole === 'Tactician') {
         ko = hit(1.2);
         if (!ko && rand() < TUNING.tacticianStunChance) { foe.stunned = true; events.push({ t: 'status', side: foeSide, status: 'stun', turns: 1 }); }

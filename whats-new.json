@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.34.0",
+      "date": "2026-11-19",
+      "title": "Mystic elements and save codes",
+      "items": [
+        "Mystics now have elements. Their Hex leaves 🔥 Burn (5% health a turn for 4 turns), ❄️ Freeze (3% a turn for 3 turns, and the frozen card hits 30% softer), ⚡ Shock (4% a turn for 3 turns, draining their special meter) or 🩸 Drain (5% a turn for 3 turns, and the Mystic's side heals 1.5× that).",
+        "Every Mystic has the element that fits them (Dabi burns, Aokiji freezes, Enel shocks, Mahito drains), shown on their role chip. In fights you'll see the card catch fire, ice over, crackle or pulse red.",
+        "A Forbidden Fusion fighter with Mystic as its main role picks its element in the creator or on the Your Fighter screen.",
+        "Hex hits a little harder (1.3×) so Mystics win as often as before overall.",
+        "Save codes: in Settings, tap Send or back up saves, then Get a code. Type the 6-letter code on your other device with Enter a save code. Codes need the internet, work once and last 24 hours. The file transfer still works without the internet."
+      ]
+    },
+    {
       "version": "0.33.0",
       "date": "2026-11-19",
       "title": "Dynasty: the Time Chamber",

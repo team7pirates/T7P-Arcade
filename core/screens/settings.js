@@ -14,6 +14,7 @@ import { languageSwitch } from '../language.js';
 import { playtime, fmtTime } from '../playtime.js';
 import { MODES } from '../modes.js';
 import { go } from '../router.js';
+import * as SC from '../save-code.js';
 
 export function renderSettings() {
   const s = settings.value;
@@ -63,12 +64,13 @@ export function renderSettings() {
     group('Saves',
       h('p', { class: 'body-text setting-note' },
         store.persistent
-          ? 'Your saves are kept on this device. To move them to another phone or PC without the internet: tap Send or back up saves, send the file with AirDrop, Nearby Share, Bluetooth or a USB cable, then open Settings on the other device and tap Restore. You can send everything or just one save. Every 2 days the game also trims old clutter (old texts, old magazine issues) and tells you what it removed; your records and history are never touched.'
+          ? 'Your saves are kept on this device. Quickest way to move them: tap Send or back up saves, then Get a code, and type that 6-letter code on the other device with Enter a save code (needs the internet; a code works once, for 24 hours). No internet? Tap Send or back up saves, send the file with AirDrop, Nearby Share, Bluetooth or a USB cable, then open Settings on the other device and tap Restore. You can send everything or just one save. Every 2 days the game also trims old clutter (old texts, old magazine issues) and tells you what it removed; your records and history are never touched.'
           : 'This browser is blocking storage (private window?), so nothing is saved after you close the tab.'),
       h('div', { class: 'btn-col' },
         h('button', { class: 'btn btn-secondary', onClick: backupSheet }, icon('download', 18), 'Send or back up saves'),
         h('button', { class: 'btn btn-secondary', onClick: async () => { const r = await runCleanup({ force: true }); toast(r?.text || 'Nothing to clean up. Your saves are tidy.', { duration: 7000 }); } }, 'Clean up saves now'),
         restoreButton(),
+        h('button', { class: 'btn btn-secondary', onClick: enterCodeSheet }, '🔑 Enter a save code'),
         h('button', { class: 'btn btn-danger', onClick: eraseAll }, 'Erase everything'),
       ),
     ),
@@ -170,6 +172,7 @@ async function backupSheet() {
     const data = {}; chosen.forEach((g) => g.keys.forEach((k) => { data[k] = all[k]; }));
     const partial = chosen.length < groups.length;
     const file = { app: 't7p-arcade', appVersion: APP_VERSION, exportedAt: new Date().toISOString(), partial, saves: chosen.map((g) => g.label), data };
+    if (how === 'code') { s.close(); codeSheet(file); return; }
     const name = `t7p-arcade-${partial ? 'saves' : 'backup'}-${new Date().toISOString().slice(0, 10)}.json`;
     const text = JSON.stringify(file);
     if (how === 'share') {
@@ -191,11 +194,13 @@ async function backupSheet() {
   const s = sheet({
     title: 'SEND OR BACK UP SAVES',
     content: h('div', { class: 'save-pick-wrap' },
-      h('p', { class: 'body-text' }, 'Pick what goes in the file. No internet needed: send it straight to your other device, or save it and move it with a cable.'),
+      h('p', { class: 'body-text' }, 'Pick what to move. Get a code to type on your other device, or (no internet needed) send the file straight over or save it and move it with a cable.'),
       groups.length ? list : h('p', { class: 'body-text muted' }, 'Nothing is saved on this device yet.'),
       h('div', { class: 'btn-col' },
-        canShare ? h('button', { class: 'btn btn-primary', onClick: () => go('share') }, 'Send to another device') : null,
-        h('button', { class: canShare ? 'btn btn-secondary' : 'btn btn-primary', onClick: () => go('download') }, icon('download', 18), 'Save the file')),
+        h('button', { class: 'btn btn-primary', onClick: () => go('code') }, '🔑 Get a code'),
+        h('p', { class: 'caption muted' }, `Easiest: a ${SC.CODE_LEN}-letter code you type on the other device. Needs the internet; works once, for ${SC.CODE_HOURS} hours.`),
+        canShare ? h('button', { class: 'btn btn-secondary', onClick: () => go('share') }, 'Send to another device') : null,
+        h('button', { class: 'btn btn-secondary', onClick: () => go('download') }, icon('download', 18), 'Save the file')),
       h('p', { class: 'caption muted' }, canShare ? 'Send opens your share menu: AirDrop on iPhone, Nearby Share or Quick Share on Android, or Bluetooth.' : 'On a PC: copy the file to a USB stick or your phone with a cable. On a phone, Send uses AirDrop or Nearby Share.')),
   });
 }
@@ -217,17 +222,67 @@ function restoreButton() {
       toast('That file is not a T7P Arcade backup.');
       return;
     }
-    const when = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleDateString() : 'an unknown date';
-    const mode = await restoreChoice(parsed, when);
-    if (!mode) return;
-    if (mode === 'replace') await store.replaceAll(parsed.data);
-    else for (const [k, v] of Object.entries(parsed.data)) await store.set(k, v);
-    await Promise.all([settings.load(), profile.load(), records.load()]);
-    refresh();
-    toast(mode === 'replace' ? 'Backup restored.' : 'Saves added to this device.');
+    await applyBackup(parsed);
   });
   return h('span', {}, input,
     h('button', { class: 'btn btn-secondary', onClick: () => input.click() }, 'Restore from backup'));
+}
+
+async function applyBackup(parsed) {
+  const when = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleDateString() : 'an unknown date';
+  const mode = await restoreChoice(parsed, when);
+  if (!mode) return false;
+  if (mode === 'replace') await store.replaceAll(parsed.data);
+  else for (const [k, v] of Object.entries(parsed.data)) await store.set(k, v);
+  await Promise.all([settings.load(), profile.load(), records.load()]);
+  refresh();
+  toast(mode === 'replace' ? 'Backup restored.' : 'Saves added to this device.');
+  return true;
+}
+
+// v0.34.0: upload and show the code.
+function codeSheet(file) {
+  const body = h('div', { class: 'save-pick-wrap save-code-wrap' }, h('p', { class: 'body-text' }, 'Making your code…'));
+  const s = sheet({ title: 'YOUR SAVE CODE', content: body });
+  SC.makeCode(file).then(({ code, expires }) => {
+    const pretty = `${code.slice(0, 3)} ${code.slice(3)}`;
+    body.replaceChildren(
+      h('p', { class: 'save-code', 'aria-label': `Code ${code.split('').join(' ')}` }, pretty),
+      h('p', { class: 'body-text' }, `On your other device: open T7P Arcade, go to Settings, tap Enter a save code and type this. It works once, until ${expires.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}.`),
+      h('p', { class: 'caption muted' }, `Holds: ${file.saves.join(', ')}.`),
+      h('div', { class: 'btn-col' },
+        h('button', { class: 'btn btn-secondary', onClick: async () => { try { await navigator.clipboard.writeText(code); toast('Code copied.'); } catch { toast(`Your code is ${pretty}.`); } } }, 'Copy code'),
+        h('button', { class: 'btn btn-primary', onClick: () => s.close() }, 'Done')));
+  }).catch((e) => {
+    body.replaceChildren(h('p', { class: 'body-text loss' }, SC.errorText(e)), h('div', { class: 'btn-col' }, h('button', { class: 'btn btn-secondary', onClick: () => s.close() }, 'Close')));
+  });
+}
+
+// v0.34.0: type a code from another device.
+function enterCodeSheet() {
+  const input = h('input', { class: 'save-code-input', type: 'text', inputmode: 'text', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', maxlength: '8', placeholder: 'ABC 123', 'aria-label': 'Save code',
+    onInput: () => { const c = SC.cleanCode(input.value); btn.disabled = !SC.looksLikeCode(c); msg.textContent = ''; },
+    onKeydown: (e) => { if (e.key === 'Enter' && !btn.disabled) btn.click(); } });
+  const msg = h('p', { class: 'caption loss', role: 'status' });
+  const btn = h('button', { class: 'btn btn-primary', disabled: true, onClick: async () => {
+    btn.disabled = true; btn.textContent = 'Getting your saves…';
+    try {
+      const parsed = await SC.takeCode(input.value);
+      if (!parsed) { msg.textContent = 'That code didn\'t work. It may be mistyped, already used, or older than 24 hours.'; btn.textContent = 'Get my saves'; btn.disabled = false; return; }
+      if (parsed.app !== 't7p-arcade' || typeof parsed.data !== 'object') { msg.textContent = 'That code isn\'t a T7P Arcade save.'; btn.textContent = 'Get my saves'; return; }
+      s.close();
+      const ok = await applyBackup(parsed);
+      if (!ok) {
+        // The code is used up once claimed, so park the saves under a new one.
+        try { const { code } = await SC.makeCode(parsed); toast(`Not restored. Your saves are safe under a new code: ${code.slice(0, 3)} ${code.slice(3)}`, { duration: 12000 }); }
+        catch { toast('Not restored.'); }
+      }
+    } catch (e) { msg.textContent = SC.errorText(e); btn.textContent = 'Get my saves'; btn.disabled = false; }
+  } }, 'Get my saves');
+  const s = sheet({ title: 'ENTER A SAVE CODE', content: h('div', { class: 'save-pick-wrap' },
+    h('p', { class: 'body-text' }, 'On the device that has your saves: Settings, Send or back up saves, Get a code. Then type it here.'),
+    input, msg, h('div', { class: 'btn-col' }, btn)) });
+  setTimeout(() => input.focus(), 50);
 }
 
 // Add the saves in the file (keep the rest of this device), or replace everything.

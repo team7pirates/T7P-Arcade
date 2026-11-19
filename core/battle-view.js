@@ -13,15 +13,18 @@ import { h, avatar } from './ui.js';
 import { characters } from './characters.js';
 import { tierBadge } from './card.js';
 import { runMatch } from './combat.js';
+import { FX, elementOf } from './elements.js';
 import { settings } from './settings.js';
 import { sfx } from './sfx.js';
 
-const STATUS_LABEL = { burn: 'BURN', stun: 'STUN', guard: 'GUARD' };
+const STATUS_LABEL = { burn: 'BURN', stun: 'STUN', guard: 'GUARD', fire: '🔥 BURN', frost: '❄️ FROZEN', shock: '⚡ SHOCK', drain: '🩸 DRAIN' };
+// v0.34.0: Mystic elements show on the card itself.
+const FX_KEYS = ['fire', 'frost', 'shock', 'drain'];
 const fmt = (n) => Math.round(n).toLocaleString();
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // How long each event shows at 1× speed (ms).
-const TIMING = { 'round-start': 1100, enter: 450, turn: 120, attack: 520, damage: 380, clutch: 900, status: 300, stunned: 600, ko: 700, 'round-end': 1200, meter: 0, timeout: 800, assist: 1000 };
+const TIMING = { 'round-start': 1100, enter: 450, turn: 120, attack: 520, damage: 380, clutch: 900, status: 300, 'status-end': 0, heal: 380, stunned: 600, ko: 700, 'round-end': 1200, meter: 0, timeout: 800, assist: 1000 };
 
 export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, bestOf = 3, startHp = null, labels = { A: 'YOU', B: 'THEY' }, names = null, assist = null, onDone }) {
   const result = runMatch(teamA, teamB, { seed: seed ?? Date.now(), bestOf, startHp, assist });
@@ -86,14 +89,16 @@ export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, be
     const max = s.max[s.idx];
     const pct = Math.max(0, (hp / max) * 100);
     const statusList = Object.entries(s.status).filter(([, v]) => v);
-    const card = h('div', { class: `bt-card fr-${c.franchise}` },
+    const fx = FX_KEYS.filter((k) => s.status[k]);
+    const card = h('div', { class: `bt-card fr-${c.franchise}${fx.map((k) => ` fx-${k}`).join('')}` },
       h('div', { class: 'bt-pic' },
         avatar(c, characters, 'card'),
+        fx.length ? h('span', { class: 'bt-fx', 'aria-hidden': 'true' }, fx.map((k) => h('span', { class: `bt-fx-layer is-${k}` }))) : null,
         h('span', { class: 'char-pl' }, h('span', { class: 'char-pl-num' }, String(c.powerLevel)), tierBadge(c)),
         statusList.length ? h('span', { class: 'bt-status' }, statusList.map(([k]) => h('span', { class: `bt-st st-${k}` }, STATUS_LABEL[k]))) : null,
       ),
       h('div', { class: 'bt-name' }, c.name),
-      h('div', { class: 'bt-role' }, c.mainRole ? h('span', { class: `chip role-${c.mainRole.toLowerCase()}` }, c.mainRole) : null),
+      h('div', { class: 'bt-role' }, c.mainRole ? h('span', { class: `chip role-${c.mainRole.toLowerCase()}` }, c.mainRole === 'Mystic' ? `${FX[elementOf(c)].icon} Mystic` : c.mainRole) : null),
       h('div', { class: 'bt-meter', 'aria-label': `Special meter ${s.meter}%` },
         [0, 1, 2, 3, 4].map((i) => h('span', { class: `bt-mpip${s.meter >= (i + 1) * 20 ? ' on' : ''}` }))),
       h('div', { class: `bt-hp${pct < 30 ? ' is-low' : ''}`, role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': max, 'aria-valuenow': hp, 'aria-label': `${c.name} health` },
@@ -197,11 +202,23 @@ export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, be
         const s = live[ev.side];
         s.hp[s.idx] = ev.hp;
         if (ev.kind === 'burn') s.status.burn = true;
+        if (FX_KEYS.includes(ev.kind)) s.status[ev.kind] = true;
         drawCard(ev.side);
         flash(ev.side, 'anim-hit');
-        pop(ev.side, `-${fmt(ev.dmg)}`, ev.kind === 'burn' ? 'pop-burn' : 'pop-dmg');
+        pop(ev.side, `-${fmt(ev.dmg)}`, ev.kind === 'burn' ? 'pop-burn' : FX_KEYS.includes(ev.kind) ? `pop-burn pop-${ev.kind}` : 'pop-dmg');
         break;
       }
+      case 'heal': {
+        const s = live[ev.side];
+        s.hp[s.idx] = ev.hp;
+        drawCard(ev.side);
+        pop(ev.side, `+${fmt(ev.heal)}`, 'pop-heal');
+        break;
+      }
+      case 'status-end':
+        live[ev.side].status[ev.status] = false;
+        drawCard(ev.side);
+        break;
       case 'assist':
         // v0.28.0: an ally from your phone jumps in.
         showBanner(`${String(ev.name).toUpperCase()} JUMPS IN!`, 'is-assist');
@@ -218,6 +235,7 @@ export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, be
       case 'status':
         live[ev.side].status[ev.status] = true;
         drawCard(ev.side);
+        if (FX_KEYS.includes(ev.status)) pop(ev.side, STATUS_LABEL[ev.status], `pop-move pop-${ev.status}`);
         break;
       case 'stunned':
         live[ev.side].status.stun = false;

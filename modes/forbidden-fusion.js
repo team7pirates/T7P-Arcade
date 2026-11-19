@@ -21,6 +21,7 @@ import { go } from '../core/router.js';
 import { shareText } from '../core/grid-board.js';
 import { ROLES, SPECIALS, BEATS, fighterStats } from '../core/combat.js';
 import { playMatch } from '../core/battle-view.js';
+import { FX, ELEMENT_KEYS, ELEMENTS } from '../core/elements.js';
 import {
   GYM, START_BUDGET, ROLE_CHANGE, roleChangeCost, starterBuild, fighterFrom,
   TREE, TREE_MAX, node, treeCost, tierOf, canBuy, applyTree, treeFromBuild, pointsForFloor, POINTS_PER_BOSS,
@@ -116,6 +117,18 @@ function migrateTree(d) {
 const rolesLocked = () => data.locked ?? ((data.lifetimeBounty || 0) > 0 || (data.hof || []).length > 0);
 
 function shuffleSeed() { return Math.floor(Math.random() * 2 ** 31); }
+
+// v0.34.0: a Mystic fighter picks an element (default: the face's).
+const faceElement = (faceId) => ELEMENTS[characters.get(faceId)?.name] || 'fire';
+function elementChips(cur, onPick) {
+  return h('div', {},
+    h('p', { class: 'label-spaced ff-gap' }, 'HEX ELEMENT'),
+    h('div', { class: 'ff-cr-chips', role: 'radiogroup', 'aria-label': 'Hex element' }, ELEMENT_KEYS.map((k) => h('button', {
+      class: `dy-option dy-option-sm ff-el is-${k}${cur === k ? ' is-on' : ''}`, role: 'radio', 'aria-checked': cur === k ? 'true' : 'false',
+      onClick: () => { sfx.play('pick'); onPick(k); },
+    }, `${FX[k].icon} ${FX[k].name}`))),
+    h('p', { class: 'caption muted' }, `Your Hex ${FX[cur].text}.`));
+}
 
 function planFloor(r) {
   const floor = r.floor + 1;
@@ -337,6 +350,7 @@ export async function render() {
       if (cr.step === 2) body = h('div', { class: 'ff-cr-body' }, h('h2', { class: 'heading' }, 'How do you fight?'),
         h('p', { class: 'label-spaced' }, 'MAIN STYLE'),
         h('div', { class: 'dy-options' }, ROLES.map((r) => opt(cr.mainRole === r, () => { cr.mainRole = r; if (cr.secondRole === r) cr.secondRole = null; }, null, r, `${SPECIALS[r].name}: ${SPECIALS[r].text}`, `Beats ${BEATS[r].join(' · ')}`))),
+        cr.mainRole === 'Mystic' ? elementChips(cr.element || faceElement(cr.faceId), (k) => { cr.element = k; draw(); }) : null,
         h('p', { class: 'label-spaced' }, 'SECOND STYLE (OPTIONAL)'),
         h('div', { class: 'ff-cr-chips' }, [null, ...ROLES.filter((r) => r !== cr.mainRole)].map((r) => h('button', { class: `dy-option dy-option-sm${cr.secondRole === r ? ' is-on' : ''}`, onClick: () => { cr.secondRole = r; sfx.play('pick'); draw(); } }, r || 'None'))),
         nav(!!cr.mainRole));
@@ -360,6 +374,7 @@ export async function render() {
       b.name = (cr.name || 'THE FORBIDDEN ONE').toUpperCase();
       b.mainRole = cr.mainRole || b.mainRole; b.secondRole = cr.secondRole && cr.secondRole !== b.mainRole ? cr.secondRole : null;
       b.origin = cr.origin; b.personality = cr.personality;
+      if (b.mainRole === 'Mystic') b.element = cr.element || faceElement(cr.faceId);
       b.chaos = Math.max(0, Math.min(100, 50 + (FC.origin(cr.origin)?.chaos || 0)));
       return applyTree(b);
     };
@@ -653,6 +668,7 @@ export async function render() {
             onClick: () => { draft.mainRole = r; if (draft.secondRole === r) draft.secondRole = null; draw(); },
           }, h('span', { class: 'ff-role-name' }, r), h('span', { class: 'ff-role-move' }, SPECIALS[r].name)))),
           h('p', { class: 'caption' }, `${SPECIALS[draft.mainRole].name}: ${SPECIALS[draft.mainRole].text} Beats ${BEATS[draft.mainRole].join(' and ')}.`),
+          draft.mainRole === 'Mystic' ? elementChips(draft.element || faceElement(draft.faceId), (k) => { draft.element = k; draw(); }) : null,
           h('h3', { class: 'label-spaced set-title ff-gap' }, 'SECOND ROLE'),
           h('p', { class: 'caption muted' }, 'Adds +8% damage against the roles it beats.'),
           h('div', { class: 'ff-roles is-second', role: 'radiogroup', 'aria-label': 'Second role' },

@@ -239,6 +239,8 @@ export function fighterFrom(build, face) {
     powerLevel: build.powerLevel,
     mainRole: build.mainRole,
     secondRole: build.secondRole,
+    element: build.element || undefined, // v0.34.0: Hex element
+    faceName: face?.name,
     aura: build.aura,
     clutch: build.clutch,
     chaos: build.chaos,

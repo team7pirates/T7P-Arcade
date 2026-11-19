@@ -2008,3 +2008,39 @@ body:has(.osm-page) .ph-open:not(.is-moved) { display: none; }
 .dy-ch-plus { font-size: 1.3rem; font-weight: 800; }
 .dy-ch-slot .dy-list-text { flex: 1; min-width: 0; }
 .dy-inj.is-chamber { background: rgba(140, 110, 255, .25); color: #d9ceff; }
+
+/* v0.34.0: Mystic elements on the fight cards */
+.st-fire { color: #ff7a3d; } .st-frost { color: #8fd8ff; } .st-shock { color: #ffe14d; } .st-drain { color: #ff4f7a; }
+.pop-fire { color: #ff7a3d; } .pop-frost { color: #8fd8ff; } .pop-shock { color: #ffe14d; } .pop-drain { color: #ff4f7a; }
+.bt-fx { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.bt-fx-layer { position: absolute; inset: 0; }
+/* Burning: flames licking up from the bottom */
+.bt-fx-layer.is-fire { background: radial-gradient(120% 60% at 50% 105%, rgba(255,120,30,.75), rgba(255,60,0,.35) 45%, transparent 70%); mix-blend-mode: screen; animation: fx-flame .5s ease-in-out infinite alternate; }
+.bt-fx-layer.is-fire::after { content: ''; position: absolute; inset: 0; background: radial-gradient(30% 25% at 30% 95%, rgba(255,210,90,.7), transparent 70%), radial-gradient(25% 30% at 72% 98%, rgba(255,170,60,.6), transparent 70%); animation: fx-flame .35s ease-in-out infinite alternate-reverse; }
+@keyframes fx-flame { from { opacity: .7; transform: translateY(2%) scaleY(.96); } to { opacity: 1; transform: translateY(-2%) scaleY(1.05); } }
+/* Frozen: blue tint, frosted edge and ice crystals */
+.bt-card.fx-frost .bt-pic img { filter: saturate(.45) hue-rotate(170deg) brightness(1.05); }
+.bt-fx-layer.is-frost { background: linear-gradient(180deg, rgba(190,235,255,.28), rgba(120,200,255,.18)); box-shadow: inset 0 0 18px 6px rgba(200,240,255,.85), inset 0 0 2px 2px #fff; }
+.bt-fx-layer.is-frost::after { content: '❄'; position: absolute; top: 6%; right: 8%; font-size: 22px; color: #e6f7ff; text-shadow: 0 0 6px #8fd8ff; animation: fx-twinkle 1.6s ease-in-out infinite; }
+.bt-fx-layer.is-frost::before { content: '❄'; position: absolute; bottom: 12%; left: 10%; font-size: 15px; color: #e6f7ff; text-shadow: 0 0 6px #8fd8ff; animation: fx-twinkle 1.6s .8s ease-in-out infinite; }
+@keyframes fx-twinkle { 0%, 100% { opacity: .4; transform: scale(.9) rotate(0); } 50% { opacity: 1; transform: scale(1.1) rotate(20deg); } }
+/* Shocked: crackling yellow flashes and jitter */
+.bt-card.fx-shock .bt-pic { animation: fx-jitter .18s steps(2) infinite; }
+.bt-fx-layer.is-shock { background: linear-gradient(115deg, transparent 42%, rgba(255,240,120,.95) 44%, transparent 46%, transparent 60%, rgba(255,240,120,.8) 61%, transparent 63%); mix-blend-mode: screen; animation: fx-spark .4s steps(1) infinite; }
+.bt-fx-layer.is-shock::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 14px 3px rgba(255,230,80,.75); animation: fx-spark .3s steps(1) infinite reverse; }
+@keyframes fx-spark { 0% { opacity: 1; } 50% { opacity: 0; } 75% { opacity: .7; } }
+@keyframes fx-jitter { 0% { transform: translate(0, 0); } 50% { transform: translate(1px, -1px); } 100% { transform: translate(-1px, 1px); } }
+/* Drained: dark red pulse, life pulled upward */
+.bt-card.fx-drain .bt-pic img { filter: saturate(.6) brightness(.85); }
+.bt-fx-layer.is-drain { background: radial-gradient(80% 70% at 50% 50%, transparent 40%, rgba(150,0,40,.55)); animation: fx-pulse 1s ease-in-out infinite; }
+.bt-fx-layer.is-drain::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, transparent 0 14px, rgba(255,60,110,.35) 14px 16px); animation: fx-rise 1.2s linear infinite; mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent); }
+@keyframes fx-pulse { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
+@keyframes fx-rise { from { background-position-y: 0; } to { background-position-y: -32px; } }
+@media (prefers-reduced-motion: reduce) { .bt-fx-layer, .bt-fx-layer::after, .bt-fx-layer::before, .bt-card.fx-shock .bt-pic { animation: none !important; } }
+/* Element picker in Forbidden Fusion */
+.ff-el.is-fire.is-on { border-color: #ff7a3d; } .ff-el.is-frost.is-on { border-color: #8fd8ff; } .ff-el.is-shock.is-on { border-color: #ffe14d; } .ff-el.is-drain.is-on { border-color: #ff4f7a; }
+.bt-pic .bt-status, .bt-pic .char-pl { z-index: 2; }
+
+/* v0.34.0: save codes */
+.save-code { font-family: var(--font-display); font-size: clamp(2.2rem, 9vw, 3.4rem); letter-spacing: .14em; text-align: center; margin: 6px 0 4px; color: var(--brand-gold); user-select: all; }
+.save-code-input { width: 100%; font-family: var(--font-display); font-size: 1.8rem; letter-spacing: .2em; text-align: center; text-transform: uppercase; padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.05); color: inherit; }
