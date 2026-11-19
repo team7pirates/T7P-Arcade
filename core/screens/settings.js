@@ -9,6 +9,8 @@ import { records } from '../records.js';
 import { back, refresh } from '../router.js';
 import { APP_VERSION } from '../version.js';
 import { music } from '../music.js';
+import { aiSetup } from '../ai-setup.js';
+import { languageSwitch } from '../language.js';
 import { playtime, fmtTime } from '../playtime.js';
 import { MODES } from '../modes.js';
 import { go } from '../router.js';
@@ -38,6 +40,14 @@ export function renderSettings() {
       h('div', { class: 'tier-preview', 'aria-hidden': 'true' },
         ['S', 'A', 'B', 'C'].map((t) => h('span', { class: `tier-badge tier-${t.toLowerCase()}` }, t)),
       ),
+    ),
+
+    group('Language',
+      languageSwitch(() => refresh()),
+    ),
+
+    group('AI texting',
+      aiSetup(),
     ),
 
     group('Time played',

@@ -126,6 +126,8 @@ export async function render() {
     },
     news: () => (L?.news || []).slice(0, 30).map((n) => ({ src: `${n.kind || 'AFL'} · ${n.off ? 'OFF-SEASON' : n.week ? `WEEK ${n.week}` : `SEASON ${L.season}`}`, title: n.title, text: n.text })),
     calendar: () => dynastyCalendar(),
+    aiSetting: () => (L?.user ? `The player is ${L.user.coach || 'the head coach'}, head coach of ${me().name} in the Anime Fighting League. Season ${L.season}, ${L.phase === 'season' ? `week ${L.week}` : L.phase}, record ${me().w}-${me().l}.` : ''),
+    contacts: () => (L?.user ? me().roster.map((pid) => L.players[pid]).filter(Boolean).map((p) => ({ key: `p-${p.pid}`, name: p.name, cid: p.cid ?? null, kind: 'player' })) : []),
     wallet: () => dynastyWallet(),
     getPhone: () => (L && L.user ? DP.ensure(L) : null),
     save: () => save(),

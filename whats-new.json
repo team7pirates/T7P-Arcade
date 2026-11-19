@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.27.0",
+      "date": "2026-11-19",
+      "title": "Lock screen, your phone your way, and texting anyone",
+      "items": [
+        "The phone has a lock screen: your wallpaper, a big clock and your notifications. Swipe up or tap to unlock, or tap a notification to jump straight to it. You can turn it off in the phone's Settings.",
+        "Make the phone yours. In the phone's Settings: separate home and lock screen wallpapers, clock style and color, message previews on or off, rearrange apps, choose your 4 dock apps, hide apps, icon themes (Colorful, Dark, Neon, Gold), phone colors (Graphite, Silver, Gold, T7P purple, White), notification sounds or vibrate, and text size.",
+        "Text anyone you've met: tap ✏️ in Messages. Fighters you've faced, your trainer, your Dynasty players and more.",
+        "Bonds: every person on your phone has a bond from Stranger to Ride or die. Being friendly, funny or hyping them up raises it; trash talk and insults lower it. Bonds can only rise so much a day. They'll matter soon: Fusion allies are next.",
+        "No AI key? Quick texts let you check in, hype someone up, joke around or talk trash, up to 3 a day per person.",
+        "Type your own replies: add a free AI key in Settings (Google Gemini, OpenRouter, Groq or Mistral, plus paid Anthropic or any OpenAI-style service), with step-by-step guides. Characters answer in their own voice, and when a reply is waiting, what you type picks the same outcome a button would. Works in Messages and for @mentions on Chirp. Your key stays in your browser only.",
+        "Language filter: on by default. Adults (18+) can turn it off for cursing, darker jokes and flirtier Matchup chats. Nothing sexual, ever.",
+        "Lenz photos look like real posts now: scenes, close-up selfies, polaroids, filters, stickers and location tags."
+      ]
+    },
+    {
       "version": "0.26.1",
       "date": "2026-11-19",
       "title": "Questionnaire delivery",

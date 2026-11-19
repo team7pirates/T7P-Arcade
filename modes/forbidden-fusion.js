@@ -204,6 +204,7 @@ export async function render() {
       return line;
     },
     calendar: () => fusionCalendar(),
+    aiSetting: () => (run ? `The player is ${run.build?.name || 'a fighter'}, climbing the Tower in an anime fighting game. They're on floor ${run.floor}${run.hard ? ' on Hard' : ''} with ${Math.round(run.phone?.followers || 0).toLocaleString()} followers.` : `The player is ${data?.build?.name || 'a fighter'}, between climbs of the Tower.`),
     wallet: () => fusionWallet(),
     getPhone: () => (!data ? null : run?.phone || data.lastPhone || null),
     save: () => { if (run) saveRun(); else if (data) saveData(); },

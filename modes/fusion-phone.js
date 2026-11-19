@@ -29,6 +29,7 @@
 
 import { floorPower, isBoss, swarmSize, BOSS_EVERY } from './fusion-rules.js';
 import { chirp, lenzPost, snap, answerPost } from '../core/phone-core.js';
+import { meet } from '../core/phone-bonds.js';
 
 export const MAX_FOLLOWER_AURA = 10;
 export const FOLLOWERS_PER_AURA = 2500;
@@ -153,6 +154,9 @@ export function afterFloor(r, ctx) {
   const next = floor + 1;
   r.plan = r.plan || {};
   const foeName = ctx.foes[0]?.name || 'them';
+  // v0.27.0: everyone you fight goes in your contacts.
+  for (const f of ctx.foes || []) if (f?.id != null) meet(ph, { key: `c${f.id}`, name: f.name, cid: f.id, kind: ctx.boss ? 'boss' : 'rival' });
+  meet(ph, { key: 'trainer', name: 'Coach Daichi (your trainer)', kind: 'trainer' });
   // Deals that just finished or failed.
   settleDeals(r, ctx);
   // The feed and the news react to every floor.

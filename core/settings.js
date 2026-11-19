@@ -12,6 +12,8 @@ export const DEFAULT_SETTINGS = {
   skipFightScenes: false,
   reducedMotion: null,   // null = follow the phone's own setting.
   colorblindTiers: false,
+  cleanLanguage: true,   // v0.27.0: the language filter. Off = cursing, darker jokes, flirtier Matchup.
+  ageAnswer: null,       // 'adult' | 'minor' from the 18+ question (null = not asked yet).
 };
 
 let current = { ...DEFAULT_SETTINGS };

@@ -313,3 +313,6 @@ legend.set-text + .segmented { clear: both; }
   .fb-mode { grid-template-columns: 1fr; }
   .fb-mode .fb-n { width: 44px; height: 44px; }
 }
+
+/* v0.27.0: AI texting setup in Settings */
+.set-group .ai-setup { margin-top: 4px; }

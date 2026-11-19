@@ -10,21 +10,30 @@
 // Open it with the "Open phone" button or a key (P by default; change it in
 // the phone's Settings). Close it with the ✕, the home bar, Escape, the key,
 // or the device's back button (back walks out one screen at a time).
+//
+// v0.27.0: a lock screen, phone customization (wallpapers, lock screen, app
+// layout, icon themes, phone color, sounds, text size), texting anyone,
+// bonds, quick texts, and typing your own replies with an AI key.
 
 import { h, fill, avatar, pushBack } from './ui.js';
 import { characters } from './characters.js';
 import { sfx } from './sfx.js';
-import { store } from './store.js';
 import { profile } from './profile.js';
-import { markRead, openSnap, pendingMentions, newSnaps } from './phone-core.js';
+import { markRead, openSnap, pendingMentions, newSnaps, thread as threadFor, pick } from './phone-core.js';
 import * as D from './phone-dating.js';
+import { loadPrefs, getPrefs, setPrefs, wallpaperCss, lockWallpaper, shrinkImage, arrange, GRADIENTS, ARENAS, CLOCK_STYLES, CLOCK_COLORS, ICON_THEMES, FRAMES, SOUNDS, TEXT_SIZES } from './phone-prefs.js';
+import { ai } from './ai.js';
+import { aiSetup } from './ai-setup.js';
+import { characterReply } from './phone-ai.js';
+import { languageSwitch, scrub, filterOn } from './language.js';
+import { addBond, bondOf, levelOf, useQuick, QUICK, QUICK_BACK } from './phone-bonds.js';
+import { lenzPhoto } from './phone-scenes.js';
 
 const ALL_APPS = {
   messages: ['Messages', '💬'], chirp: ['Chirp', '🐦'], lenz: ['Lenz', '📸'], boo: ['Boo', '👻'],
   dating: ['Matchup', '💘'], news: ['News', '📰'], deals: ['Deals', '💼'], calendar: ['Calendar', '📅'],
   wallet: ['Wallet', '👛'], photos: ['Photos', '🖼️'], settings: ['Settings', '⚙️'],
 };
-const DOCK = ['messages', 'chirp', 'lenz', 'boo'];
 const TONES = {
   hostile: '🔥 HOSTILE', humble: '🤝 HUMBLE', accept: '✅ ACCEPT', decline: '✋ PASS', flirt: '💘 FLIRT', funny: '😂 FUNNY', date: '📅 ASK OUT',
   hype: '📣 HYPE', focus: '🧠 FOCUS', loose: '⚡ LET LOOSE', gloat: '😤 GLOAT', respect: '🤝 RESPECT', later: '💜 SWEET',
@@ -32,47 +41,7 @@ const TONES = {
 const fmtN = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 10000 ? `${(n / 1000).toFixed(1)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : Math.round(n || 0).toLocaleString());
 const keyLabel = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k);
 
-// ---------- Wallpapers (shared by every mode) ----------
-const WP_KEY = 'phone:wallpaper';
 const FOLD_KEY = 't7p:phoneFolded';
-const GRADIENTS = {
-  midnight: ['Midnight', 'radial-gradient(ellipse at 30% 0%, #3a1a5c, #0e0a14 65%)'],
-  sunset: ['Sunset', 'linear-gradient(170deg, #ff9a5a 0%, #c2416b 45%, #2a0f3a 100%)'],
-  ocean: ['Ocean', 'linear-gradient(160deg, #2bc0e4 0%, #1e5799 50%, #0b1630 100%)'],
-  gold: ['Gold rush', 'linear-gradient(160deg, #f0c060 0%, #8a5a14 50%, #1a1006 100%)'],
-  sakura: ['Sakura', 'radial-gradient(circle at 70% 20%, #ffc0d9 0%, #c25a8c 40%, #2a0f22 100%)'],
-  forest: ['Forest', 'linear-gradient(170deg, #4caf7a 0%, #1d5b45 50%, #07140f 100%)'],
-};
-const ARENAS = ['2001', '2002', '2003', '2004'];
-let wallpaper = null; // { kind: 'grad'|'arena'|'char'|'custom', id, data }
-let wpLoaded = null;
-const loadWallpaper = () => (wpLoaded ||= store.get(WP_KEY, null).then((w) => { wallpaper = w || { kind: 'grad', id: 'midnight' }; return wallpaper; }).catch(() => { wallpaper = { kind: 'grad', id: 'midnight' }; }));
-function wallpaperCss(w = wallpaper) {
-  if (!w) return GRADIENTS.midnight[1];
-  if (w.kind === 'grad') return (GRADIENTS[w.id] || GRADIENTS.midnight)[1];
-  const shade = 'linear-gradient(180deg, rgba(0,0,0,.25), rgba(0,0,0,.45))';
-  if (w.kind === 'arena') return `${shade}, url("art/afl/arenas/${w.id}.webp") center / cover`;
-  if (w.kind === 'char') { const c = characters.get(w.id); const u = c && characters.portraitUrl(c); return u ? `${shade}, url("${u}") center top / cover, #120b1c` : GRADIENTS.midnight[1]; }
-  if (w.kind === 'custom' && w.data) return `${shade}, url("${w.data}") center / cover`;
-  return GRADIENTS.midnight[1];
-}
-async function setWallpaper(w) { wallpaper = w; try { await store.set(WP_KEY, w); } catch { /* ignore */ } }
-// Shrink an uploaded photo so it fits in the save (about 1080 px tall).
-function shrinkImage(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      const scale = Math.min(1, 1400 / Math.max(img.width, img.height));
-      const c = document.createElement('canvas'); c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url);
-      resolve(c.toDataURL('image/jpeg', 0.82));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('bad image')); };
-    img.src = url;
-  });
-}
 
 // v0.20.0: on touch screens, drag the phone button anywhere; it remembers
 // where you left it. On PC it stays in the corner.
@@ -136,6 +105,7 @@ export function createPhone(opts) {
   const APPS = appIds.filter((id) => ALL_APPS[id]).map((id) => [id, ...ALL_APPS[id]]);
   let open = false; let app = 'home'; let threadKey = null; let postId = null; let capturing = false;
   let chirpTab = 'all'; let viewing = null; let viewTimer = null; let wpPick = false;
+  let setPage = null; let wpFor = 'home'; let aiBusy = null; let search = '';
   let folded = true;
   try { folded = localStorage.getItem(FOLD_KEY) !== 'open'; } catch { /* ignore */ }
   let release = null;
@@ -150,7 +120,7 @@ export function createPhone(opts) {
   const device = h('div', { class: 'ph-device' },
     h('span', { class: 'ph-side ph-side-vol', 'aria-hidden': 'true' }), h('span', { class: 'ph-side ph-side-pwr', 'aria-hidden': 'true' }),
     h('span', { class: 'ph-cam', 'aria-hidden': 'true' }), h('span', { class: 'ph-crease', 'aria-hidden': 'true' }), screen,
-    h('button', { class: 'ph-home', 'aria-label': 'Home (tap again to close)', onClick: () => (app === 'home' ? toggle(false) : go('home')) }));
+    h('button', { class: 'ph-home', 'aria-label': 'Home (tap again to close)', onClick: () => (app === 'home' || app === 'lock' ? toggle(false) : go('home')) }));
   const stage = h('div', { class: 'ph-stage', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Phone', hidden: true, onClick: (e) => { if (e.target === stage) toggle(false); } },
     h('div', { class: 'ph-stage-bar' }, foldBtn, h('button', { class: 'ph-stage-x', 'aria-label': 'Close phone', onClick: () => toggle(false) }, '✕ Close')),
     device, toastEl);
@@ -195,6 +165,8 @@ export function createPhone(opts) {
   function goBack() {
     if (viewing) { stopView(); draw(); return; }
     if (wpPick) { wpPick = false; draw(); return; }
+    if (app === 'settings' && setPage) { setPage = null; draw(); return; }
+    if (app === 'compose') { go('messages'); return; }
     if (app === 'thread') go(String(threadKey).startsWith('date-') ? 'dating' : wide() ? 'home' : 'messages');
     else if (app === 'post') go('chirp');
     else go('home');
@@ -217,14 +189,37 @@ export function createPhone(opts) {
     return h('button', { class: 'ph-app', onClick: () => go(id) }, h('span', { class: `ph-app-icon is-${id}` }, glyph, n ? h('span', { class: 'ph-dot' }, String(n)) : null), h('span', { class: 'ph-app-label' }, label));
   }
 
+  const openNote = (n) => (n.app === 'msg' ? go('thread', n.key) : ALL_APPS[n.app] && appIds.includes(n.app) ? (n.app === 'chirp' ? (chirpTab = 'mentions', go('chirp')) : go(n.app)) : go('messages'));
+
+  // ---------- Lock screen (v0.27.0) ----------
+  function lockScreen(ph) {
+    const pr = getPrefs();
+    const notes = (ph?.notes || []).slice(0, 5);
+    screen.style.background = wallpaperCss(lockWallpaper());
+    const t = time(); const [hh, mm] = t.split(':');
+    const unlock = (then) => { sfx.play('tap'); if (then) then(); else go('home'); };
+    let y0 = null;
+    const clock = pr.clock === 'stacked'
+      ? h('p', { class: 'ph-lclock is-stacked', style: `color:${pr.clockColor}` }, h('span', {}, hh), h('span', {}, mm))
+      : h('p', { class: `ph-lclock is-${pr.clock}`, style: `color:${pr.clockColor}` }, t);
+    fill(screen, status(), h('div', { class: 'ph-lock2',
+      onPointerdown: (e) => { y0 = e.clientY; },
+      onPointerup: (e) => { if (y0 != null && y0 - e.clientY > 50) unlock(); y0 = null; } },
+    h('div', { class: 'ph-lock-top' }, h('p', { class: 'ph-lock-date', style: `color:${pr.clockColor}` }, new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })), clock),
+    notes.length ? h('ul', { class: 'ph-lnotes' }, notes.map((n) => h('li', {}, h('button', { class: 'ph-lnote', onClick: (e) => { e.stopPropagation(); unlock(() => openNote(n)); } },
+      h('span', { class: 'ph-note-app' }, n.app === 'msg' ? 'MESSAGES' : (ALL_APPS[n.app]?.[0] || n.app).toUpperCase()),
+      h('b', {}, n.title), h('span', { class: 'ph-lnote-text' }, pr.previews ? n.text : 'Tap to view'))))) : h('span', { class: 'ph-lnotes' }),
+    h('button', { class: 'ph-unlock', onClick: () => unlock() }, h('span', { class: 'ph-unlock-bar', 'aria-hidden': 'true' }), 'Swipe up or tap to unlock')));
+  }
+
   // ---------- Home screen ----------
   function home(ph) {
     const ws = opts.widgets ? opts.widgets(ph) : [];
     const notes = (ph?.notes || []).slice(0, wide() ? 3 : 4);
-    const openNote = (n) => (n.app === 'msg' ? go('thread', n.key) : ALL_APPS[n.app] && appIds.includes(n.app) ? (n.app === 'chirp' ? (chirpTab = 'mentions', go('chirp')) : go(n.app)) : go('messages'));
-    const grid = APPS.filter(([id]) => !DOCK.includes(id));
-    const dock = APPS.filter(([id]) => DOCK.includes(id));
-    screen.style.background = wallpaperCss();
+    const lay = arrange(appIds);
+    const grid = lay.grid.map((id) => [id, ...ALL_APPS[id]]);
+    const dock = lay.dock.map((id) => [id, ...ALL_APPS[id]]);
+    screen.style.background = wallpaperCss(getPrefs().home);
     const clockW = h('div', { class: 'ph-widget ph-w-clock' }, h('p', { class: 'ph-clock' }, time()), h('p', { class: 'ph-date' }, new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })),
       ws.length ? h('div', { class: 'ph-widgets' }, ws.map(([v, k]) => h('div', {}, h('p', { class: 'ph-wv' }, String(v)), h('p', { class: 'ph-wk' }, k)))) : null);
     const notesW = h('div', { class: 'ph-widget ph-w-notes' }, h('p', { class: 'ph-w-h' }, 'NOTIFICATIONS'),
@@ -249,30 +244,139 @@ export function createPhone(opts) {
   }
   function messages(ph) {
     if (wide() && ph?.threads?.length) { threadKey = ph.threads[0].key; app = 'thread'; threadView(ph); return; }
-    fill(screen, status(), top('Messages', () => go('home')), messageList(ph));
+    fill(screen, status(), top('Messages', () => go('home'), newBtn()), messageList(ph));
+  }
+  const newBtn = () => h('button', { class: 'ph-back ph-new', 'aria-label': 'New message', onClick: () => { search = ''; go('compose'); } }, '✏️');
+
+  // ---------- Text anyone (v0.27.0) ----------
+  const isDate = (t) => String(t.key).startsWith('date-');
+  const shortName = (n) => String(n).split(/[ (]/)[0];
+  function contacts(ph) {
+    const map = new Map();
+    const add = (w) => { if (w?.key && !map.has(w.key) && w.kind !== 'office') map.set(w.key, w); };
+    (ph?.threads || []).forEach(add);
+    (opts.contacts ? opts.contacts(ph) : []).forEach(add);
+    (ph?.met || []).forEach(add);
+    return [...map.values()].sort((a, b) => bondOf(ph, b.key) - bondOf(ph, a.key) || String(a.name).localeCompare(b.name));
+  }
+  function composeApp(ph) {
+    if (!ph) { go('messages'); return; }
+    const all = contacts(ph);
+    const listEl = h('ul', { class: 'ph-list' });
+    const drawList = () => {
+      const q = search.trim().toLowerCase();
+      const list = q ? all.filter((c) => String(c.name).toLowerCase().includes(q)) : all;
+      fill(listEl, list.length ? list.map((c) => { const lv = levelOf(bondOf(ph, c.key)); return h('li', {}, h('button', { class: 'ph-row', onClick: () => {
+        const t = threadFor(ph, { key: c.key, name: c.name, cid: c.cid, kind: c.kind, icon: c.icon });
+        opts.save?.(); go('thread', t.key);
+      } }, face(c), h('span', { class: 'ph-row-text' }, h('span', { class: 'ph-row-name' }, c.name), h('span', { class: 'ph-row-last' }, `${lv[2]} ${lv[1]} · bond ${bondOf(ph, c.key)}`)))); })
+        : h('li', {}, h('p', { class: 'ph-empty' }, q ? 'Nobody by that name.' : 'You haven\'t met anyone yet. Fight, play and people will start texting.')));
+    };
+    const box = h('input', { class: 'ph-search', placeholder: 'Search people', 'aria-label': 'Search people', value: search });
+    box.addEventListener('input', () => { search = box.value; drawList(); });
+    drawList();
+    fill(screen, status(), top('New message', () => goBack()), h('div', { class: 'ph-pad' }, box), listEl);
+  }
+
+  // A reply button (or a typed reply that picked one). Runs the mode's rule.
+  function chooseOption(ph, t, o) {
+    if (t.pending.type === 'date') {
+      const ctx = opts.dateCtx?.();
+      if (!ctx) { flash('No dates right now.'); return { ok: false }; }
+      const res = D.reply(ph, t.key, o.id, ctx);
+      if (res?.date) { opts.onDate?.(res.date); sfx.play('fanfare'); }
+      opts.save?.();
+      return { ok: true, line: res?.line || null };
+    }
+    return { ok: true, line: opts.onReply(t.key, o.id) };
+  }
+  function bondNote(ph, t, d) {
+    if (!d) return capped(ph, t.key) ? 'Bond maxed for today.' : '';
+    const lv = levelOf(bondOf(ph, t.key));
+    return `Bond ${d > 0 ? '+' : ''}${d} (${lv[1]})`;
+  }
+  const capped = (ph, key) => { const b = ph?.bonds?.[key]; return !!b && b.up >= 8; };
+  async function sendTyped(ph, t, raw) {
+    const text = scrub(String(raw || '').trim()).slice(0, 300);
+    if (!text || aiBusy) return;
+    const pending = t.pending;
+    const tmp = { from: 'me', text, tmp: true };
+    t.msgs.push(tmp); aiBusy = t.key; draw();
+    let res;
+    try {
+      res = await characterReply({ t, text, history: t.msgs.filter((m) => m !== tmp), options: pending?.options || null, setting: opts.aiSetting?.() || '' });
+    } catch (e) {
+      t.msgs = t.msgs.filter((m) => m !== tmp); aiBusy = null; draw();
+      flash(`${e.message}${pending ? ' Use a reply button instead.' : ''}`);
+      return;
+    }
+    t.msgs = t.msgs.filter((m) => m !== tmp);
+    let line = null;
+    if (pending && t.pending === pending) {
+      const o = pending.options.find((x) => x.id === res.choice) || pending.options[0];
+      const before = t.msgs.length;
+      const r = chooseOption(ph, t, o);
+      if (!r.ok) { aiBusy = null; draw(); return; }
+      line = r.line;
+      const added = t.msgs.slice(before);
+      const mineMsg = added.find((m) => m.from === 'me');
+      if (mineMsg) mineMsg.text = text; else t.msgs.splice(before, 0, { from: 'me', text });
+      const theirs = t.msgs.slice(before).find((m) => m.from === 'them');
+      if (theirs) theirs.text = res.reply; else t.msgs.push({ from: 'them', text: res.reply });
+    } else {
+      t.msgs.push({ from: 'me', text }, { from: 'them', text: res.reply });
+    }
+    const d = addBond(ph, t.key, res.tone, { romance: isDate(t) });
+    opts.save?.(); aiBusy = null;
+    sfx.play(res.tone === 'hostile' || res.tone === 'rude' ? 'special' : 'correct');
+    draw();
+    const msg = [line, bondNote(ph, t, d)].filter(Boolean).join(' · ');
+    if (msg) flash(msg);
+  }
+  function composer(ph, t) {
+    if (t.kind === 'office') return null;
+    if (ai.ready()) {
+      const box = h('input', { class: 'ph-type', placeholder: t.pending ? 'Type your own reply…' : `Text ${shortName(t.name)}…`, maxlength: 300, 'aria-label': 'Type a message', disabled: !!aiBusy });
+      const send = () => { const v = box.value; box.value = ''; sendTyped(ph, t, v); };
+      box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); send(); } else e.stopPropagation(); });
+      return h('div', { class: 'ph-composer' }, box, h('button', { class: 'ph-send', 'aria-label': 'Send', disabled: !!aiBusy, onClick: send }, '➤'));
+    }
+    const setup = h('button', { class: 'ph-linkbtn', onClick: () => { setPage = 'ai'; go('settings'); } }, ai.hasKey() ? 'AI replies are off or out for today. Check Settings.' : 'Type your own: add a free AI key in Settings ›');
+    if (t.pending) return h('div', { class: 'ph-composer is-hint' }, setup);
+    const quick = isDate(t) ? [{ tone: 'flirty', text: 'Thinking about you 😊' }, ...QUICK.filter((q) => q.tone !== 'hostile')] : QUICK;
+    return h('div', { class: 'ph-composer is-quick' },
+      h('div', { class: 'ph-quick' }, quick.map((q) => h('button', { class: `ph-qchip is-${q.tone}`, onClick: () => {
+        if (!useQuick(ph, t.key)) { flash(`${shortName(t.name)} is busy. Text again tomorrow.`); return; }
+        t.msgs.push({ from: 'me', text: q.text });
+        const backs = q.tone === 'flirty' ? ['Same 😊', 'Stop it, you\'re sweet', 'Was just about to text you!'] : QUICK_BACK[q.tone];
+        t.msgs.push({ from: 'them', text: pick(backs, Math.random) });
+        const d = addBond(ph, t.key, q.tone, { romance: isDate(t) });
+        opts.save?.(); sfx.play(q.tone === 'hostile' ? 'special' : 'tap'); draw();
+        const n = bondNote(ph, t, d); if (n) flash(n);
+      } }, q.text))),
+      setup);
   }
 
   function threadPane(ph, t) {
     if (t.unread) { markRead(ph, t.key); opts.save?.(); }
     const msgs = h('div', { class: 'ph-msgs' }, t.msgs.map((m) => h('p', { class: `ph-msg is-${m.from}` }, m.text)));
     const opt = t.pending ? h('div', { class: 'ph-opts' }, h('p', { class: 'ph-opts-head' }, 'YOUR REPLY'),
-      t.pending.options.map((o) => h('button', { class: `ph-opt is-${o.tone}`, onClick: () => {
-        let line = null;
-        if (t.pending.type === 'date') {
-          const ctx = opts.dateCtx?.();
-          if (!ctx) { flash('No dates right now.'); return; }
-          const res = D.reply(ph, t.key, o.id, ctx);
-          line = res?.line || null;
-          if (res?.date) { opts.onDate?.(res.date); sfx.play('fanfare'); }
-          opts.save?.();
-        } else line = opts.onReply(t.key, o.id);
+      t.pending.options.map((o) => h('button', { class: `ph-opt is-${o.tone}`, disabled: !!aiBusy, onClick: () => {
+        const r = chooseOption(ph, t, o);
+        if (!r.ok) return;
+        const d = addBond(ph, t.key, o.tone, { romance: isDate(t) });
+        opts.save?.();
         sfx.play(o.tone === 'hostile' || o.tone === 'gloat' ? 'special' : 'correct');
         draw();
-        if (line) flash(line);
+        const msg = [r.line, bondNote(ph, t, d)].filter(Boolean).join(' · ');
+        if (msg) flash(msg);
       } }, h('span', { class: 'ph-opt-text' }, o.text), h('span', { class: 'ph-opt-hint' }, `${o.tag || TONES[o.tone] || ''}${o.hint ? ` · ${o.hint}` : ''}`)))) : null;
+    const lv = levelOf(bondOf(ph, t.key));
+    if (aiBusy === t.key) msgs.append(h('p', { class: 'ph-msg is-them is-typing' }, h('span'), h('span'), h('span')));
     const pane = h('div', { class: 'ph-thread' }, h('div', { class: 'ph-top ph-top-thread' },
       h('button', { class: 'ph-back', 'aria-label': 'Back', onClick: () => goBack() }, '‹'),
-      h('div', { class: 'ph-thread-who' }, face(t), h('p', { class: 'ph-title' }, t.name)), h('span')), msgs, opt);
+      h('div', { class: 'ph-thread-who' }, face(t), h('p', { class: 'ph-title' }, t.name),
+        t.kind !== 'office' ? h('span', { class: 'ph-bond', title: `Bond ${bondOf(ph, t.key)} / 100` }, `${lv[2]} ${lv[1]} · ${bondOf(ph, t.key)}`) : null), h('span')), msgs, opt, composer(ph, t));
     requestAnimationFrame(() => { msgs.scrollTop = msgs.scrollHeight; });
     return pane;
   }
@@ -318,11 +422,28 @@ export function createPhone(opts) {
         draw(); if (line) flash(line);
       } }, h('span', { class: 'ph-opt-text' }, o.text), h('span', { class: 'ph-opt-hint' }, `${o.tag || TONES[o.tone] || ''}${o.hint ? ` · ${o.hint}` : ''}`)))) : null;
     const me = opts.me?.() || { name: 'You' };
+    let typer = null;
+    if (p.pending && ai.ready()) {
+      const box = h('input', { class: 'ph-type', placeholder: `Reply to ${p.who}…`, maxlength: 280, 'aria-label': 'Type a reply', disabled: !!aiBusy });
+      const send = async () => {
+        const text = scrub(box.value.trim()).slice(0, 280); if (!text || aiBusy) return;
+        aiBusy = `post${p.id}`; draw();
+        try {
+          const res = await characterReply({ t: { key: `post${p.id}`, name: p.who, kind: p.hater ? 'hater' : 'fan' }, text, history: [{ from: 'them', text: p.text }], options: p.pending.options, setting: opts.aiSetting?.() || '' });
+          const line = opts.onPostReply ? opts.onPostReply(p.id, res.choice) : null;
+          const ans = p.answers || []; const i = ans.map((a) => a.who).lastIndexOf('me');
+          if (i >= 0) { ans[i].text = text; if (ans[i + 1]) ans[i + 1].text = res.reply; else ans.push({ who: p.who, text: res.reply }); }
+          opts.save?.(); aiBusy = null; sfx.play('correct'); draw(); if (line) flash(line);
+        } catch (e) { aiBusy = null; draw(); flash(`${e.message} Use a reply button instead.`); }
+      };
+      box.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); send(); } });
+      typer = h('div', { class: 'ph-composer' }, box, h('button', { class: 'ph-send', 'aria-label': 'Send', disabled: !!aiBusy, onClick: send }, aiBusy ? '…' : '➤'));
+    }
     fill(screen, status(), top('Post', () => goBack()),
       h('div', { class: 'ph-feed' }, postCard(p, true),
         (p.answers || []).map((a) => h('article', { class: 'ph-post is-reply' }, a.who === 'me' ? face({ cid: me.cid, who: me.name }) : face({ who: a.who }),
           h('div', { class: 'ph-post-body' }, h('p', { class: 'ph-post-who' }, h('b', {}, a.who === 'me' ? me.name : a.who.replace(/^@/, '')), h('span', { class: 'ph-muted' }, ` replying to ${a.who === 'me' ? (p.who.startsWith('@') ? p.who : `@${p.who}`) : `@${String(me.name).replace(/[^\w]/g, '')}`}`)), richText(a.text))))),
-      opt);
+      opt, typer);
   }
 
   // ---------- Lenz (photos) ----------
@@ -332,7 +453,7 @@ export function createPhone(opts) {
     fill(screen, status(), h('div', { class: 'ph-lenz-top' }, h('button', { class: 'ph-back', 'aria-label': 'Back', onClick: () => go('home') }, '‹'), h('span', { class: 'ph-lenz-logo' }, 'Lenz'), h('span', { class: 'ph-muted' }, ph?.followers != null ? `${fmtN(ph.followers)} followers` : '')),
       list.length ? h('div', { class: 'ph-lenz' }, list.map((p) => h('article', { class: 'ph-lpost' },
         h('p', { class: 'ph-lpost-who' }, face({ cid: p.cid, icon: p.icon, who: p.who }), h('b', {}, p.who), p.verified ? h('span', { class: 'ph-verified' }, '✔') : null, p.mine ? null : h('span', { class: 'ph-muted' }, ' · Suggested for you')),
-        pic(p, 'ph-lpic'),
+        lenzPhoto(p),
         h('div', { class: 'ph-lpost-actions' },
           h('button', { class: `ph-like${p.liked ? ' is-on' : ''}`, onClick: () => { p.liked = !p.liked; p.likes = (p.likes || 0) + (p.liked ? 1 : -1); opts.save?.(); draw(); } }, `${p.liked ? '♥' : '♡'} ${fmtN(p.likes || 0)}`),
           h('span', {}, `💬 ${(p.comments || []).length}`)),
@@ -434,51 +555,121 @@ export function createPhone(opts) {
         h('p', { class: 'ph-muted ph-pad' }, `A date: ${ctx?.perk || 'a small boost'}. One per ${ctx?.turnLabel || 'turn'}.`)));
   }
 
-  // ---------- Settings: wallpaper and the shortcut key ----------
+  // ---------- Settings (v0.27.0: pages for every way to set up the phone) ----------
   let charPicks = null;
+  const tog = (label, on, onChange, hint = null) => h('button', { class: `ph-tog${on ? ' is-on' : ''}`, role: 'switch', 'aria-checked': String(!!on), onClick: async () => { await onChange(!on); sfx.play('tap'); draw(); } },
+    h('span', { class: 'ph-tog-text' }, h('span', {}, label), hint ? h('span', { class: 'ph-muted' }, hint) : null), h('span', { class: 'ph-tog-k', 'aria-hidden': 'true' }));
+  const chips = (list, value, onPick) => h('div', { class: 'ph-chips' }, list.map(([id, label]) => h('button', { class: `ph-chip${value === id ? ' is-on' : ''}`, 'aria-pressed': String(value === id), onClick: async () => { await onPick(id); sfx.play('pick'); draw(); } }, label)));
   function settings() {
-    const k = opts.getKey();
-    const sw = (w, label) => {
-      const on = wallpaper && wallpaper.kind === w.kind && String(wallpaper.id) === String(w.id);
-      return h('button', { class: `ph-wp${on ? ' is-on' : ''}`, 'aria-pressed': String(!!on), 'aria-label': label, style: `background:${wallpaperCss(w)}`, onClick: async () => { await setWallpaper(w); sfx.play('pick'); draw(); } }, h('span', {}, label));
-    };
-    if (wpPick) {
-      if (!charPicks) { const all = characters.list.filter((c) => c.portrait && !c.retired); charPicks = Array.from({ length: 12 }, () => all[Math.floor(Math.random() * all.length)]).filter(Boolean); }
-      fill(screen, status(), top('Pick a character', () => { wpPick = false; draw(); }),
-        h('div', { class: 'ph-set' }, h('div', { class: 'ph-wps' }, charPicks.map((c) => sw({ kind: 'char', id: c.id }, c.name))),
-          h('button', { class: 'ph-mini', onClick: () => { charPicks = null; draw(); } }, '🔀 Shuffle')));
-      return;
-    }
-    const upload = h('input', { type: 'file', accept: 'image/*', class: 'ph-file', 'aria-label': 'Upload a wallpaper', onChange: async (e) => {
-      const f = e.target.files?.[0]; if (!f) return;
-      try { const data = await shrinkImage(f); await setWallpaper({ kind: 'custom', id: 'custom', data }); flash('Wallpaper set.'); draw(); }
-      catch { flash('That picture didn\'t work. Try another one.'); }
-    } });
-    const iconId = profile.value?.iconId;
-    fill(screen, status(), top('Settings', () => go('home')),
-      h('div', { class: 'ph-set' },
-        h('p', { class: 'ph-set-h' }, 'WALLPAPER'),
-        h('div', { class: 'ph-wps' },
+    const pr = getPrefs();
+    const page = (title, ...body) => fill(screen, status(), top(title, () => goBack()), h('div', { class: 'ph-set' }, ...body));
+    if (setPage === 'wallpaper') {
+      const cur = wpFor === 'lock' ? (pr.lock || pr.home) : pr.home;
+      const choose = (w) => setPrefs(wpFor === 'lock' ? { lock: w, sameWallpaper: false } : { home: w });
+      const sw = (w, label) => {
+        const on = cur && cur.kind === w.kind && String(cur.id) === String(w.id);
+        return h('button', { class: `ph-wp${on ? ' is-on' : ''}`, 'aria-pressed': String(!!on), 'aria-label': label, style: `background:${wallpaperCss(w)}`, onClick: async () => { await choose(w); sfx.play('pick'); draw(); } }, h('span', {}, label));
+      };
+      if (wpPick) {
+        if (!charPicks) { const all = characters.list.filter((c) => c.portrait && !c.retired); charPicks = Array.from({ length: 12 }, () => all[Math.floor(Math.random() * all.length)]).filter(Boolean); }
+        fill(screen, status(), top('Pick a character', () => goBack()),
+          h('div', { class: 'ph-set' }, h('div', { class: 'ph-wps' }, charPicks.map((c) => sw({ kind: 'char', id: c.id }, c.name))),
+            h('button', { class: 'ph-mini', onClick: () => { charPicks = null; draw(); } }, '🔀 Shuffle')));
+        return;
+      }
+      const upload = h('input', { type: 'file', accept: 'image/*', class: 'ph-file', 'aria-label': 'Upload a wallpaper', onChange: async (e) => {
+        const f = e.target.files?.[0]; if (!f) return;
+        try { const data = await shrinkImage(f); await choose({ kind: 'custom', id: `custom-${wpFor}`, data }); flash('Wallpaper set.'); draw(); }
+        catch { flash('That picture didn\'t work. Try another one.'); }
+      } });
+      const iconId = profile.value?.iconId;
+      page('Wallpaper',
+        chips([['home', 'Home screen'], ['lock', 'Lock screen']], wpFor, (id) => { wpFor = id; }),
+        wpFor === 'lock' ? tog('Same as the home screen', pr.sameWallpaper, (v) => setPrefs({ sameWallpaper: v })) : null,
+        wpFor === 'lock' && pr.sameWallpaper ? h('p', { class: 'ph-muted' }, 'Turn this off to give the lock screen its own wallpaper.') : h('div', { class: 'ph-wps' },
           Object.entries(GRADIENTS).map(([id, [label]]) => sw({ kind: 'grad', id }, label)),
           ARENAS.map((id, i) => sw({ kind: 'arena', id }, `Arena ${i + 1}`)),
           iconId != null && characters.get(iconId)?.portrait ? sw({ kind: 'char', id: iconId }, 'Your icon') : null,
-          wallpaper?.kind === 'custom' ? sw(wallpaper, 'Your photo') : null),
-        h('div', { class: 'ph-set-row' },
+          cur?.kind === 'custom' ? sw(cur, 'Your photo') : null,
+          cur?.kind === 'char' && cur.id !== iconId ? sw(cur, characters.get(cur.id)?.name || 'Character') : null),
+        wpFor === 'lock' && pr.sameWallpaper ? null : h('div', { class: 'ph-set-row' },
           h('button', { class: 'ph-mini', onClick: () => { wpPick = true; draw(); } }, '🧑 A character'),
           h('label', { class: 'ph-mini ph-upload' }, '🖼️ Upload a photo', upload)),
-        h('p', { class: 'ph-muted' }, 'The wallpaper is the same in every mode.'),
-        h('p', { class: 'ph-set-h' }, 'PHONE SHORTCUT'),
+        h('p', { class: 'ph-muted' }, 'Wallpapers are the same in every mode.'));
+      return;
+    }
+    if (setPage === 'lock') {
+      page('Lock screen',
+        tog('Lock screen', pr.lockOn, (v) => setPrefs({ lockOn: v }), 'Shows each time you open the phone'),
+        h('p', { class: 'ph-set-h' }, 'CLOCK'), chips(CLOCK_STYLES, pr.clock, (id) => setPrefs({ clock: id })),
+        h('p', { class: 'ph-set-h' }, 'CLOCK COLOR'),
+        h('div', { class: 'ph-swatches' }, CLOCK_COLORS.map((c) => h('button', { class: `ph-swatch${pr.clockColor === c ? ' is-on' : ''}`, style: `background:${c}`, 'aria-label': `Clock color ${c}`, onClick: async () => { await setPrefs({ clockColor: c }); sfx.play('pick'); draw(); } }))),
+        tog('Show message previews', pr.previews, (v) => setPrefs({ previews: v }), 'Off: notifications just say "Tap to view"'));
+      return;
+    }
+    if (setPage === 'apps') {
+      const lay = arrange(appIds);
+      const ids = lay.order.filter((id) => id !== 'settings');
+      const move = async (id, dir) => { const o = [...ids]; const i = o.indexOf(id); const j = i + dir; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]]; await setPrefs({ order: o }); draw(); };
+      const dockT = async (id) => { let d = pr.dock.filter((x) => appIds.includes(x)); if (d.includes(id)) d = d.filter((x) => x !== id); else { if (d.length >= 4) { flash('The dock holds 4 apps. Take one out first.'); return; } d = [...d, id]; } await setPrefs({ dock: d }); sfx.play('tap'); draw(); };
+      const hideT = async (id) => { const hd = pr.hidden.includes(id) ? pr.hidden.filter((x) => x !== id) : [...pr.hidden, id]; await setPrefs({ hidden: hd }); sfx.play('tap'); draw(); };
+      page('Apps',
+        h('p', { class: 'ph-muted' }, '▲▼ moves an app. 📌 puts it in the dock (4 max). 👁 hides it.'),
+        h('ul', { class: 'ph-arrange' }, ids.map((id) => h('li', { class: pr.hidden.includes(id) ? 'is-hidden' : '' },
+          h('span', { class: `ph-app-icon is-${id} is-mini` }, ALL_APPS[id][1]), h('span', { class: 'ph-arr-name' }, ALL_APPS[id][0]),
+          h('button', { class: 'ph-arr-btn', 'aria-label': `Move ${ALL_APPS[id][0]} up`, onClick: () => move(id, -1) }, '▲'),
+          h('button', { class: 'ph-arr-btn', 'aria-label': `Move ${ALL_APPS[id][0]} down`, onClick: () => move(id, 1) }, '▼'),
+          h('button', { class: `ph-arr-btn${lay.dock.includes(id) ? ' is-on' : ''}`, 'aria-pressed': String(lay.dock.includes(id)), 'aria-label': `Dock ${ALL_APPS[id][0]}`, onClick: () => dockT(id) }, '📌'),
+          h('button', { class: `ph-arr-btn${pr.hidden.includes(id) ? ' is-on' : ''}`, 'aria-pressed': String(pr.hidden.includes(id)), 'aria-label': `Hide ${ALL_APPS[id][0]}`, onClick: () => hideT(id) }, '👁')))),
+        h('button', { class: 'ph-mini', onClick: async () => { await setPrefs({ order: null, dock: ['messages', 'chirp', 'lenz', 'boo'], hidden: [] }); draw(); } }, 'Reset layout'));
+      return;
+    }
+    if (setPage === 'look') {
+      page('Look',
+        h('p', { class: 'ph-set-h' }, 'APP ICONS'), chips(ICON_THEMES, pr.icons, (id) => setPrefs({ icons: id })),
+        h('p', { class: 'ph-set-h' }, 'PHONE COLOR'),
+        h('div', { class: 'ph-swatches' }, FRAMES.map(([id, label, c]) => h('button', { class: `ph-swatch${pr.frame === id ? ' is-on' : ''}`, style: `background:${c}`, 'aria-label': label, title: label, onClick: async () => { await setPrefs({ frame: id }); sfx.play('pick'); draw(); } }))),
+        h('p', { class: 'ph-muted' }, 'The phone color shows on bigger screens.'),
+        h('p', { class: 'ph-set-h' }, 'TEXT SIZE'), chips(TEXT_SIZES, pr.text, (id) => setPrefs({ text: id })));
+      return;
+    }
+    if (setPage === 'sounds') {
+      page('Sounds',
+        h('p', { class: 'ph-set-h' }, 'NOTIFICATION SOUND'), chips(SOUNDS, pr.sound, (id) => { if (id !== 'silent') sfx.play(id); return setPrefs({ sound: id }); }),
+        tog('Vibrate', pr.vibrate, (v) => setPrefs({ vibrate: v }), 'On phones that can vibrate'));
+      return;
+    }
+    if (setPage === 'ai') { page('AI texting', aiSetup({ compact: true, onChange: () => {} })); return; }
+    if (setPage === 'language') { page('Language', languageSwitch(() => draw()), h('p', { class: 'ph-muted' }, 'This is the same switch as in the arcade\'s Settings.')); return; }
+    if (setPage === 'shortcut') {
+      const k = opts.getKey();
+      page('Phone shortcut',
         h('p', { class: 'ph-muted' }, `Press this key anywhere in ${opts.shortcutWhere || 'this mode'} to bring the phone up or put it away.`),
         h('button', { class: `ph-key${capturing ? ' is-capturing' : ''}`, onClick: () => { capturing = true; draw(); } }, capturing ? 'Press any key…' : keyLabel(k)),
-        h('button', { class: 'ph-mini', onClick: () => { opts.setKey('p'); capturing = false; draw(); } }, 'Reset to P')));
+        h('button', { class: 'ph-mini', onClick: () => { opts.setKey('p'); capturing = false; draw(); } }, 'Reset to P'));
+      return;
+    }
+    const row = (id, icon, label, sub) => h('li', {}, h('button', { class: 'ph-setrow', onClick: () => { setPage = id; wpPick = false; draw(); } }, h('span', { class: 'ph-setrow-ic', 'aria-hidden': 'true' }, icon), h('span', { class: 'ph-row-text' }, h('span', { class: 'ph-row-name' }, label), sub ? h('span', { class: 'ph-row-last' }, sub) : null), h('span', { class: 'ph-muted' }, '›')));
+    fill(screen, status(), top('Settings', () => go('home')),
+      h('ul', { class: 'ph-setlist' },
+        row('wallpaper', '🖼️', 'Wallpaper', 'Home and lock screen'),
+        row('lock', '🔒', 'Lock screen', pr.lockOn ? 'On' : 'Off'),
+        row('apps', '🧩', 'Apps', 'Arrange, dock and hide'),
+        row('look', '🎨', 'Look', 'Icons, phone color, text size'),
+        row('sounds', '🔔', 'Sounds', pr.vibrate ? 'Vibrate' : (SOUNDS.find(([id]) => id === pr.sound)?.[1] || 'Ding')),
+        row('ai', '🤖', 'AI texting', ai.hasKey() ? (ai.config.on ? 'On' : 'Off') : 'Type your own replies'),
+        row('language', '🤬', 'Language filter', filterOn() ? 'On' : 'Off (18+)'),
+        row('shortcut', '⌨️', 'Phone shortcut', keyLabel(opts.getKey()))));
   }
 
   function draw() {
     const ph = opts.getPhone();
+    const pr = getPrefs();
     screen.style.background = '';
     screen.classList.toggle('is-wide', wide());
     screen.dataset.app = app;
-    ({ home: () => home(ph), messages: () => messages(ph), thread: () => threadView(ph), chirp: () => chirpApp(ph), post: () => postView(ph), lenz: () => lenzApp(ph), boo: () => booApp(ph), photos: () => photosApp(ph), calendar: () => calendarApp(ph), wallet: () => walletApp(ph), news: () => news(ph), deals: () => deals(ph), dating: () => datingApp(ph), settings }[app] || (() => home(ph)))();
+    screen.dataset.icons = pr.icons; screen.dataset.text = pr.text; device.dataset.frame = pr.frame;
+    ({ lock: () => lockScreen(ph), compose: () => composeApp(ph), home: () => home(ph), messages: () => messages(ph), thread: () => threadView(ph), chirp: () => chirpApp(ph), post: () => postView(ph), lenz: () => lenzApp(ph), boo: () => booApp(ph), photos: () => photosApp(ph), calendar: () => calendarApp(ph), wallet: () => walletApp(ph), news: () => news(ph), deals: () => deals(ph), dating: () => datingApp(ph), settings }[app] || (() => home(ph)))();
     refreshBadge();
   }
   function refreshBadge() {
@@ -496,9 +687,9 @@ export function createPhone(opts) {
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     btn.querySelector('.ph-open-text').textContent = open ? 'Close phone' : 'Open phone';
     if (open) {
-      sfx.play('flip'); app = 'home'; draw();
-      loadWallpaper().then(() => { if (open && app === 'home') draw(); });
-      release = pushBack(() => { if (viewing || wpPick || app !== 'home') { goBack(); return 'stay'; } release = null; toggle(false); return null; });
+      sfx.play('flip'); setPage = null; app = getPrefs().lockOn ? 'lock' : 'home'; draw();
+      loadPrefs().then(() => { if (open && (app === 'home' || app === 'lock')) { if (app === 'lock' && !getPrefs().lockOn) app = 'home'; draw(); } });
+      release = pushBack(() => { if (viewing || wpPick || setPage || (app !== 'home' && app !== 'lock')) { goBack(); return 'stay'; } release = null; toggle(false); return null; });
     } else {
       stopView(); capturing = false;
       if (release) { const r = release; release = null; r(); }
@@ -525,7 +716,7 @@ export function createPhone(opts) {
   };
   document.addEventListener('keydown', onKey);
   document.body.append(wrap);
-  loadWallpaper();
+  loadPrefs();
   refreshBadge();
 
   return {
@@ -534,7 +725,12 @@ export function createPhone(opts) {
     ping() {
       const ph = opts.getPhone(); const n = ph?.notes[0];
       refreshBadge();
-      if (n && n.id !== lastPinged) { lastPinged = n.id; sfx.play('correct'); flash(`📱 ${n.title}: ${n.text}`); }
+      if (n && n.id !== lastPinged) {
+        lastPinged = n.id;
+        const pr = getPrefs();
+        if (pr.vibrate) { try { navigator.vibrate?.(120); } catch { /* ignore */ } } else if (pr.sound !== 'silent') sfx.play(pr.sound);
+        flash(`📱 ${n.title}: ${pr.previews ? n.text : 'New message'}`);
+      }
       if (open) draw();
     },
     openThread(key) { toggle(true); go('thread', key); },

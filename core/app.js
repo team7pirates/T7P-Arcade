@@ -21,6 +21,7 @@ import { renderFeedback } from './screens/feedback.js';
 import { playtime } from './playtime.js';
 import { startOutbox, status as feedbackStatus, markWelcomed } from './feedback.js';
 import { sheet } from './ui.js';
+import { current as currentScreen } from './router.js';
 
 registerScreen('menu', renderMenu);
 registerScreen('settings', renderSettings);
@@ -34,6 +35,9 @@ registerScreen('feedback', renderFeedback);
 async function welcomeOnce() {
   const s = await feedbackStatus();
   if (s.welcomed) return;
+  // Only on the main menu with nothing else open, so it never covers a mode's how-to.
+  let where = 'menu'; try { where = currentScreen(); } catch { /* ignore */ }
+  if (where !== 'menu' || document.querySelector('#sheet-root .scrim')) { setTimeout(() => { welcomeOnce().catch(() => {}); }, 1500); return; }
   await markWelcomed();
   const w = sheet({ title: 'WELCOME TO THE PLAYTEST', center: true, content: h('div', { class: 'fb-welcome' },
     h('p', { class: 'fb-done-big' }, '🎮'),
