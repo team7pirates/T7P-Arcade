@@ -14,7 +14,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const r1 = (n) => Math.round(n * 10) / 10;
 const randOf = (L) => () => R.nextRand(L);
 const roster = (L, t) => t.roster.map((pid) => L.players[pid]);
-const seriesCount = (L, t, series, skip = []) => roster(L, t).filter((p) => p.series === series && !skip.includes(p.pid)).length;
+export const seriesCount = (L, t, series, skip = []) => roster(L, t).filter((p) => p.series === series && !skip.includes(p.pid)).length;
 
 export const DRAFT_SIZE = 48;
 export const UPGRADES_PER_TEAM = 2;
@@ -839,13 +839,17 @@ function aiTryTrade(L, rand) {
 // Emergency pickup in season: sign a free agent at the minimum, cutting someone.
 export function emergencyPickup(L, signPid, cutPid) {
   const t = L.teams[L.user.team];
-  const p = L.players[signPid];
-  if (p.power > EMERGENCY_MAX_POWER) return { ok: false, why: 'Emergency pickups are depth cards only.' };
+  const p = L.players[signPid]; const cut = L.players[cutPid];
+  // v0.31.0: waiver-wire rules. Any free agent; depth cards cost the minimum.
+  if (p.waiver?.season === L.season && p.waiver.from === t.i) return { ok: false, why: 'You cut him this season.' };
   if (seriesCount(L, t, p.series, [cutPid]) >= MAX_PER_SERIES) return { ok: false, why: `You'd have more than ${MAX_PER_SERIES} from ${p.series}.` };
+  const per = p.power <= EMERGENCY_MAX_POWER ? MIN_SALARY : bargainPrice(p);
+  if (per > MIN_SALARY) { const cap = capCheck(L, t, per, [cutPid], R.capHit(cut)); if (!cap.ok) return cap; }
   release(L, cutPid);
-  signMinimum(L, t.i, signPid);
-  L.news.unshift({ week: L.week, kind: 'SIGNED', team: t.i, title: `${t.name} sign ${p.name}`, text: 'An emergency pickup at the minimum salary.' });
-  return { ok: true };
+  cut.waiver = { from: t.i, season: L.season, week: L.week };
+  signMinimum(L, t.i, signPid, per);
+  L.news.unshift({ week: L.week, kind: 'SIGNED', team: t.i, title: `${t.name} sign ${p.name}`, text: `${per} for the rest of the season. ${cut.name} released.` });
+  return { ok: true, per };
 }
 
 R.hooks.buildDraftClass = buildDraftClass;

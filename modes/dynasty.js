@@ -21,6 +21,7 @@ import * as MAP from './dynasty-map.js';
 import { sfx } from '../core/sfx.js';
 import * as DP from './dynasty-phone.js';
 import * as T from './dynasty-tamper.js';
+import * as W from './dynasty-waivers.js';
 import { createPhone } from '../core/phone-ui.js';
 
 const help = howToPlay('dynasty', 'Dynasty', [
@@ -32,7 +33,7 @@ const help = howToPlay('dynasty', 'Dynasty', [
   'Playoffs: 10 teams. The 4 division winners are seeds 1–4 and the next 2 best records are 5–6. Seeds 7–10 play a one-game play-in (7 vs 10, 8 vs 9) for the last two spots. Then quarterfinals, semifinals and the Zenith Clash, all one and done.',
   'Hype comes from winning fights. Aura comes from being seen: magazine picks and awards. Both carry over.',
   'Meet the front office\'s expectation or your job security drops. Miss it three seasons running and you\'re fired.',
-  'Front Office: trade until the Week 8 deadline (and again after the season until draft day), sign emergency pickups, and stay under the hard salary cap (160 in season 1, up 5% every off-season). A max deal is 35 a season; deals near the max are supermax, and a team can carry 3.',
+  'Front Office: trade until the Week 8 deadline (and again after the season until draft day), release cards and sign free agents into open spots (the waiver wire, through Week 10), and stay under the hard salary cap (160 in season 1, up 5% every off-season). A max deal is 35 a season; deals near the max are supermax, and a team can carry 3.',
   'Each time you open a save you get the Weekly Recap, then the Weekly Preview. Tick "Don\'t show again this week" to skip them; both are also on the Next Game card.',
   'Draft: you earn 8 scouting points a week. 6 points reveals a prospect\'s potential; a deep scout shows 💎 (a gem: Star or Superstar, 2x growth or more), nothing (solid: could be any of the three) or 💔 a broken diamond (a bust: Normal, 1x). Power stays hidden until they are drafted.',
   'Off-season: retirements, awards night, re-sign (one Franchise Tag), up to 2 development upgrades, a one-round draft, then 3 rounds of free agency.',
@@ -484,7 +485,7 @@ export async function render() {
       h('div', {}, h('p', { class: 'dy-news-kind' }, `${n.kind}${n.week ? ` · WEEK ${n.week}` : ''}`), h('p', { class: 'dy-news-title' }, n.title), h('p', { class: 'caption muted' }, n.text))))) : h('p', { class: 'caption muted dy-pad' }, empty);
   }
   function faUpdates() {
-    const moves = L.news.filter((n) => ['SIGNED', 'TRADE', 'TAGGED', 'RETIRED'].includes(n.kind));
+    const moves = L.news.filter((n) => ['SIGNED', 'WAIVED', 'TRADE', 'TAGGED', 'RETIRED'].includes(n.kind));
     const soon = Object.values(L.players).filter((p) => p.team != null && p.contract && p.contract.left <= 1 && !p.retired).sort((a, b) => b.power - a.power).slice(0, 8);
     return h('div', {},
       moves.length ? newsList(moves, '') : null,
@@ -929,14 +930,50 @@ export async function render() {
       h('p', { class: 'caption' }, `${score} interest${text ? ` · ${text}` : ''}`));
   }
 
+  // v0.31.0: the waiver wire. Release on its own, sign into open spots.
+  const wire = { role: null };
   function pickupPanel() {
     const t = me();
+    if (!W.isOpen(L)) return h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'ROSTER MOVES'), h('p', { class: 'caption muted' }, W.closedWhy(L)));
+    const open = W.openSpots(L);
     const hurt = players(t).filter((p) => p.injury > 0).length;
-    const pool = O.emergencyPool(L).sort((a, b) => b.power - a.power).slice(0, 10);
-    return h('section', { class: 'dy-panel' },
-      h('h2', { class: 'dy-h' }, 'EMERGENCY PICKUPS'),
-      h('p', { class: 'caption muted' }, `Sign a depth card (Power ${O.EMERGENCY_MAX_POWER} and under) at the minimum (${O.MIN_SALARY}) for the rest of the season. You cut someone to make room; their cap hit stays as dead money.${hurt ? ` You have ${hurt} injured.` : ''}`),
-      h('ul', { class: 'dy-list' }, pool.map((p) => pLine(p, h('button', { class: 'btn btn-secondary btn-sm', onClick: () => pickupSheet(p) }, 'Sign')))));
+    const all = W.pool(L);
+    const pool = all.filter((p) => !wire.role || p.role === wire.role).slice(0, 12);
+    const chip = (r, label) => h('button', { class: `dy-chip${wire.role === r ? ' is-on' : ''}`, 'aria-pressed': wire.role === r ? 'true' : 'false', onClick: () => { wire.role = r; drawOffice(); } }, label);
+    return h('section', { class: 'dy-panel dy-wire' },
+      h('h2', { class: 'dy-h' }, 'ROSTER MOVES · THE WAIVER WIRE'),
+      h('p', { class: 'dy-wire-count' }, h('b', {}, `${t.roster.length} / ${R.ROSTER_SIZE}`), ` cards · ${open ? `${open} open spot${open > 1 ? 's' : ''}` : 'roster full'}${hurt ? ` · ${hurt} injured` : ''}`),
+      h('p', { class: 'caption muted' }, `Release a card to open a spot: this season's cap hit stays as dead money, and AI teams can claim him off waivers. Sign free agents for the rest of the season: Power ${O.EMERGENCY_MAX_POWER} and under cost the minimum (${O.MIN_SALARY}), better ones cost 60% of their ask. Open until after Week ${W.DEADLINE}. Keep at least ${W.MIN_ROSTER} cards.`),
+      h('h3', { class: 'dy-h dy-sub' }, 'YOUR ROSTER'),
+      h('ul', { class: 'dy-list' }, players(t).sort((a, b) => a.power - b.power).map((q) => {
+        const c = W.canRelease(L, q.pid);
+        return pLine(q, h('button', { class: 'btn btn-secondary btn-sm', disabled: !c.ok, title: c.ok ? '' : c.why, onClick: () => releaseSheet(q) }, 'Release'),
+          `${q.role} · Power ${q.power} · cap hit ${R.capHit(q)}${q.injury ? ` · OUT ${q.injury} WK` : ''}`);
+      })),
+      h('h3', { class: 'dy-h dy-sub' }, 'FREE AGENTS'),
+      h('div', { class: 'dy-chips' }, chip(null, 'All roles'), R.ROLES.map((r) => chip(r, r))),
+      pool.length ? h('ul', { class: 'dy-list' }, pool.map((p) => {
+        const c = W.canSign(L, p.pid);
+        const price = W.priceOf(p);
+        const btn = open
+          ? h('button', { class: 'btn btn-primary btn-sm', disabled: !c.ok, title: c.ok ? '' : c.why, onClick: async () => {
+            const r = W.sign(L, p.pid);
+            if (!r.ok) { toast(r.why); return; }
+            L.pending = null; await save(); toast(`${p.name} signed for ${r.per}.`); drawOffice();
+          } }, `Sign · ${price}`)
+          : h('button', { class: 'btn btn-secondary btn-sm', onClick: () => pickupSheet(p) }, `Swap · ${price}`);
+        return pLine(p, btn, `${p.role} · Power ${p.power} · ${p.series}${p.injury ? ` · OUT ${p.injury} WK` : ''}${c.ok || !open ? '' : ` · ${c.why}`}`);
+      })) : h('p', { class: 'caption muted' }, 'No free agents at that role.'));
+  }
+
+  async function releaseSheet(q) {
+    const c = W.canRelease(L, q.pid);
+    if (!c.ok) { toast(c.why); return; }
+    const ok = await confirmSheet({ title: `RELEASE ${q.name.toUpperCase()}?`, message: `${c.dead} stays on your cap this season as dead money. He goes on waivers for a week and another team may claim him. You can't sign him back this season.`, confirmLabel: 'Release' });
+    if (!ok) return;
+    const r = W.release(L, q.pid);
+    if (!r.ok) { toast(r.why); return; }
+    L.pending = null; await save(); toast(`${q.name} released. ${W.openSpots(L)} open spot${W.openSpots(L) > 1 ? 's' : ''}.`); drawOffice();
   }
 
   function pickupSheet(p) {
@@ -944,12 +981,12 @@ export async function render() {
     const s = sheet({
       title: `SIGN ${p.name.toUpperCase()}`,
       content: h('div', {},
-        h('p', { class: 'body-text' }, `${p.role} · Power ${p.power} · ${p.series}. Who do you cut?`),
+        h('p', { class: 'body-text' }, `${p.role} · Power ${p.power} · ${p.series} · ${W.priceOf(p)} for the rest of the season. Your roster is full: who do you cut? Their cap hit stays as dead money.`),
         h('ul', { class: 'dy-list' }, players(t).sort((a, b) => a.power - b.power).map((q) => pLine(q,
           h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => {
             const r = O.emergencyPickup(L, p.pid, q.pid);
             if (!r.ok) { toast(r.why); return; }
-            L.pending = null; s.close(); await save(); toast(`${p.name} signed. ${q.name} cut.`); drawOffice();
+            L.pending = null; s.close(); await save(); toast(`${p.name} signed for ${r.per}. ${q.name} released.`); drawOffice();
           } }, 'Cut'), `${q.role} · ${q.power} · cap hit ${R.capHit(q)}${q.injury ? ` · OUT ${q.injury} WK` : ''}`)))),
     });
   }
@@ -1388,7 +1425,7 @@ export async function render() {
     offFrame('THE DRAFT', h('div', { class: 'dy-off-body' },
       h('section', { class: 'dy-panel' },
         h('p', { class: 'label-spaced gold' }, done ? 'THE DRAFT IS OVER' : mine ? 'YOU ARE ON THE CLOCK' : `PICK ${o.pick + 1}: ${team(clock).name.toUpperCase()}`),
-        myPick < 0 ? h('p', { class: 'body-text loss' }, t.forfeitPick ? 'You lost your pick: over the soft cap two seasons running.' : 'You traded your pick away.')
+        myPick < 0 ? h('p', { class: 'body-text loss' }, t.forfeitPick ? (t.forfeitWhy === 'tampering' ? 'You lost your pick: caught tampering.' : 'You lost your pick: over the soft cap two seasons running.') : 'You traded your pick away.')
           : h('p', { class: 'caption muted' }, `Your pick${myPicks.length > 1 ? 's' : ''}: ${myPicks.map((k) => `No. ${k + 1}${o.from && o.from[k] !== t.i ? ` (from ${team(o.from[k]).abbr})` : ''}`).join(', ')}. One round. Rookie deals run 3 seasons.`),
         done ? null : strip,
         h('p', { class: 'caption muted' }, `Scouting points left: ${L.user.scoutPts || 0}. You can still scout now.`)),
@@ -2139,6 +2176,8 @@ export async function render() {
 
   function ensurePending(g) {
     const key = L.phase === 'playoffs' ? `po-${R.roundOf(L.playoffs)}-${g.home}-${g.away}` : `w${L.week}`;
+    // v0.31.0: always able to field 5 (the league signs a depth card if not).
+    if (W.ensureFive(L).length && L.pending && !L.pending.locked) L.pending = null;
     if (L.pending && L.pending.key === key) return L.pending;
     const oppI = g.home === L.user.team ? g.away : g.home;
     const rand = () => R.nextRand(L);

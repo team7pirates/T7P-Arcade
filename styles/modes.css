@@ -1986,3 +1986,10 @@ body:has(.osm-page) .ph-open:not(.is-moved) { display: none; }
 .ph-lnotes-head { display: flex; justify-content: flex-end; }
 .ph-lnotes-head .ph-clear { background: rgba(20,16,28,.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .ph-readall-row { display: flex; justify-content: flex-end; padding: 4px 14px 0; }
+
+/* v0.31.0: Dynasty waiver wire */
+.dy-wire-count { margin: 2px 0 6px; font-size: .9rem; }
+.dy-wire-count b { font-size: 1.1rem; }
+.dy-wire .dy-sub { margin: 14px 0 6px; font-size: .78rem; opacity: .85; }
+.dy-wire .dy-chips { margin-bottom: 8px; }
+.dy-wire .btn[disabled] { opacity: .45; }

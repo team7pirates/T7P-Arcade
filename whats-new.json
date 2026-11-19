@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.31.0",
+      "date": "2026-11-19",
+      "title": "Dynasty: the waiver wire",
+      "items": [
+        "Front Office has a new Roster moves panel. Release any card on its own to open a roster spot (this season's cap hit stays as dead money), then sign a free agent into the open spot for the rest of the season.",
+        "Depth cards (Power 78 and under) sign for the minimum. Better free agents cost 60% of their ask and need cap room. Filter free agents by role.",
+        "Released cards go on waivers for a week. AI teams with a weaker card at that spot may claim them, worst record first. You can't sign back a card you cut that season.",
+        "Roster moves stay open until after Week 10. You need at least 7 cards, and 6 healthy after a cut. If you ever can't field 5 healthy cards, the league signs a depth card into an open spot.",
+        "Roster full? Use Swap to sign a free agent and release someone in one step."
+      ]
+    },
+    {
       "version": "0.30.0",
       "date": "2026-11-19",
       "title": "Clear your phone notifications",

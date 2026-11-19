@@ -533,6 +533,8 @@ export function endWeek(league) {
   if (league.week <= TRADE_DEADLINE && hooks.aiTrade) hooks.aiTrade(league, rand);
   // Growth and Aura every 3 weeks.
   if (league.week % MAG_EVERY === 0) growthTick(league, rand);
+  // v0.31.0: waiver claims, then make sure the user can field 5.
+  if (hooks.waivers) hooks.waivers(league, rand);
   if (hooks.afterWeek) hooks.afterWeek(league, games);
   if (hooks.afterWeekWeekly) hooks.afterWeekWeekly(league, games);
   rankPower(league);
