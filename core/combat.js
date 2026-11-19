@@ -62,6 +62,7 @@ export const TUNING = {
   meterAura: 0.08,
   meterPerHit: 8,
   maxTurns: 80,           // safety: after this, the side with more health % wins
+  allyMult: 1.6,          // v0.28.0: an ally's assist hits like 1.6 of their normal attacks
 };
 
 // Seeded random numbers, so a fight can be replayed exactly.
@@ -116,7 +117,9 @@ function roleBonus(att, def) {
 // damage can carry from one fight to the next).
 // Returns { winner: 'A' | 'B', rounds, events, score: [a, b], endHp }, where
 // endHp is side A's health per card when the last round ended.
-export function runMatch(teamA, teamB, { seed = Date.now(), bestOf = 3, startHp = null } = {}) {
+// v0.28.0: assist = { name, cid, atk, uses } lets an ally jump in for side A
+// (Forbidden Fusion allies): one big hit on A's turn, from turn 3, up to `uses` times.
+export function runMatch(teamA, teamB, { seed = Date.now(), bestOf = 3, startHp = null, assist = null } = {}) {
   const rand = rng(seed);
   const sides = {
     A: teamA.map(fighterStats),
@@ -124,6 +127,7 @@ export function runMatch(teamA, teamB, { seed = Date.now(), bestOf = 3, startHp 
   };
   const events = [];
   const score = { A: 0, B: 0 };
+  const ally = assist && assist.atk > 0 ? { ...assist, left: assist.uses || 1, last: -99 } : null;
   let round = 0;
 
   const need = Math.ceil(bestOf / 2);
@@ -134,7 +138,7 @@ export function runMatch(teamA, teamB, { seed = Date.now(), bestOf = 3, startHp 
     round += 1;
     const deciding = score.A === need - 1 || score.B === need - 1;
     const hp = round === 1 && startHp ? startHp : null;
-    const { winner, state } = runRound(sides, round, deciding, rand, events, hp);
+    const { winner, state } = runRound(sides, round, deciding, rand, events, hp, ally);
     endHp = state.A.lineup.map((f) => f.hp);
     score[winner] += 1;
     events.push({ t: 'round-end', round, winner, score: [score.A, score.B] });
@@ -144,7 +148,7 @@ export function runMatch(teamA, teamB, { seed = Date.now(), bestOf = 3, startHp 
   return { winner, score: [score.A, score.B], rounds: round, events, endHp };
 }
 
-function runRound(sides, round, deciding, rand, events, startHp) {
+function runRound(sides, round, deciding, rand, events, startHp, ally = null) {
   const state = {};
   for (const s of ['A', 'B']) {
     state[s] = {
@@ -177,6 +181,15 @@ function runRound(sides, round, deciding, rand, events, startHp) {
     const me = active(side);
     const foe = active(foeSide);
     events.push({ t: 'turn', turn, side });
+
+    // An ally jumps in (side A only), from turn 3, at least 4 turns apart.
+    if (ally && side === 'A' && ally.left > 0 && turn >= 3 && turn - ally.last >= 4 && !foe.out) {
+      ally.left -= 1; ally.last = turn;
+      const dmg = Math.max(1, Math.round(ally.atk * TUNING.allyMult * (1 + (rand() * 2 - 1) * TUNING.hitSpread)));
+      events.push({ t: 'assist', side: 'A', name: ally.name, cid: ally.cid ?? null, dmg });
+      if (applyDamage(state, foeSide, foe, dmg, deciding, rand, events, 'hit') && nextCard(state, foeSide, events)) return done(side);
+      if (foe.out) { turnSide = foeSide; continue; }
+    }
 
     // Burn ticks at the start of the burned card's turn.
     if (me.burn > 0) {

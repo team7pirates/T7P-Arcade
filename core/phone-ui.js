@@ -333,6 +333,14 @@ export function createPhone(opts) {
     const msg = [line, bondNote(ph, t, d)].filter(Boolean).join(' · ');
     if (msg) flash(msg);
   }
+  // v0.28.0: mode actions in a chat, like asking a Fusion fighter for backup.
+  function threadActions(ph, t) {
+    const list = opts.threadActions ? opts.threadActions(ph, t) : [];
+    if (!list.length || t.pending) return null;
+    return h('div', { class: 'ph-actions' }, list.map((a) => h('button', { class: 'ph-action', disabled: !!a.disabled || !!aiBusy, onClick: () => {
+      const line = a.run(); opts.save?.(); sfx.play('fanfare'); draw(); if (line) flash(line);
+    } }, h('b', {}, a.label), a.hint ? h('span', { class: 'ph-muted' }, a.hint) : null)));
+  }
   function composer(ph, t) {
     if (t.kind === 'office') return null;
     if (ai.ready()) {
@@ -376,7 +384,7 @@ export function createPhone(opts) {
     const pane = h('div', { class: 'ph-thread' }, h('div', { class: 'ph-top ph-top-thread' },
       h('button', { class: 'ph-back', 'aria-label': 'Back', onClick: () => goBack() }, '‹'),
       h('div', { class: 'ph-thread-who' }, face(t), h('p', { class: 'ph-title' }, t.name),
-        t.kind !== 'office' ? h('span', { class: 'ph-bond', title: `Bond ${bondOf(ph, t.key)} / 100` }, `${lv[2]} ${lv[1]} · ${bondOf(ph, t.key)}`) : null), h('span')), msgs, opt, composer(ph, t));
+        t.kind !== 'office' ? h('span', { class: 'ph-bond', title: `Bond ${bondOf(ph, t.key)} / 100` }, `${lv[2]} ${lv[1]} · ${bondOf(ph, t.key)}`) : null), h('span')), msgs, opt, threadActions(ph, t), composer(ph, t));
     requestAnimationFrame(() => { msgs.scrollTop = msgs.scrollHeight; });
     return pane;
   }

@@ -28,6 +28,7 @@ import {
   floorFoes, floorPower, swarmSize, isBoss, bountyFor, healAfter, titleFor, HEAL_FLOOR, HEAL_BOSS,
 } from './fusion-rules.js';
 import * as FP from './fusion-phone.js';
+import * as PB from '../core/phone-bonds.js';
 import { sfx } from '../core/sfx.js';
 import { createPhone } from '../core/phone-ui.js';
 import * as PD from '../core/phone-dating.js';
@@ -145,6 +146,9 @@ function newRun(hard) {
   const build = structuredClone(data.build);
   const maxHp = fighterStats(fighterOf(build)).maxHp;
   const r = { hard, build, floor: 0, hp: maxHp, maxHp, runBounty: 0, underdogWins: 0, bossWins: 0, startedAt: Date.now(), recent: [], phone: FP.newPhone(data.followers || 0), plan: {} };
+  // v0.28.0: bonds and contacts carry over from your last climb.
+  if (data.lastPhone?.bonds) r.phone.bonds = JSON.parse(JSON.stringify(data.lastPhone.bonds));
+  if (data.lastPhone?.met) r.phone.met = data.lastPhone.met.slice(0, 80);
   planFloor(r);
   return r;
 }
@@ -204,6 +208,14 @@ export async function render() {
       return line;
     },
     calendar: () => fusionCalendar(),
+    // v0.28.0: ask a fighter you're Close with to back you up next floor.
+    threadActions: (ph, t) => {
+      if (!run || t.cid == null || t.kind === 'boss') return [];
+      const why = FP.allyBlock(run, t.key);
+      const booked = run.ally?.key === t.key;
+      return [{ label: booked ? `🤝 Backing you up on floor ${run.ally.floor}` : `🤝 Ask for backup on floor ${run.next?.floor ?? run.floor + 1}`, hint: booked ? null : why || `They jump in ${FP.allyUses(PB.bondOf(ph, t.key)) === 2 ? 'twice' : 'once'} · ${Math.round(FP.allyCut(PB.bondOf(ph, t.key)) * 100)}% of that floor's Bounty if you win`, disabled: booked || !!why,
+        run: () => { const res = FP.askAlly(run, t.key); if (res.ok) { saveRun(); if (view === 'tower') drawTower(); } return res.line; } }];
+    },
     aiSetting: () => (run ? `The player is ${run.build?.name || 'a fighter'}, climbing the Tower in an anime fighting game. They're on floor ${run.floor}${run.hard ? ' on Hard' : ''} with ${Math.round(run.phone?.followers || 0).toLocaleString()} followers.` : `The player is ${data?.build?.name || 'a fighter'}, between climbs of the Tower.`),
     wallet: () => fusionWallet(),
     getPhone: () => (!data ? null : run?.phone || data.lastPhone || null),
@@ -643,6 +655,9 @@ export async function render() {
         waitingNow.length ? h('button', { class: 'ff-phone-alert', onClick: () => phone.openThread(waitingNow[0].key) },
           h('span', { class: 'ff-phone-alert-icon' }, '📱'),
           h('span', {}, h('strong', {}, `${waitingNow[0].name} is waiting on your reply.`), ' How you answer can change who you fight.')) : null,
+        r.ally && r.ally.floor === fl ? h('button', { class: 'ff-ally', onClick: () => phone.openThread(r.ally.key) },
+          r.ally.cid != null && characters.get(r.ally.cid) ? avatar(characters.get(r.ally.cid), characters, 'sm') : h('span', {}, '🤝'),
+          h('span', {}, h('strong', {}, `${r.ally.name} has your back.`), ` They jump in ${r.ally.uses === 2 ? 'twice' : 'once'} and take ${Math.round(r.ally.cut * 100)}% of the Bounty if you win.`)) : null,
         r.next.mult && r.next.mult !== 1 ? h('p', { class: 'caption gold ff-center' }, `Bounty ×${r.next.mult} on this floor.`) : null,
         r.restPenalty ? h('p', { class: 'caption muted ff-center' }, 'You rested: this floor pays 20% less Bounty.') : null,
         h('div', { class: 'result-actions' },
@@ -682,8 +697,10 @@ export async function render() {
     const stage = h('div', { class: 'ff-stage' });
     const after = h('div', { class: 'ff-after', hidden: true });
     fill(root, header(`FLOOR ${fl}${r.hard ? ' · HARD' : ''}`, () => drawTower()), stage, after);
+    const allyC = r.ally && r.ally.floor === fl && r.ally.cid != null ? characters.get(r.ally.cid) : null;
+    const assist = allyC ? { name: allyC.name, cid: allyC.id, atk: fighterStats(allyC).atk, uses: r.ally.uses } : null;
     fightView = playMatch(stage, {
-      teamA: [me], teamB: foes, seed: r.next.seed, bestOf: 1, startHp: [r.hp], speed: 2,
+      teamA: [me], teamB: foes, seed: r.next.seed, bestOf: 1, startHp: [r.hp], speed: 2, assist,
       names: { B: foes.length === 1 ? foes[0].name : r.next.type === 'crew' ? 'THE CREW' : isBoss(fl) ? 'THE BOSS SQUAD' : 'THE SWARM' },
       labels: { A: 'YOU', B: isBoss(fl) ? 'BOSS' : `FLOOR ${fl}` },
       onDone: async (result) => {
@@ -706,12 +723,16 @@ export async function render() {
     const me = fighterOf(r.build);
     const base = bountyFor(fl, r.hard, me, foes);
     const underdog = base.underdog;
-    const bounty = Math.round(base.bounty * (r.next.mult || 1) * (r.restPenalty ? FP.REST_PENALTY : 1) * (1 + (r.build.talents?.bounty || 0)));
+    let bounty = Math.round(base.bounty * (r.next.mult || 1) * (r.restPenalty ? FP.REST_PENALTY : 1) * (1 + (r.build.talents?.bounty || 0)));
     r.restPenalty = false;
     const before = result.endHp[0];
     const hp = healAfter(fl, before, r.maxHp, r.build.talents?.heal || 0);
     r.floor = fl;
     r.hp = hp;
+    // v0.28.0: pay your backup out of this floor's Bounty.
+    const allyName = r.ally && r.ally.floor === fl ? r.ally.name : null;
+    const fee = r.phone ? FP.settleAlly(r, fl, bounty) : 0;
+    bounty -= fee;
     r.runBounty += bounty;
     const type = r.next.type;
     if (underdog) r.underdogWins += 1;
@@ -740,7 +761,7 @@ export async function render() {
     planFloor(r);
     await saveData();
     await saveRun();
-    return { floor: fl, bounty, underdog, healed: hp - before, hp, boss: isBoss(fl), gained: budget() - budgetBefore };
+    return { floor: fl, bounty, underdog, healed: hp - before, hp, boss: isBoss(fl), gained: budget() - budgetBefore, fee, allyName };
   }
 
   function drawCleared(o) {
@@ -753,6 +774,7 @@ export async function render() {
         h('h2', { class: 'display-lg gold' }, `+${fmt(o.bounty)}`),
         h('p', { class: 'label-spaced' }, 'BOUNTY'),
         o.underdog ? h('p', { class: 'new-best' }, 'UNDERDOG WIN · ×1.5') : null,
+        o.fee ? h('p', { class: 'caption muted' }, `After paying ${o.allyName} ${fmt(o.fee)} for the backup.`) : null,
         o.gained > 0 ? h('p', { class: 'new-best' }, `+${o.gained} TALENT POINT${o.gained === 1 ? '' : 'S'}`) : null,
       ),
       h('div', { class: 'ff-me panel' },

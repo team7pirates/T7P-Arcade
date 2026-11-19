@@ -29,7 +29,7 @@
 
 import { floorPower, isBoss, swarmSize, BOSS_EVERY } from './fusion-rules.js';
 import { chirp, lenzPost, snap, answerPost } from '../core/phone-core.js';
-import { meet } from '../core/phone-bonds.js';
+import { meet, bondOf, addBond, levelOf } from '../core/phone-bonds.js';
 
 export const MAX_FOLLOWER_AURA = 10;
 export const FOLLOWERS_PER_AURA = 2500;
@@ -38,6 +38,16 @@ export const CALLOUT_BOUNTY = 1.5;
 export const CREW_BOUNTY = 1.6;
 export const REST_HEAL = 0.12;
 export const REST_PENALTY = 0.8;
+// v0.28.0: allies. A fighter you're Close with (bond 60+) can back you up on
+// your next floor: they jump in mid-fight with one big hit (two at Ride or
+// die, bond 80+). You pay them a share of that floor's Bounty, only if you win.
+// No backup on boss floors, nobody backs you up against themselves, and an
+// ally rests 3 floors after helping.
+export const ALLY_BOND = 60;
+export const ALLY_BEST = 80;
+export const ALLY_REST = 3;
+export const allyCut = (bond) => (bond >= ALLY_BEST ? 0.2 : 0.3);
+export const allyUses = (bond) => (bond >= ALLY_BEST ? 2 : 1);
 
 const pick = (arr, rand) => arr[Math.floor(rand() * arr.length)];
 const fill = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => (v[k] != null ? v[k] : ''));
@@ -169,6 +179,7 @@ export function afterFloor(r, ctx) {
 
   // The fighter you just beat has something to say.
   beatenEvent(r, ctx);
+  allyOfferEvent(r, ctx);
   lenzEvent(r, ctx);
   snapEvent(r, ctx);
   // One main event: what decides the next floor.
@@ -328,6 +339,73 @@ function snapEvent(r, ctx) {
   snap(r.phone, { from: foe.name, cid: foe.id ?? null, caption: fresh(r, SNAP_LOST, ctx.rand), when: `Floor ${ctx.floor}` });
 }
 
+// ---------- Allies (v0.28.0) ----------
+const ALLY_YES = ['Say less. I got your back on floor {next}.', 'I\'ll be there. Don\'t make me carry you.', 'Floor {next}? I\'m in. Bring the snacks after.', 'Text me when you walk in. I\'ll jump in when it counts.', 'For you? Yeah. Floor {next}.'];
+const ALLY_OFFER = ['Heard you\'re heading to floor {next}. Want me to jump in if it gets ugly? I\'d take {cut}% of the Bounty.', 'You\'ve been climbing alone too long. Floor {next}, I\'ll back you up. {cut}% of the Bounty and we\'re good.', 'Floor {next} looks rough. I can step in once. Cool if I take {cut}%?'];
+const ALLY_THANKS = ['Good work up there. Same time next time?', 'Told you I had you.', 'That felt good. Call me again.', 'Easy money. Let\'s do it again.'];
+// Why someone can't back you up next floor, or null if they can.
+export function allyBlock(r, key) {
+  const ph = r.phone; const next = r.next?.floor ?? (r.floor + 1);
+  const b = bondOf(ph, key);
+  if (b < ALLY_BOND) return `Get your bond to Close (${ALLY_BOND}) first. It's ${b} now.`;
+  if (r.ally) return r.ally.key === key ? `${short(r.ally.name)} is already backing you up on floor ${r.ally.floor}.` : `${short(r.ally.name)} is already backing you up on floor ${r.ally.floor}.`;
+  if (isBoss(next)) return 'No backup on boss floors.';
+  const t = ph.threads.find((x) => x.key === key) || (ph.met || []).find((x) => x.key === key);
+  const cid = t?.cid;
+  if (cid != null && (r.next?.ids || []).includes(cid)) return 'They\'re your next opponent.';
+  const rest = (r.allyRest || {})[key];
+  if (rest && rest > next) return `They're resting until floor ${rest}.`;
+  return null;
+}
+export function bookAlly(r, key) {
+  const ph = r.phone; const next = r.next?.floor ?? (r.floor + 1);
+  const t = ph.threads.find((x) => x.key === key) || (ph.met || []).find((x) => x.key === key);
+  if (!t || t.cid == null) return null;
+  const b = bondOf(ph, key);
+  r.ally = { key, name: t.name, cid: t.cid, floor: next, uses: allyUses(b), cut: allyCut(b) };
+  return r.ally;
+}
+// The player asks (from the chat). Returns a toast line, or the reason it can't happen.
+export function askAlly(r, key) {
+  const why = allyBlock(r, key);
+  if (why) return { ok: false, line: why };
+  const a = bookAlly(r, key);
+  if (!a) return { ok: false, line: 'Only fighters can back you up.' };
+  const t = thread(r.phone, { key, name: a.name, cid: a.cid, kind: 'rival' });
+  me(r.phone, t, `Floor ${a.floor} is coming up. Got my back?`);
+  t.msgs.push({ from: 'them', text: fill(fresh(r, ALLY_YES, Math.random), { next: a.floor }) });
+  sys(t, `BACKUP: ${a.name} jumps in ${a.uses === 2 ? 'twice' : 'once'} on floor ${a.floor} for ${Math.round(a.cut * 100)}% of that floor's Bounty (only if you win).`);
+  return { ok: true, line: `${short(a.name)} has your back on floor ${a.floor}.` };
+}
+// Now and then a Close fighter offers to help (in afterFloor).
+function allyOfferEvent(r, ctx) {
+  const ph = r.phone;
+  if (r.ally || ctx.rand() > 0.35) return;
+  const pickable = (ph.met || []).filter((m) => m.cid != null && !allyBlock(r, m.key) && !(ph.threads.find((t) => t.key === m.key)?.pending));
+  if (!pickable.length) return;
+  const m = pickable.sort((a, b) => bondOf(ph, b.key) - bondOf(ph, a.key))[0];
+  const next = ctx.floor + 1; const cut = Math.round(allyCut(bondOf(ph, m.key)) * 100);
+  const t = say(ph, { key: m.key, name: m.name, cid: m.cid, kind: m.kind || 'rival' }, fill(fresh(r, ALLY_OFFER, ctx.rand), { next, cut }), ctx.floor);
+  t.pending = { type: 'ally', floor: next, options: [
+    { id: 'accept', tone: 'accept', text: 'Let\'s do it. Floor ' + next + '.', hint: `They jump in mid-fight · ${cut}% of the Bounty if you win` },
+    { id: 'decline', tone: 'decline', text: 'I got this one. Next time.' },
+  ] };
+}
+// After a floor you won: pay the ally and send them to rest. Returns the fee.
+export function settleAlly(r, floor, bounty) {
+  const a = r.ally;
+  if (!a || a.floor !== floor) { if (a && a.floor < floor) r.ally = null; return 0; }
+  const fee = Math.round(bounty * a.cut);
+  r.allyRest = { ...(r.allyRest || {}), [a.key]: floor + 1 + ALLY_REST };
+  r.allyHelps = (r.allyHelps || 0) + 1;
+  const t = thread(r.phone, { key: a.key, name: a.name, cid: a.cid, kind: 'rival' });
+  sys(t, `PAID: ${fee.toLocaleString()} Bounty to ${a.name} for the backup on floor ${floor}.`);
+  t.msgs.push({ from: 'them', text: fresh(r, ALLY_THANKS, Math.random) });
+  addBond(r.phone, a.key, 'friendly');
+  r.ally = null;
+  return fee;
+}
+
 // ---------- Replies ----------
 // Returns a short line for a toast.
 export function reply(r, key, optionId, ctx) {
@@ -378,6 +456,17 @@ export function reply(r, key, optionId, ctx) {
       gainFollowers(ph, 150);
       line = `Floor ${p.floor} is now the boss's crew of 3.`;
     } else { back('Hm. Maybe you\'re smarter than you look.'); line = 'The boss will face you alone.'; }
+  } else if (p.type === 'ally') {
+    if (o.id === 'accept') {
+      const why = allyBlock(r, t.key);
+      if (why) { back('Ah, never mind. Another time.'); line = why; }
+      else {
+        const a = bookAlly(r, t.key);
+        back(fill(fresh(r, ALLY_YES, ctx.rand), { next: a.floor }));
+        sys(t, `BACKUP: ${a.name} jumps in ${a.uses === 2 ? 'twice' : 'once'} on floor ${a.floor} for ${Math.round(a.cut * 100)}% of that floor's Bounty (only if you win).`);
+        line = `${short(t.name)} has your back on floor ${a.floor}.`;
+      }
+    } else { back('Respect. Holler if you need me.'); line = 'You\'ll go it alone.'; }
   } else if (p.type === 'rest') {
     if (o.id === 'rest') {
       r.hp = Math.min(r.maxHp, Math.round(r.hp + r.maxHp * REST_HEAL));

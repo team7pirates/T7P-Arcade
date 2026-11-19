@@ -21,10 +21,10 @@ const fmt = (n) => Math.round(n).toLocaleString();
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // How long each event shows at 1× speed (ms).
-const TIMING = { 'round-start': 1100, enter: 450, turn: 120, attack: 520, damage: 380, clutch: 900, status: 300, stunned: 600, ko: 700, 'round-end': 1200, meter: 0, timeout: 800 };
+const TIMING = { 'round-start': 1100, enter: 450, turn: 120, attack: 520, damage: 380, clutch: 900, status: 300, stunned: 600, ko: 700, 'round-end': 1200, meter: 0, timeout: 800, assist: 1000 };
 
-export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, bestOf = 3, startHp = null, labels = { A: 'YOU', B: 'THEY' }, names = null, onDone }) {
-  const result = runMatch(teamA, teamB, { seed: seed ?? Date.now(), bestOf, startHp });
+export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, bestOf = 3, startHp = null, labels = { A: 'YOU', B: 'THEY' }, names = null, assist = null, onDone }) {
+  const result = runMatch(teamA, teamB, { seed: seed ?? Date.now(), bestOf, startHp, assist });
   const need = Math.ceil(bestOf / 2);
   const chars = { A: teamA, B: teamB };
   let speed = startSpeed ?? (teamA.length > 1 || teamB.length > 1 ? 2 : 1);
@@ -156,6 +156,7 @@ export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, be
       else if (ev.t === 'damage') sfx.play('hit');
       else if (ev.t === 'ko') sfx.play('ko');
       else if (ev.t === 'round-start') sfx.play('gong');
+      else if (ev.t === 'assist') sfx.play('special');
     }
     switch (ev.t) {
       case 'round-start':
@@ -201,6 +202,16 @@ export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, be
         pop(ev.side, `-${fmt(ev.dmg)}`, ev.kind === 'burn' ? 'pop-burn' : 'pop-dmg');
         break;
       }
+      case 'assist':
+        // v0.28.0: an ally from your phone jumps in.
+        showBanner(`${String(ev.name).toUpperCase()} JUMPS IN!`, 'is-assist');
+        if (!skipping && ev.cid != null) {
+          const c = characters.get(ev.cid); const u = c && characters.portraitUrl(c);
+          if (u) { const im = h('img', { class: 'bt-ally', src: u, alt: c.name }); slotA.append(im); setTimeout(() => im.remove(), 1100 / speed); }
+        }
+        flash('A', 'anim-lunge-r');
+        pop('A', 'ASSIST!', 'pop-move');
+        break;
       case 'clutch':
         pop(ev.side, ev.unbreakable ? 'UNBREAKABLE!' : 'CLUTCH!', 'pop-clutch');
         break;

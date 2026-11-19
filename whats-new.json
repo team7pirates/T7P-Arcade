@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.28.0",
+      "date": "2026-11-19",
+      "title": "Forbidden Fusion: allies",
+      "items": [
+        "Build a bond with a fighter and they'll fight with you. Once you're Close (bond 60+), open their chat and tap \"Ask for backup\": they jump into your next floor's fight mid-battle with one big hit. At Ride or die (80+) they jump in twice.",
+        "Backup isn't free: an ally takes 30% of that floor's Bounty (20% at Ride or die), and only if you win.",
+        "Sometimes a fighter you're close with texts first and offers to help.",
+        "Rules: no backup on boss floors, nobody helps you against themselves, and an ally rests 3 floors after helping.",
+        "Your bonds and contacts now carry over from one climb to the next."
+      ]
+    },
+    {
       "version": "0.27.0",
       "date": "2026-11-19",
       "title": "Lock screen, your phone your way, and texting anyone",
