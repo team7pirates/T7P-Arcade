@@ -9,6 +9,8 @@ import { ROLES } from '../core/combat.js';
 // per 10 (simulated: 10 Aura or Clutch is worth a bit less than 1 Power in the
 // Tower, so Power stays the safe pick and the others are a style). Chaos is free: it only changes how wild each hit is, not how strong
 // the fighter is. Second role is free (it adds a smaller role edge).
+import { origin as originOf, personality as personalityOf } from './fusion-contracts.js';
+
 export const GYM = {
   power: { min: 50, max: 99, step: 1, per: 1 },
   aura: { min: 0, max: 100, step: 10, per: 1 },
@@ -130,8 +132,10 @@ export function canBuy(tree, id, left) {
 export function applyTree(build) {
   const t = build.tree || {};
   build.powerLevel = Math.min(99, 50 + tierOf(t, 'power') * 7);
-  build.aura = Math.min(100, tierOf(t, 'aura') * 20);
-  build.clutch = Math.min(100, tierOf(t, 'clutch') * 20);
+  // v0.29.0: origin and personality add a little on top of the tree.
+  const og = originOf(build.origin) || {}; const pe = personalityOf(build.personality) || {};
+  build.aura = Math.min(100, tierOf(t, 'aura') * 20 + (og.aura || 0));
+  build.clutch = Math.min(100, tierOf(t, 'clutch') * 20 + (og.clutch || 0) + (pe.clutch || 0));
   const ub = tierOf(t, 'unbreakable'); const dm = tierOf(t, 'domain'); const ls = tierOf(t, 'laststand'); const mg = tierOf(t, 'magnet');
   build.talents = {
     hp: tierOf(t, 'titan') * 0.25, sp: tierOf(t, 'signature') * 0.1, heal: tierOf(t, 'secondWind') * 0.05, bounty: tierOf(t, 'bounty') * 0.1, meter: tierOf(t, 'momentum') * 20,
@@ -149,14 +153,21 @@ export function treeFromBuild(b) {
 
 // ---------- The Tower ----------
 export const BOSS_EVERY = 10; // v0.23.0 (Khalil): bosses every 10th floor
-export const FUSION_HP = 3.5;     // a fused fighter has 3.5× a normal card's health
-export const HEAL_FLOOR = 0.20;   // after a normal floor
-export const HEAL_BOSS = 0.25;    // after a boss floor
+// v0.29.0: less health per fight and more healing between floors, so a single
+// fight can go wrong (contracts need real risk). Was 3.5× / 20% / 25%.
+export const FUSION_HP = 2.0;     // a fused fighter has 2× a normal card's health
+export const HEAL_FLOOR = 0.40;   // after a normal floor
+export const HEAL_BOSS = 0.45;    // after a boss floor
+// Danger floors: about 1 floor in 8 sends a fighter far above the floor's level.
+// They pay 40% more Bounty. Never on boss floors or the first 2 floors.
+export const DANGER_CHANCE = 0.12;
+export const DANGER_PL = 16;
+export const DANGER_BOUNTY = 1.4;
 export const HARD_PL = 6;         // Hard Mode opponents are this much stronger
 
 // Target Power Level for a floor's opponent (one card).
 export function floorPower(floor, hard) {
-  return Math.min(99, 42 + Math.round(floor * 1.8) + (hard ? HARD_PL : 0));
+  return Math.min(99, 42 + Math.round(floor * 1.5) + (hard ? HARD_PL : 0)); // v0.29.0: 1.8 → 1.5 a floor
 }
 
 // How many cards the floor sends: past floor 10 the Omega swarms grow.
@@ -168,13 +179,13 @@ export function swarmSize(floor) {
 export const isBoss = (floor) => floor % BOSS_EVERY === 0;
 
 // Pick the floor's opponents from the roster. rand: a 0–1 random function.
-export function floorFoes(floor, hard, roster, rand = Math.random, avoid = new Set()) {
+export function floorFoes(floor, hard, roster, rand = Math.random, avoid = new Set(), danger = false) {
   const size = swarmSize(floor);
   const boss = isBoss(floor);
   // Swarm cards are weaker one by one; bosses are one big card ahead of the curve.
   const target = boss
     ? Math.min(99, floorPower(floor, hard) + 8)
-    : Math.max(20, floorPower(floor, hard) - (size - 1) * 9);
+    : Math.min(99, Math.max(20, floorPower(floor, hard) - (size - 1) * 9 + (danger ? DANGER_PL : 0)));
   const count = boss ? Math.max(1, size - 1) : size;
   const pool = roster.filter((c) => c.powerLevel && !avoid.has(c.id));
   const near = (w) => pool.filter((c) => Math.abs(c.powerLevel - target) <= w);
@@ -210,6 +221,7 @@ export function healAfter(floor, hp, maxHp, extra = 0) {
 }
 
 // Titles by best floor, shown on the result and in My Records.
+// v0.29.0 sims (Normal): new fighter dies around floor 6–11 (median 10), mid tree 14–22, full tree 25–33 (median 30). Older note:
 // Simulated medians (Normal): starter build ≈ floor 11, half-maxed ≈ 16,
 // maxed ≈ 20; Hard is about 2 floors less.
 export const TITLES = [[25, 'IMMORTAL'], [20, 'APEX FUSION'], [15, 'TOWER LORD'], [10, 'ASCENDANT'], [5, 'CONTENDER'], [0, 'RECRUIT']];

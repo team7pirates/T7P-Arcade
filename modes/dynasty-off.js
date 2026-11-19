@@ -182,7 +182,7 @@ export function startOffseason(L) {
   R.setCapScale(L);
   news(L, { kind: 'CAP', team: L.user?.team ?? 0, title: `The salary cap rises to ${R.capNow()}`, text: `Up 5% for the new league year. A supermax deal now tops out at ${R.maxDeal()} a season, and a team can carry ${R.SUPERMAX_LIMIT} of them.` });
   for (const t of L.teams) {
-    t.overStreak = 0; t.forfeitPick = false; t.capPenalty = 0;
+    t.overStreak = 0; t.forfeitPick = false; t.forfeitWhy = null; t.capPenalty = 0;
     t.dead = 0;                // last season's dead money is spent
     t.tagged = null;
     t.upgrades = 0;
@@ -256,6 +256,7 @@ export function nextStep(L) {
   o.step = list[Math.min(list.length - 1, i + 1)];
   if (o.step === 'draft' && !o.order) setDraftOrder(L);
   if (o.step === 'fa' && !o.fa) openFreeAgency(L);
+  if (o.step === 'resign' && R.hooks.tamperWindow) R.hooks.tamperWindow(L);
   return o.step;
 }
 
@@ -354,6 +355,8 @@ export const expiring = (L, t) => roster(L, t).filter((p) => p.contract && p.con
 export function askFor(L, p, t) {
   let a = asking(p);
   if (!p.lowKey && p.hype >= 60 && t.lastW != null && (t.w ?? t.lastW) < 6) a *= 1.15;
+  // v0.29.0: another team tampered with them, so they want more.
+  if (p.tampered?.season === L.season && p.team === t.i) a *= 1.15;
   return r1(a);
 }
 export function resign(L, pid, years) {
@@ -386,6 +389,8 @@ function aiResign(L) {
     const kept = roster(L, t).filter((p) => !exp.includes(p));
     const median = [...roster(L, t)].sort((a, b) => a.power - b.power)[Math.floor(t.roster.length / 2)]?.power ?? 70;
     for (const p of exp) {
+      // v0.29.0: a card you swayed won't re-sign.
+      if (p.swayed?.season === L.season && p.swayed.team !== t.i) { letGo(L, p.pid); continue; }
       const ask = askFor(L, p, t);
       const pay = kept.reduce((n, q) => n + R.capHit(q), 0) + (t.dead || 0);
       const wanted = t.stage === 'rebuild' ? (p.career <= 3 && p.potential >= p.power + 4) || p.power >= median + 4
@@ -460,7 +465,7 @@ export function setDraftOrder(L) {
   const rest = last.standings.map((s) => s.i).filter((i) => !done.has(i)).reverse();
   const order = [...rest, ...byRec(out.playin), ...byRec(out.quarters), ...byRec(out.semis), runner, champ];
   const forfeit = order.filter((i) => L.teams[i].forfeitPick);
-  forfeit.forEach((i) => news(L, { kind: 'CAP', team: i, title: `${L.teams[i].name} lose their draft pick`, text: 'Over the soft cap two seasons running. The league takes the pick.' }));
+  forfeit.forEach((i) => news(L, { kind: L.teams[i].forfeitWhy === 'tampering' ? 'SCANDAL' : 'CAP', team: i, title: `${L.teams[i].name} lose their draft pick`, text: L.teams[i].forfeitWhy === 'tampering' ? 'Caught tampering this off-season. The league takes the pick.' : 'Over the soft cap two seasons running. The league takes the pick.' }));
   // v0.18.0: picks traded on the phone go to their new owner.
   const kept = order.filter((i) => !L.teams[i].forfeitPick);
   L.off.from = kept.slice();
@@ -558,6 +563,8 @@ export function interest(L, p, t, offer) {
   const buzz = roster(L, t).reduce((n, q) => n + q.hype + q.aura, 0) / Math.max(1, t.roster.length) / 2;
   parts.spotlight = p.lowKey ? 0 : clamp(buzz / 70, 0, 1) * clamp(p.aura / 60, 0.5, 1.4) * 9;
   if (L.user && t.i === L.user.team && L.user.rep) parts.legacy = LG.faPull(L.user.rep);
+  // v0.29.0: tampering (yours or an AI team's) leaves the card leaning that way.
+  if ((p.swayed?.season === L.season && p.swayed.team === t.i) || (p.tampered?.season === L.season && p.tampered.team === t.i)) parts.tamper = 14;
   const yrs = Math.abs((offer.years || wantYears(p)) - wantYears(p));
   const score = Object.values(parts).reduce((n, v) => n + v, 0) - yrs * 4;
   const blocked = same >= MAX_PER_SERIES ? `Already ${MAX_PER_SERIES} from ${p.series}` : null;

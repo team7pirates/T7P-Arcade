@@ -20,6 +20,7 @@ import * as WK from './dynasty-weekly.js';
 import * as MAP from './dynasty-map.js';
 import { sfx } from '../core/sfx.js';
 import * as DP from './dynasty-phone.js';
+import * as T from './dynasty-tamper.js';
 import { createPhone } from '../core/phone-ui.js';
 
 const help = howToPlay('dynasty', 'Dynasty', [
@@ -35,6 +36,7 @@ const help = howToPlay('dynasty', 'Dynasty', [
   'Each time you open a save you get the Weekly Recap, then the Weekly Preview. Tick "Don\'t show again this week" to skip them; both are also on the Next Game card.',
   'Draft: you earn 8 scouting points a week. 6 points reveals a prospect\'s potential; a deep scout shows 💎 (a gem: Star or Superstar, 2x growth or more), nothing (solid: could be any of the three) or 💔 a broken diamond (a bust: Normal, 1x). Power stays hidden until they are drafted.',
   'Off-season: retirements, awards night, re-sign (one Franchise Tag), up to 2 development upgrades, a one-round draft, then 3 rounds of free agency.',
+  'Whispers (re-sign step): text up to 3 cards on other teams whose contracts ran out. If it works they skip re-signing and lean your way in free agency. If the texts leak it is a scandal: a cap fine, then your draft pick. AI teams tamper with your cards too, and you can report them.',
   'Media: OSM prints an issue every 3 weeks. The cover star and your spotlight player gain Aura. The Fight Night Dojo picks the big games every week.',
   'Museum: every champion, award winner, rivalry trophy and Pantheon member. Your office wall and trophy shelf live on the Coach tab.',
   'The end of an era: when the last original character retires (around season 10), your dynasty is complete. It goes into the Hall of Coaches, and the save carries on into the New Era with made-up characters only.',
@@ -127,7 +129,7 @@ export async function render() {
     news: () => (L?.news || []).slice(0, 30).map((n) => ({ src: `${n.kind || 'AFL'} · ${n.off ? 'OFF-SEASON' : n.week ? `WEEK ${n.week}` : `SEASON ${L.season}`}`, title: n.title, text: n.text })),
     calendar: () => dynastyCalendar(),
     aiSetting: () => (L?.user ? `The player is ${L.user.coach || 'the head coach'}, head coach of ${me().name} in the Anime Fighting League. Season ${L.season}, ${L.phase === 'season' ? `week ${L.week}` : L.phase}, record ${me().w}-${me().l}.` : ''),
-    contacts: () => (L?.user ? me().roster.map((pid) => L.players[pid]).filter(Boolean).map((p) => ({ key: `p-${p.pid}`, name: p.name, cid: p.cid ?? null, kind: 'player' })) : []),
+    contacts: () => (L?.user ? me().roster.map((pid) => L.players[pid]).filter(Boolean).concat(T.targets(L)).map((p) => ({ key: `p-${p.pid}`, name: p.name, cid: p.cid ?? null, kind: 'player' })) : []),
     wallet: () => dynastyWallet(),
     getPhone: () => (L && L.user ? DP.ensure(L) : null),
     save: () => save(),
@@ -142,6 +144,7 @@ export async function render() {
       const line = DP.reply(L, key, optionId);
       save();
       if (document.querySelector('.dy-hub3, .dy-next')) drawHub();
+      else if (L.phase === 'offseason' && document.querySelector('.dy-resign, .dy-whisper')) drawOff();
       return line;
     },
   });
@@ -1310,6 +1313,7 @@ export async function render() {
           h('span', { class: 'dy-list-text' }, h('span', { class: 'dy-rname' }, p.name),
             h('span', { class: 'caption muted' }, `${p.role} · Power ${p.power} · season ${p.career} · Hype ${Math.round(p.hype)}${p.lowKey ? ' · low-key' : ''}`),
             h('span', { class: 'caption' }, `Asks ${ask} a season · wants ${want} season${want > 1 ? 's' : ''}`),
+            p.tampered?.season === L.season ? h('span', { class: 'caption loss' }, `The ${team(p.tampered.team).name} got in their ear: asking 15% more.`) : null,
             (() => { const space = Math.round((R.capOf(t) - R.payroll(L, t) - ask) * 10) / 10; const sm = R.isSupermax(ask); return h('span', { class: `caption dy-resign-preview ${space < 0 ? 'loss' : 'win'}` }, `${yrs} season${yrs > 1 ? 's' : ''}: ${ask} a season, ${Math.round(ask * yrs * 10) / 10} total · cap space after: ${space}${space < 0 ? ' (over the hard cap)' : ''}${sm ? ` · SUPERMAX (${R.supermaxCount(L, t)}/${R.SUPERMAX_LIMIT} used)` : ''}`); })()),
           h('span', { class: 'dy-resign-btns' },
             h('span', { class: 'dy-yrs', role: 'group', 'aria-label': 'Seasons' }, [1, 2, 3, 4].map((y) => h('button', { class: `dy-chip${y === yrs ? ' is-on' : ''}`, 'aria-pressed': y === yrs ? 'true' : 'false', onClick: () => { yearsPick[p.pid] = y; offResign(); } }, `${y}`))),
@@ -1318,12 +1322,30 @@ export async function render() {
             h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { O.letGo(L, p.pid); await save(); offResign(); } }, 'Let go')));
       })) : null,
       signedNow.length ? h('p', { class: 'caption muted' }, `Kept: ${signedNow.map((p) => p.name).join(', ')}.`) : null,
+      whispers(),
       t.tagged != null ? h('p', { class: 'caption gold' }, `Franchise Tag used on ${L.players[t.tagged].name}.`) : null);
     offFrame('RE-SIGN', body, nextBtn('On to upgrades', async () => {
       const left = O.expiring(L, me()).length;
       if (!left) return true;
       return confirmSheet({ title: 'LET THE REST GO?', message: `${left} unsigned card${left > 1 ? 's' : ''} will go to free agency.`, confirmLabel: 'Continue' });
     }));
+  }
+
+  // v0.29.0: text cards on other teams before they re-sign. Risky.
+  function whispers() {
+    const list = T.targets(L);
+    if (!list.length) return null;
+    const left = T.textsLeft(L);
+    return h('section', { class: 'dy-whisper' },
+      h('h2', { class: 'dy-h' }, 'WHISPERS · OTHER TEAMS\' EXPIRING CARDS'),
+      h('p', { class: 'caption muted' }, `Their teams can still re-sign them. Text one to sway them into free agency, leaning your way. It won't always work, and if the texts leak it's a scandal: a cap fine, then your draft pick. ${left} of ${T.TEXTS} texts left this off-season.`),
+      h('ul', { class: 'dy-list' }, list.map((p) => {
+        const sw = T.swayedBy(L, p, L.user.team);
+        return h('li', {}, pAvatar(p),
+          h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${team(p.team).abbr} · ${p.role} · Power ${p.power} · asks ${O.askFor(L, p, me())}`)),
+          sw ? h('span', { class: 'caption win' }, 'Swayed ✓')
+            : h('button', { class: 'btn btn-secondary btn-sm', disabled: !left, onClick: async () => { T.start(L, p.pid); await save(); phone.openThread(T.keyOf(p)); } }, 'Text'));
+      })));
   }
 
   function offUpgrade() {

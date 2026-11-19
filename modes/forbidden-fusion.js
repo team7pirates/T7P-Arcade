@@ -25,9 +25,10 @@ import {
   GYM, START_BUDGET, ROLE_CHANGE, roleChangeCost, starterBuild, fighterFrom,
   TREE, TREE_MAX, node, treeCost, tierOf, canBuy, applyTree, treeFromBuild, pointsForFloor, POINTS_PER_BOSS,
   RING2, RING2_LIMIT, RING2_MAX, isRing2, ring2Owned, ring2Block,
-  floorFoes, floorPower, swarmSize, isBoss, bountyFor, healAfter, titleFor, HEAL_FLOOR, HEAL_BOSS,
+  floorFoes, floorPower, swarmSize, isBoss, bountyFor, healAfter, titleFor, HEAL_FLOOR, HEAL_BOSS, DANGER_CHANCE, DANGER_BOUNTY,
 } from './fusion-rules.js';
 import * as FP from './fusion-phone.js';
+import * as FC from './fusion-contracts.js';
 import * as PB from '../core/phone-bonds.js';
 import { sfx } from '../core/sfx.js';
 import { createPhone } from '../core/phone-ui.js';
@@ -130,8 +131,12 @@ function planFloor(r) {
     foes = p.ids.map((id) => characters.get(id)).filter(Boolean);
     mod = p.mod || 0; mult = p.mult || 1; type = p.type;
   }
-  if (!foes || !foes.length) { foes = floorFoes(floor, r.hard, roster, Math.random, avoid); type = null; mod = 0; mult = 1; }
-  r.next = { floor, foeIds: foes.map((c) => c.id), seed: shuffleSeed(), mod, mult, type };
+  let danger = false;
+  if (!foes || !foes.length) {
+    danger = floor > 2 && !isBoss(floor) && Math.random() < DANGER_CHANCE;
+    foes = floorFoes(floor, r.hard, roster, Math.random, avoid, danger); type = null; mod = 0; mult = danger ? DANGER_BOUNTY : 1;
+  }
+  r.next = { floor, foeIds: foes.map((c) => c.id), seed: shuffleSeed(), mod, mult, type, danger };
   r.recent = [...foes.map((c) => c.id), ...(r.recent || [])].slice(0, 12);
 }
 // Foe cards with the phone's Power changes (a lieutenant +4, a rattled boss -5).
@@ -149,6 +154,8 @@ function newRun(hard) {
   // v0.28.0: bonds and contacts carry over from your last climb.
   if (data.lastPhone?.bonds) r.phone.bonds = JSON.parse(JSON.stringify(data.lastPhone.bonds));
   if (data.lastPhone?.met) r.phone.met = data.lastPhone.met.slice(0, 80);
+  // v0.29.0: a cocky or funny fighter grows followers faster.
+  r.phone.followerMult = FC.personality(build.personality)?.followers || 1;
   planFloor(r);
   return r;
 }
@@ -257,7 +264,7 @@ export async function render() {
             return h('div', { class: 'dy-slot dy-panel ff-slot' },
               h('p', { class: 'label-spaced' }, `FILE ${n}`),
               h('p', { class: 'heading' }, 'Empty'),
-              h('button', { class: 'btn btn-primary', onClick: async () => { await loadSlot(n); drawLab(); } }, 'New fighter'));
+              h('button', { class: 'btn btn-primary', onClick: () => drawCreator(n) }, 'New fighter'));
           }
           const f = fighterOf(d.build);
           const best = bestFloor(d);
@@ -278,6 +285,149 @@ export async function render() {
         })),
       ),
     );
+  }
+
+  // ---------- Fighter creator (v0.29.0) ----------
+  // Step by step, like Dynasty's coach setup: name and face, origin, style,
+  // personality, then the Lab. Contract offers come before each climb.
+  function drawCreator(n) {
+    const icon0 = characters.get(profile.value.iconId);
+    const cr = { step: 0, name: '', faceId: icon0?.portrait ? icon0.id : null, origin: null, mainRole: null, secondRole: null, personality: null };
+    const STEPS = ['Name', 'Origin', 'Style', 'Personality', 'Ready'];
+    let faces = null; let q = '';
+    const shuffleFaces = () => { const all = characters.list.filter((c) => c.portrait && !c.retired); faces = Array.from({ length: 12 }, () => all[Math.floor(Math.random() * all.length)]); };
+    const draw = () => {
+      view = 'create';
+      const steps = h('ol', { class: 'dy-steps', 'aria-label': 'Creator steps' }, STEPS.map((k, i) => h('li', { class: i < cr.step ? 'is-done' : i === cr.step ? 'is-on' : '' }, k)));
+      const nav = (canNext, label = 'Next') => h('div', { class: 'btn-row ff-cr-nav' },
+        cr.step ? h('button', { class: 'btn btn-secondary', onClick: () => { cr.step -= 1; draw(); } }, 'Back') : h('button', { class: 'btn btn-secondary', onClick: drawSlots }, 'Cancel'),
+        h('button', { class: 'btn btn-primary', disabled: !canNext, onClick: () => { if (cr.step === 4) finish(); else { cr.step += 1; sfx.play('tap'); draw(); } } }, label));
+      const opt = (selected, onPick, icon, title, text, perk) => h('button', { class: `dy-option ff-cr-opt${selected ? ' is-on' : ''}`, 'aria-pressed': String(!!selected), onClick: () => { onPick(); sfx.play('pick'); draw(); } },
+        h('span', { class: 'heading' }, `${icon ? `${icon} ` : ''}${title}`), text ? h('span', { class: 'caption muted' }, text) : null, perk ? h('span', { class: 'caption gold' }, perk) : null);
+      let body;
+      if (cr.step === 0) {
+        if (!faces) shuffleFaces();
+        const name = h('input', { id: 'ff-name', class: 'ai-input ff-cr-name', maxlength: 22, placeholder: 'Fighter name', value: cr.name });
+        name.addEventListener('input', () => { cr.name = name.value; nextBtn.disabled = !cr.name.trim(); });
+        const search = h('input', { class: 'ai-input', placeholder: 'Search any character for your face', value: q });
+        const grid = h('div', { class: 'ff-cr-faces' });
+        const drawGrid = () => {
+          const list = q.trim() ? characters.search ? characters.search(q).filter((c) => c.portrait).slice(0, 18) : characters.list.filter((c) => c.portrait && c.name.toLowerCase().includes(q.toLowerCase())).slice(0, 18) : faces;
+          fill(grid, list.map((c) => h('button', { class: `ff-cr-face${cr.faceId === c.id ? ' is-on' : ''}`, 'aria-label': c.name, 'aria-pressed': String(cr.faceId === c.id), onClick: () => { cr.faceId = c.id; sfx.play('pick'); drawGrid(); preview(); } }, avatar(c, characters, 'md'), h('span', { class: 'caption' }, c.name))));
+        };
+        search.addEventListener('input', () => { q = search.value; drawGrid(); });
+        const pv = h('div', { class: 'ff-cr-preview' });
+        const preview = () => { const c = cr.faceId != null ? characters.get(cr.faceId) : null; fill(pv, c ? avatar(c, characters, 'lg') : h('span', { class: 'avatar avatar-lg avatar-empty' }, '?'), h('p', { class: 'caption muted' }, c ? `Face: ${c.name}` : 'Pick a face')); };
+        drawGrid(); preview();
+        const nextBtn = h('button', { class: 'btn btn-primary', disabled: !cr.name.trim(), onClick: () => { cr.name = cr.name.trim().slice(0, 22); cr.step = 1; draw(); } }, 'Next');
+        body = h('div', { class: 'ff-cr-body' },
+          h('h2', { class: 'heading' }, 'Who are you?'),
+          h('div', { class: 'ff-cr-namerow' }, pv, h('label', { class: 'ai-field' }, h('span', { class: 'caption' }, 'Name'), name)),
+          h('p', { class: 'label-spaced' }, 'YOUR FACE'), search, grid,
+          h('button', { class: 'btn btn-secondary btn-sm', onClick: () => { shuffleFaces(); q = ''; search.value = ''; drawGrid(); } }, '🔀 Shuffle faces'),
+          h('div', { class: 'btn-row ff-cr-nav' }, h('button', { class: 'btn btn-secondary', onClick: drawSlots }, 'Cancel'), nextBtn));
+        fill(root, header(`FILE ${n} · NEW FIGHTER`, drawSlots), steps, body);
+        setTimeout(() => name.focus(), 50);
+        return;
+      }
+      if (cr.step === 1) body = h('div', { class: 'ff-cr-body' }, h('h2', { class: 'heading' }, 'Where did you come from?'),
+        h('div', { class: 'dy-options' }, FC.ORIGINS.map((o) => opt(cr.origin === o.id, () => { cr.origin = o.id; }, o.icon, o.name, o.text, o.perk))), nav(!!cr.origin));
+      if (cr.step === 2) body = h('div', { class: 'ff-cr-body' }, h('h2', { class: 'heading' }, 'How do you fight?'),
+        h('p', { class: 'label-spaced' }, 'MAIN STYLE'),
+        h('div', { class: 'dy-options' }, ROLES.map((r) => opt(cr.mainRole === r, () => { cr.mainRole = r; if (cr.secondRole === r) cr.secondRole = null; }, null, r, `${SPECIALS[r].name}: ${SPECIALS[r].text}`, `Beats ${BEATS[r].join(' · ')}`))),
+        h('p', { class: 'label-spaced' }, 'SECOND STYLE (OPTIONAL)'),
+        h('div', { class: 'ff-cr-chips' }, [null, ...ROLES.filter((r) => r !== cr.mainRole)].map((r) => h('button', { class: `dy-option dy-option-sm${cr.secondRole === r ? ' is-on' : ''}`, onClick: () => { cr.secondRole = r; sfx.play('pick'); draw(); } }, r || 'None'))),
+        nav(!!cr.mainRole));
+      if (cr.step === 3) body = h('div', { class: 'ff-cr-body' }, h('h2', { class: 'heading' }, 'What are you like?'),
+        h('div', { class: 'dy-options' }, FC.PERSONALITIES.map((o) => opt(cr.personality === o.id, () => { cr.personality = o.id; }, o.icon, o.name, o.text, o.perk))), nav(!!cr.personality));
+      if (cr.step === 4) {
+        const b = buildFrom();
+        body = h('div', { class: 'ff-cr-body' }, h('h2', { class: 'heading' }, 'Ready to climb?'),
+          h('div', { class: 'ff-hero' }, characterCard(fighterOf(b), { size: 'lg' }),
+            h('div', { class: 'ff-hero-side' },
+              h('p', { class: 'label-spaced' }, 'ORIGIN'), h('p', {}, `${FC.origin(cr.origin).icon} ${FC.origin(cr.origin).name}`), h('p', { class: 'caption gold' }, FC.origin(cr.origin).perk),
+              h('p', { class: 'label-spaced ff-gap' }, 'PERSONALITY'), h('p', {}, `${FC.personality(cr.personality).icon} ${FC.personality(cr.personality).name}`), h('p', { class: 'caption gold' }, FC.personality(cr.personality).perk),
+              h('p', { class: 'label-spaced ff-gap' }, 'NEXT'), h('p', { class: 'caption muted' }, 'Spend your 30 talent points in the Lab, then meet the companies before your first climb.'))),
+          nav(true, 'Create fighter'));
+      }
+      fill(root, header(`FILE ${n} · NEW FIGHTER`, drawSlots), steps, body);
+    };
+    const buildFrom = () => {
+      const face = cr.faceId != null ? characters.get(cr.faceId) : null;
+      const b = starterBuild(face);
+      b.name = (cr.name || 'THE FORBIDDEN ONE').toUpperCase();
+      b.mainRole = cr.mainRole || b.mainRole; b.secondRole = cr.secondRole && cr.secondRole !== b.mainRole ? cr.secondRole : null;
+      b.origin = cr.origin; b.personality = cr.personality;
+      b.chaos = Math.max(0, Math.min(100, 50 + (FC.origin(cr.origin)?.chaos || 0)));
+      return applyTree(b);
+    };
+    const finish = async () => {
+      await loadSlot(n);
+      data.build = buildFrom();
+      data.followers = FC.origin(cr.origin)?.followers || 0;
+      data.rep = 0;
+      await saveData();
+      sfx.play('fanfare');
+      drawLab();
+    };
+    draw();
+  }
+
+  // ---------- Contract offers (v0.29.0), before each climb ----------
+  function drawOffers(hard) {
+    view = 'offers';
+    if (!data.offers || data.offers.hard !== hard) data.offers = { hard, list: FC.makeOffers(data) };
+    saveData();
+    const asks = {};
+    const start = async (contract) => {
+      run = newRun(hard);
+      run.contract = contract;
+      run.faFloors = 0;
+      if (contract && run.phone) FP.contractWelcome(run);
+      data.offers = null;
+      await saveData(); await saveRun();
+      sfx.play('fanfare');
+      drawTower();
+    };
+    const card = (o, i) => {
+      if (o.gone) return h('div', { class: 'ff-offer is-gone dy-panel' }, h('p', { class: 'heading' }, `${o.icon} ${o.name}`), h('p', { class: 'caption muted' }, 'Walked away. They didn\'t like your number.'));
+      const ask = asks[i] ?? o.pay;
+      const step = Math.max(1, Math.round(o.pay * 0.05));
+      const over = ask / o.pay - 1;
+      const risk = over <= 0 ? '' : over < 0.15 ? 'Low risk' : over < 0.3 ? 'Some risk' : over < 0.45 ? 'Risky' : 'Very risky';
+      const stepper = h('div', { class: 'ff-ask' },
+        h('button', { class: 'btn btn-secondary btn-sm', 'aria-label': 'Ask for less', disabled: ask <= o.pay, onClick: () => { asks[i] = Math.max(o.pay, ask - step); draw(); } }, '−'),
+        h('span', { class: 'ff-ask-n' }, h('b', {}, String(ask)), h('span', { class: 'caption muted' }, ' a floor')),
+        h('button', { class: 'btn btn-secondary btn-sm', 'aria-label': 'Ask for more', disabled: o.asked || ask + step > Math.round(o.pay * 1.6), onClick: () => { asks[i] = ask + step; draw(); } }, '+'),
+        risk ? h('span', { class: `ff-risk${over >= 0.3 ? ' is-high' : ''}` }, risk) : null);
+      return h('div', { class: 'ff-offer dy-panel' },
+        h('div', { class: 'ff-offer-top' }, h('span', { class: 'ff-offer-ic' }, o.icon), h('div', {}, h('p', { class: 'heading' }, o.name), h('p', { class: 'caption muted' }, o.style)), h('span', { class: 'ff-offer-len' }, `${o.len} FLOORS`)),
+        h('ul', { class: 'ff-offer-terms' },
+          h('li', {}, h('span', {}, 'Pay a floor'), h('b', {}, `${o.pay} Bounty`)),
+          h('li', {}, h('span', {}, 'Finish bonus'), h('b', {}, `${o.bonus} Bounty`)),
+          h('li', {}, h('span', {}, 'Buyout if you quit'), h('b', {}, `${o.buyoutPer} a floor left`)),
+          h('li', {}, h('span', {}, 'Whole deal'), h('b', {}, `${o.pay * o.len + o.bonus} Bounty`))),
+        o.asked ? h('p', { class: 'caption gold' }, o.note || 'Final offer.') : stepper,
+        h('div', { class: 'btn-row' },
+          !o.asked && ask > o.pay ? h('button', { class: 'btn btn-secondary', onClick: () => {
+            const res = FC.negotiate(o, ask, data);
+            o.asked = true;
+            if (res.result === 'walk') { o.gone = true; sfx.play('wrong'); toast(`${o.name} walked away.`); }
+            else if (res.result === 'counter') { o.pay = res.pay; o.bonus = Math.round(res.pay * o.len * 0.5 * (FC.company(o.co)?.bonus || 1)); o.note = `They met you halfway: ${res.pay} a floor. Final offer.`; sfx.play('flip'); toast(o.note); }
+            else { o.pay = res.pay; o.bonus = Math.round(res.pay * o.len * 0.5 * (FC.company(o.co)?.bonus || 1)); o.note = `They said yes: ${res.pay} a floor.`; sfx.play('correct'); toast(o.note); }
+            delete asks[i]; saveData(); draw();
+          } }, `Ask for ${ask}`) : null,
+          h('button', { class: 'btn btn-primary', onClick: () => start(FC.sign(o, o.pay)) }, `Sign · ${o.pay} a floor`)));
+    };
+    const draw = () => {
+      const w = FC.worth(data);
+      fill(root, header(`CONTRACT OFFERS${hard ? ' · HARD' : ''}`, drawLab),
+        h('div', { class: 'ff-offers-wrap' },
+          h('p', { class: 'body-text muted' }, `Three companies want you. They value you at about ${w} Bounty a floor${data.rep ? ` (reputation ${data.rep > 0 ? '+' : ''}${data.rep})` : ''}. Finish the deal for the bonus. Lose before it's done and the deal falls through. Ask for more if you dare: they might say yes, meet you halfway, or walk.`),
+          h('div', { class: 'ff-offers' }, data.offers.list.map(card)),
+          h('button', { class: 'btn btn-secondary btn-wide', onClick: () => start(null) }, `Go in as a free agent · ${FC.FREE_AGENT_PAY} a floor until someone calls`)));
+    };
+    draw();
   }
 
   // ---------- The Lab (home) ----------
@@ -314,6 +464,7 @@ export async function render() {
           ),
           h('p', { class: 'caption muted' }, `Earn 1 talent point a floor and ${POINTS_PER_BOSS} on a boss floor (double on Hard), plus 1 for every 25 Bounty a sponsor pays.`),
           best ? h('p', { class: 'caption' }, `Best climb: floor ${best} · ${titleFor(best)}`) : null,
+          h('p', { class: 'caption' }, `Reputation with companies: ${(data.rep || 0) > 0 ? '+' : ''}${data.rep || 0}${data.contractsDone ? ` · ${data.contractsDone} contract${data.contractsDone === 1 ? '' : 's'} finished` : ''} · worth about ${FC.worth(data)} a floor`),
         ),
         run
           ? h('button', { class: 'resume-card', onClick: drawTower },
@@ -336,9 +487,7 @@ export async function render() {
   function pickDifficulty() {
     const choose = async (hard) => {
       closeSheet();
-      run = newRun(hard);
-      await saveRun();
-      drawTower();
+      drawOffers(hard); // v0.29.0: contract offers before every climb
     };
     sheet({
       title: 'CLIMB THE TOWER',
@@ -618,6 +767,30 @@ export async function render() {
       h('span', {}, `${fmt(hp)} / ${fmt(max)}`));
   }
 
+  // v0.29.0: your deal for this climb, with a way out (for a price).
+  function contractStrip(r) {
+    const c = r.contract;
+    if (c && c.status === 'active') {
+      const cost = FC.buyoutCost(c);
+      return h('div', { class: 'ff-contract' },
+        h('span', { class: 'ff-contract-ic' }, c.icon),
+        h('span', { class: 'ff-contract-text' }, h('strong', {}, `${c.name} · floor ${c.done} of ${c.len}`), h('span', { class: 'caption muted' }, `${c.pay} Bounty a floor · ${c.bonus} bonus at floor ${c.len} · lose before then and the deal falls through`),
+          h('span', { class: 'ff-contract-bar', style: `--w:${Math.round((c.done / c.len) * 100)}%`, 'aria-hidden': 'true' })),
+        h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => {
+          if (r.runBounty < cost) { toast(`Breaking it costs ${cost} Bounty. You have ${fmt(r.runBounty)} this climb.`); return; }
+          const ok = await confirmSheet({ title: 'BREAK YOUR CONTRACT?', message: `You pay ${c.name} a ${cost} Bounty buyout, lose the ${c.bonus} bonus, and companies will see you as hard to work with (reputation −1). You climb on as a free agent.`, confirmLabel: `Pay ${cost} and walk`, danger: true });
+          if (!ok) return;
+          r.runBounty -= cost; data.lifetimeBounty = Math.max(0, data.lifetimeBounty - cost);
+          c.status = 'broken'; data.rep = (data.rep || 0) - 1; r.faFloors = 0;
+          if (r.phone) { const t = FP.thread(r.phone, { key: `co-${c.co}`, name: c.name, kind: 'sponsor' }); t.msgs.push({ from: 'them', text: 'Buyout received. Don\'t call us.' }, { from: 'sys', text: `CONTRACT BROKEN: −${cost} Bounty, reputation −1.` }); }
+          await saveData(); await saveRun(); sfx.play('wrong'); drawTower();
+        } }, 'Break'));
+    }
+    const fa = r.faFloors || 0;
+    return h('div', { class: 'ff-contract is-free' }, h('span', { class: 'ff-contract-ic' }, '🆓'),
+      h('span', { class: 'ff-contract-text' }, h('strong', {}, 'Free agent'), h('span', { class: 'caption muted' }, `${FC.FREE_AGENT_PAY} Bounty a floor. ${fa >= FC.FREE_AGENT_WAIT ? 'Companies are watching: offers come by text.' : `Clear ${FC.FREE_AGENT_WAIT - fa} more floor${FC.FREE_AGENT_WAIT - fa === 1 ? '' : 's'} and companies start calling.`}`)));
+  }
+
   function drawTower() {
     if (!run) { drawLab(); return; }
     view = 'tower';
@@ -640,6 +813,7 @@ export async function render() {
           h('h2', { class: 'display-lg' }, `FLOOR ${fl}`),
           tags.length ? h('ul', { class: 'rule-chips' }, tags.map((t) => h('li', { class: t === 'HARD' || t.startsWith('BOSS') ? 'bad' : '' }, t))) : null,
         ),
+        contractStrip(r),
         h('div', { class: 'ff-me panel' },
           avatar(me, characters, 'md'),
           h('div', { class: 'ff-me-text' },
@@ -658,7 +832,8 @@ export async function render() {
         r.ally && r.ally.floor === fl ? h('button', { class: 'ff-ally', onClick: () => phone.openThread(r.ally.key) },
           r.ally.cid != null && characters.get(r.ally.cid) ? avatar(characters.get(r.ally.cid), characters, 'sm') : h('span', {}, '🤝'),
           h('span', {}, h('strong', {}, `${r.ally.name} has your back.`), ` They jump in ${r.ally.uses === 2 ? 'twice' : 'once'} and take ${Math.round(r.ally.cut * 100)}% of the Bounty if you win.`)) : null,
-        r.next.mult && r.next.mult !== 1 ? h('p', { class: 'caption gold ff-center' }, `Bounty ×${r.next.mult} on this floor.`) : null,
+        r.next.danger ? h('p', { class: 'ff-danger' }, h('strong', {}, '⚠️ DANGER FLOOR'), ` A fighter way above this floor's level. Bounty ×${DANGER_BOUNTY}.`) : null,
+        r.next.mult && r.next.mult !== 1 && !r.next.danger ? h('p', { class: 'caption gold ff-center' }, `Bounty ×${r.next.mult} on this floor.`) : null,
         r.restPenalty ? h('p', { class: 'caption muted ff-center' }, 'You rested: this floor pays 20% less Bounty.') : null,
         h('div', { class: 'result-actions' },
           h('button', { class: 'btn btn-primary', onClick: async () => {
@@ -731,6 +906,7 @@ export async function render() {
     r.hp = hp;
     // v0.28.0: pay your backup out of this floor's Bounty.
     const allyName = r.ally && r.ally.floor === fl ? r.ally.name : null;
+    let contractPay = 0; let contractDone = null;
     const fee = r.phone ? FP.settleAlly(r, fl, bounty) : 0;
     bounty -= fee;
     r.runBounty += bounty;
@@ -745,6 +921,11 @@ export async function render() {
       FP.onCleared(r, fl);
       const runBefore = r.runBounty;
       FP.afterFloor(r, { floor: fl, hp, hpBefore: before, maxHp: r.maxHp, foes, roster: characters.list.filter((c) => !c.retired), rand: Math.random, me: me.name, hard: r.hard, underdog, callout: type === 'callout' || type === 'revenge', type, boss: isBoss(fl) && type !== 'lieutenant' });
+      // v0.29.0: contract pay (counts as sponsor money).
+      const cp = FP.contractFloor(r, FC.worth(data));
+      contractPay = cp.pay + cp.bonus; contractDone = cp.done ? r.contract : null;
+      if (cp.done) { data.rep = (data.rep || 0) + 1; data.contractsDone = (data.contractsDone || 0) + 1; }
+      r.runBounty += contractPay;
       if (PD.dating(r.phone).matches.length) PD.refreshPrompts(r.phone, dateCtx(r));
       const sponsor = r.runBounty - runBefore;
       data.lifetimeBounty += sponsor;
@@ -761,7 +942,7 @@ export async function render() {
     planFloor(r);
     await saveData();
     await saveRun();
-    return { floor: fl, bounty, underdog, healed: hp - before, hp, boss: isBoss(fl), gained: budget() - budgetBefore, fee, allyName };
+    return { floor: fl, bounty, underdog, healed: hp - before, hp, boss: isBoss(fl), gained: budget() - budgetBefore, fee, allyName, contractPay, contractDone, contract: r.contract };
   }
 
   function drawCleared(o) {
@@ -775,6 +956,7 @@ export async function render() {
         h('p', { class: 'label-spaced' }, 'BOUNTY'),
         o.underdog ? h('p', { class: 'new-best' }, 'UNDERDOG WIN · ×1.5') : null,
         o.fee ? h('p', { class: 'caption muted' }, `After paying ${o.allyName} ${fmt(o.fee)} for the backup.`) : null,
+        o.contractPay ? h('p', { class: o.contractDone ? 'new-best' : 'caption gold' }, o.contractDone ? `CONTRACT COMPLETE · +${fmt(o.contractPay)} from ${o.contractDone.name} (bonus included)` : `+${fmt(o.contractPay)} from ${o.contract && o.contract.status === 'active' ? o.contract.name : 'free-agent pay'}`) : null,
         o.gained > 0 ? h('p', { class: 'new-best' }, `+${o.gained} TALENT POINT${o.gained === 1 ? '' : 'S'}`) : null,
       ),
       h('div', { class: 'ff-me panel' },
@@ -795,6 +977,12 @@ export async function render() {
   async function finishRun(lost) {
     const r = run;
     if (r.phone) { data.lastPhone = r.phone; data.followers = r.phone.followers; }
+    // v0.29.0: an unfinished contract falls through.
+    if (r.contract && r.contract.status === 'active') {
+      r.contract.status = 'failed';
+      data.rep = (data.rep || 0) - 1;
+      r.contractFailed = { name: r.contract.name, done: r.contract.done, len: r.contract.len, bonus: r.contract.bonus };
+    }
     const key = r.hard ? 'hard' : 'normal';
     const prevBest = bestFloor(data);
     const newBest = r.floor > 0 && r.floor > prevBest;
@@ -845,6 +1033,7 @@ export async function render() {
         h('p', { class: 'heading' }, titleFor(r.floor)),
         r.newBest ? h('p', { class: 'new-best' }, 'NEW PERSONAL BEST') : null,
         r.place ? h('p', { class: 'caption' }, `Hall of Fame: #${r.place}`) : null,
+        r.contractFailed ? h('p', { class: 'ff-danger' }, h('strong', {}, 'DEAL FELL THROUGH'), ` ${r.contractFailed.name}: floor ${r.contractFailed.done} of ${r.contractFailed.len}. No ${r.contractFailed.bonus} bonus, and your reputation drops.`) : null,
       ),
       h('div', { class: 'result-stats' },
         stat('Bounty', fmt(r.runBounty)), stat('Bosses', r.bossWins), stat('Underdog wins', r.underdogWins),
@@ -853,7 +1042,7 @@ export async function render() {
         ? `${budget()} talent points earned on this file. The climb is over, so you can respec your tree for free.`
         : 'Your talent tree is maxed. Now it is all about the floor.'),
       h('div', { class: 'result-actions' },
-        h('button', { class: 'btn btn-primary', onClick: async () => { lastRun = null; run = newRun(r.hard); await saveRun(); drawTower(); } }, 'Climb again'),
+        h('button', { class: 'btn btn-primary', onClick: () => { lastRun = null; drawOffers(r.hard); } }, 'Climb again'),
         h('button', { class: 'btn btn-secondary', onClick: () => { lastRun = null; drawTree(); } }, 'Talent tree'),
         h('button', { class: 'btn btn-secondary', onClick: share }, 'Share'),
       ),

@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.29.0",
+      "date": "2026-11-19",
+      "title": "Fusion contracts, fighter creator and Dynasty tampering",
+      "items": [
+        "Forbidden Fusion has a new fighter creator: pick a name and face from any character, then an origin (Street Brawler, Prodigy, Soldier, Rich Kid, Legacy), your style and a personality. Each one changes your stats, followers or contract offers.",
+        "Sign with a company before each climb. Three offers come in for 10, 20 or 30 floors. Each pays Bounty per floor cleared and a bonus when you finish. Ask for more if you dare: they might say yes, meet you halfway, or walk.",
+        "Lose before the contract is done and the deal falls through: no bonus, and your reputation drops (lower offers next time). You can break a deal with a buyout. No deal? Go in as a free agent at minimum pay until a company texts you.",
+        "Fusion health rebalanced so you can actually lose: less health, more healing between floors. Watch for DANGER floors: tougher fights that pay 40% more.",
+        "Dynasty: Whispers. In the re-sign step, text up to 3 cards on other teams whose contracts ran out. If it works they skip re-signing and lean your way in free agency. If the texts leak it's a scandal in the news and the preseason magazine: a cap fine, then your draft pick.",
+        "AI teams tamper too. One of your expiring cards might text you that another team is in their ear, and their ask goes up 15%. Report it and the league might punish them."
+      ]
+    },
+    {
       "version": "0.28.0",
       "date": "2026-11-19",
       "title": "Forbidden Fusion: allies",

@@ -286,14 +286,16 @@ export function makePreseason(L) {
   const active = Object.values(L.players).filter((p) => p.team != null && !p.retired);
   const gpt = active.slice().sort((a, b) => (b.power + b.aura * 0.1) - (a.power + a.aura * 0.1)).slice(0, 5).map((p) => p.pid);
   const rookies = active.filter((p) => p.draftSeason === L.season - 1 && p.career <= 1).sort((a, b) => (a.draftPick || 99) - (b.draftPick || 99)).slice(0, 5).map((p) => p.pid);
-  const moves = L.news.filter((n) => n.off && ['TRADE', 'SIGNED', 'COACHING', 'DRAFT', 'RETIRED', 'PANTHEON'].includes(n.kind)).slice(0, 8).map((n) => ({ kind: n.kind, team: n.team, title: n.title }));
+  const moves = L.news.filter((n) => n.off && ['SCANDAL', 'TRADE', 'SIGNED', 'COACHING', 'DRAFT', 'RETIRED', 'PANTHEON'].includes(n.kind)).slice(0, 8).map((n) => ({ kind: n.kind, team: n.team, title: n.title }));
+  // v0.29.0: tampering scandals make the cover lines.
+  const scandal = L.news.find((n) => n.off && n.kind === 'SCANDAL');
   const coaching = L.news.filter((n) => n.off && n.kind === 'COACHING').map((n) => ({ team: n.team, title: n.title }));
   const u = L.user; const mine = u ? L.teams[u.team] : null;
   const star = L.players[fav.roster.slice().sort((x, y) => L.players[y].power - L.players[x].power)[0]];
   const mag = {
     preseason: true, season: L.season, issue: 'PRESEASON', week: 0, read: false,
     cover: { pid: star?.pid ?? null, team: fav.i, line: `${fav.name} are the team to beat. Can anyone stop ${star ? star.name : 'them'}?` },
-    teasers: [`Our Zenith Clash pick: ${fav.abbr} vs ${second.abbr}`, gpt[0] != null ? `GPT favorite: ${L.players[gpt[0]].name}` : null, mine ? `${mine.name}: ranked No. ${ranked.indexOf(mine) + 1}` : null].filter(Boolean),
+    teasers: [scandal ? `SCANDAL: ${scandal.title}` : null, `Our Zenith Clash pick: ${fav.abbr} vs ${second.abbr}`, gpt[0] != null ? `GPT favorite: ${L.players[gpt[0]].name}` : null, mine ? `${mine.name}: ranked No. ${ranked.indexOf(mine) + 1}` : null].filter(Boolean),
     power, divPicks, clash: [fav.i, second.i], gpt, rookies, moves, coaching,
     mine: mine ? { team: mine.i, rank: ranked.indexOf(mine) + 1, stage: mine.stage, security: u.security, expect: u.expect || mine.stage } : null,
     potm: [], race: [], rivals: [], news: [],

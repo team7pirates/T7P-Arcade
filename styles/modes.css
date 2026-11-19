@@ -1928,3 +1928,48 @@ body:has(.osm-page) .ph-open:not(.is-moved) { display: none; }
 .bt-ally { position: absolute; z-index: 4; right: -18%; bottom: 12%; width: 46%; aspect-ratio: 3 / 4; object-fit: cover; object-position: center top; border-radius: 14px; border: 2px solid var(--brand-gold); box-shadow: 0 10px 30px rgba(0,0,0,.6), 0 0 24px rgba(240,192,96,.45); animation: bt-ally-in .35s cubic-bezier(.2,.8,.2,1); pointer-events: none; }
 @keyframes bt-ally-in { from { transform: translateX(-60%) scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
 .reduce-motion .bt-ally { animation: none; }
+
+/* v0.29.0: danger floors */
+.ff-danger { max-width: 560px; margin: 8px auto 0; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid #ff5c7a; background: rgba(255,92,122,.12); text-align: center; }
+.ff-danger strong { color: #ff8fa3; margin-right: 6px; }
+
+/* v0.29.0: fighter creator, contract offers, contract strip */
+.ff-cr-body { max-width: 760px; margin: var(--space-4) auto 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.ff-cr-body > .heading { margin: 0; }
+.ff-cr-nav { justify-content: space-between; margin-top: var(--space-2); }
+.ff-cr-namerow { display: flex; gap: var(--space-4); align-items: center; }
+.ff-cr-namerow .ai-field { flex: 1; }
+.ff-cr-name { font-size: 1.2rem; font-weight: 700; text-transform: uppercase; }
+.ff-cr-preview { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ff-cr-preview .caption { margin: 0; }
+.ff-cr-faces { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.ff-cr-face { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; }
+.ff-cr-face .caption { font-size: .66rem; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.ff-cr-face.is-on, .ff-cr-opt.is-on, .dy-option.is-on { border-color: var(--brand-gold); background: color-mix(in srgb, var(--brand-gold) 12%, var(--surface)); }
+.ff-cr-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ff-offers-wrap { max-width: 1100px; margin: var(--space-4) auto 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.ff-offers { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-3); }
+.ff-offer { display: flex; flex-direction: column; gap: var(--space-3); }
+.ff-offer.is-gone { opacity: .55; }
+.ff-offer-top { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
+.ff-offer-top p { margin: 0; }
+.ff-offer-ic { font-size: 2rem; }
+.ff-offer-len { font-family: var(--font-display); font-weight: 800; font-size: .8rem; padding: 4px 10px; border-radius: 999px; background: var(--brand-gold); color: #1a1206; }
+.ff-offer-terms { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ff-offer-terms li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.ff-ask { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ff-ask-n b { font-size: 1.3rem; font-family: var(--font-display); }
+.ff-risk { font-size: .72rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: rgba(240,192,96,.18); color: var(--brand-gold); }
+.ff-risk.is-high { background: rgba(255,92,122,.18); color: #ff8fa3; }
+.ff-contract { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; max-width: 560px; width: 100%; margin: 10px auto 0; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--surface); }
+.ff-contract.is-free { grid-template-columns: auto 1fr; }
+.ff-contract-ic { font-size: 1.6rem; }
+.ff-contract-text { display: flex; flex-direction: column; gap: 2px; position: relative; padding-bottom: 8px; }
+.ff-contract-bar { position: absolute; left: 0; bottom: 0; height: 4px; width: 100%; border-radius: 4px; background: var(--border); overflow: hidden; }
+.ff-contract-bar::after { content: ''; position: absolute; inset: 0; width: var(--w); background: var(--brand-gold); }
+@media (max-width: 640px) { .ff-cr-namerow { flex-direction: column; align-items: stretch; } .ff-contract { grid-template-columns: auto 1fr; } .ff-contract .btn { grid-column: 1 / -1; } }
+
+/* v0.29.0: Dynasty tampering (Whispers) */
+.dy-whisper { margin-top: 18px; padding: 14px; border: 1px dashed rgba(255, 99, 132, 0.45); border-radius: 14px; background: rgba(255, 99, 132, 0.05); }
+.dy-whisper .dy-h { margin-top: 0; }
+.dy-whisper .dy-list li { align-items: center; }

@@ -22,6 +22,7 @@ import * as R from './dynasty-rules.js';
 import * as O from './dynasty-off.js';
 import { basePhone, pick, fresh, fillIn, say, mine, back, sys, note, trim, chirp, lenzPost, snap, answerPost } from '../core/phone-core.js';
 import * as D from '../core/phone-dating.js';
+import * as T from './dynasty-tamper.js';
 
 export const CHAT_BOOST = 3;
 export const COACH_BOOST = 2;
@@ -319,6 +320,9 @@ export function reply(L, key, optionId) {
   const p = th.pending; const o = p.options.find((x) => x.id === optionId);
   if (!o) return null;
   mine(th, o.text); th.pending = null;
+  // v0.29.0: off-season tampering.
+  if (p.type === 'tamper') return T.reply(L, th, L.players[p.pid], o);
+  if (p.type === 'tampered') return T.replyTampered(L, th, p, o);
   if (p.type === 'squad') {
     if (p.season !== L.season || p.week !== R.gameWeek(L)) { sys(th, 'That game already happened.'); return 'Too late for that game.'; }
     const stat = { hype: 'aura', focus: 'clutch', loose: 'chaos' }[o.id];
@@ -375,3 +379,4 @@ export function accept(L, off) {
 }
 
 R.hooks.afterWeekPhone = afterWeek;
+R.hooks.tamperWindow = (L) => { phoneOf(L); T.openWindow(L); };

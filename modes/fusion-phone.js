@@ -30,6 +30,7 @@
 import { floorPower, isBoss, swarmSize, BOSS_EVERY } from './fusion-rules.js';
 import { chirp, lenzPost, snap, answerPost } from '../core/phone-core.js';
 import { meet, bondOf, addBond, levelOf } from '../core/phone-bonds.js';
+import { COMPANIES, offerFrom, sign, FREE_AGENT_PAY } from './fusion-contracts.js';
 
 export const MAX_FOLLOWER_AURA = 10;
 export const FOLLOWERS_PER_AURA = 2500;
@@ -96,7 +97,8 @@ function headline(ph, title, text, floor) {
   ph.news = ph.news.slice(0, 40);
   note(ph, 'AGN Wire', title, 'news');
 }
-export function gainFollowers(ph, n) { ph.followers = Math.max(0, Math.round(ph.followers + n)); }
+// v0.29.0: personality can boost the followers you gain (ph.followerMult).
+export function gainFollowers(ph, n) { ph.followers = Math.max(0, Math.round(ph.followers + (n > 0 ? n * (ph.followerMult || 1) : n))); }
 
 // ---------- Lines ----------
 const TRASH = [
@@ -406,6 +408,45 @@ export function settleAlly(r, floor, bounty) {
   return fee;
 }
 
+// ---------- Contracts (v0.29.0) ----------
+const coWho = (c) => ({ key: `co-${c.co || c.id}`, name: c.name, kind: 'sponsor', icon: c.icon });
+export function contractWelcome(r) {
+  const c = r.contract; if (!c) return;
+  const t = say(r.phone, coWho(c), `Welcome to ${c.name}. ${c.len} floors, ${c.pay} Bounty a floor, and ${c.bonus} more when you finish. Don't make us regret it.`, 0);
+  sys(t, `CONTRACT: ${c.len} floors with ${c.name}.`);
+}
+// Called after each cleared floor (from clearFloor). Returns { pay, bonus, done }.
+export function contractFloor(r, worth, rand = Math.random) {
+  const ph = r.phone; const c = r.contract;
+  if (c && c.status === 'active') {
+    c.done += 1;
+    if (c.done >= c.len) {
+      c.status = 'done';
+      const t = say(ph, coWho(c), `That's ${c.len} floors. Contract complete. Bonus is on its way: ${c.bonus} Bounty. Want 10 more?`, r.floor);
+      sys(t, `CONTRACT COMPLETE: +${c.bonus} Bounty bonus.`);
+      const next = offerFrom(COMPANIES.find((x) => x.id === c.co) || { id: c.co, name: c.name, icon: c.icon }, 10, Math.round(c.pay * 1.1));
+      t.pending = { type: 'contract', offer: next, extend: true, options: [
+        { id: 'accept', tone: 'accept', text: 'Run it back. 10 more floors.', hint: `${next.pay} a floor · ${next.bonus} bonus` },
+        { id: 'decline', tone: 'decline', text: 'I\'ll go free agent for now.', hint: 'Minimum pay until someone calls' },
+      ] };
+      return { pay: c.pay, bonus: c.bonus, done: true };
+    }
+    return { pay: c.pay, bonus: 0, done: false };
+  }
+  // Free agent: minimum pay, and after a few floors companies come calling.
+  r.faFloors = (r.faFloors || 0) + 1;
+  if (r.faFloors >= 3 && !ph.threads.some((t) => t.pending?.type === 'contract') && rand() < 0.4) {
+    const co = COMPANIES[Math.floor(rand() * COMPANIES.length)];
+    const offer = offerFrom(co, 10, Math.max(2, Math.round(worth * co.pay)));
+    const t = say(ph, coWho(co), `Been watching your climb. ${co.name} wants you: 10 floors, ${offer.pay} Bounty a floor, ${offer.bonus} when you finish.`, r.floor);
+    t.pending = { type: 'contract', offer, options: [
+      { id: 'accept', tone: 'accept', text: 'Send the papers.', hint: `${offer.pay} a floor · starts next floor` },
+      { id: 'decline', tone: 'decline', text: 'Not interested.' },
+    ] };
+  }
+  return { pay: FREE_AGENT_PAY, bonus: 0, done: false };
+}
+
 // ---------- Replies ----------
 // Returns a short line for a toast.
 export function reply(r, key, optionId, ctx) {
@@ -467,6 +508,13 @@ export function reply(r, key, optionId, ctx) {
         line = `${short(t.name)} has your back on floor ${a.floor}.`;
       }
     } else { back('Respect. Holler if you need me.'); line = 'You\'ll go it alone.'; }
+  } else if (p.type === 'contract') {
+    if (o.id === 'accept' && !(r.contract && r.contract.status === 'active')) {
+      r.contract = sign(p.offer, p.offer.pay);
+      back(p.extend ? 'Love to hear it. Same terms, a little more money.' : 'Papers are signed. Don\'t disappoint us.');
+      sys(t, `CONTRACT: ${p.offer.len} floors with ${p.offer.name} at ${p.offer.pay} a floor.`);
+      line = `Signed with ${p.offer.name}: ${p.offer.len} floors.`;
+    } else { back('Your call. Door\'s open.'); line = 'You stay a free agent.'; }
   } else if (p.type === 'rest') {
     if (o.id === 'rest') {
       r.hp = Math.min(r.maxHp, Math.round(r.hp + r.maxHp * REST_HEAL));
