@@ -100,6 +100,26 @@ export function openSnap(ph, id) {
 }
 export const pendingMentions = (ph) => (ph?.feed || []).filter((p) => p.pending).length;
 export const newSnaps = (ph) => (ph?.snaps || []).filter((s) => !s.seen).length;
+// v0.30.0: clearing notifications. A hushed mention or snap is still there to
+// answer or open, it just stops counting toward the badges.
+export const mentionBadge = (ph) => (ph?.feed || []).filter((p) => p.pending && !p.hush).length;
+export const snapBadge = (ph) => (ph?.snaps || []).filter((s) => !s.seen && !s.hush).length;
+export const badgeTotal = (ph) => (ph?.unread || 0) + mentionBadge(ph) + snapBadge(ph);
+export function hushMentions(ph) { let n = 0; for (const p of ph?.feed || []) if (p.pending && !p.hush) { p.hush = true; n++; } return n; }
+export function hushSnaps(ph) { let n = 0; for (const x of ph?.snaps || []) if (!x.seen && !x.hush) { x.hush = true; n++; } return n; }
+export function readAll(ph) { if (!ph) return; for (const t of ph.threads) t.unread = 0; ph.unread = 0; }
+// Dismiss one notification. A text's notification takes its unread count with it.
+export function dismissNote(ph, id) {
+  const n = (ph?.notes || []).find((x) => x.id === id);
+  if (!n) return;
+  ph.notes = ph.notes.filter((x) => x !== n);
+  if (n.app === 'msg' && n.key && !ph.notes.some((x) => x.key === n.key)) markRead(ph, n.key);
+}
+// Clear all: notifications gone, texts read, social badges hushed.
+export function clearNotes(ph) {
+  if (!ph) return;
+  ph.notes = []; readAll(ph); hushMentions(ph); hushSnaps(ph);
+}
 // Close an open mention reply (when it's too late to answer).
 export function answerPost(ph, id, text, back = null, backWho = null) {
   const p = (ph.feed || []).find((x) => x.id === id);

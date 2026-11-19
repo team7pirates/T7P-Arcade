@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.30.0",
+      "date": "2026-11-19",
+      "title": "Clear your phone notifications",
+      "items": [
+        "Phone notifications now have a Clear all button on the home screen and the lock screen. It clears the notifications and the red badges: texts are marked read, and Chirp mentions, Boo snaps, Matchup and Deals stop counting.",
+        "Swipe a notification sideways, or tap its ✕, to dismiss just that one. Tapping a notification opens it and clears it.",
+        "Messages has a Mark all read button, and opening Chirp, Boo, Matchup or Deals clears that app's badge. Anything waiting for your reply is still there inside the app."
+      ]
+    },
+    {
       "version": "0.29.0",
       "date": "2026-11-19",
       "title": "Fusion contracts, fighter creator and Dynasty tampering",

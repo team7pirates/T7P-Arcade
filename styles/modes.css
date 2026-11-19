@@ -1973,3 +1973,16 @@ body:has(.osm-page) .ph-open:not(.is-moved) { display: none; }
 .dy-whisper { margin-top: 18px; padding: 14px; border: 1px dashed rgba(255, 99, 132, 0.45); border-radius: 14px; background: rgba(255, 99, 132, 0.05); }
 .dy-whisper .dy-h { margin-top: 0; }
 .dy-whisper .dy-list li { align-items: center; }
+
+/* v0.30.0: clearing notifications */
+.ph-w-hrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.ph-w-hrow .ph-w-h { margin: 0; }
+.ph-clear { border: 0; border-radius: 999px; padding: 4px 10px; background: rgba(255,255,255,.14); color: #fff; font: inherit; font-size: .68rem; font-weight: 700; cursor: pointer; }
+.ph-clear:hover { background: rgba(255,255,255,.24); }
+.ph-note-li { position: relative; touch-action: pan-y; transition: transform .15s ease, opacity .15s ease; }
+.ph-note-li > .ph-note, .ph-note-li > .ph-lnote { padding-right: 34px; }
+.ph-note-x { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border: 0; border-radius: 50%; background: rgba(0,0,0,.35); color: #fff; font-size: .7rem; line-height: 1; cursor: pointer; opacity: .7; }
+.ph-note-x:hover { opacity: 1; }
+.ph-lnotes-head { display: flex; justify-content: flex-end; }
+.ph-lnotes-head .ph-clear { background: rgba(20,16,28,.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.ph-readall-row { display: flex; justify-content: flex-end; padding: 4px 14px 0; }

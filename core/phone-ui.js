@@ -19,7 +19,7 @@ import { h, fill, avatar, pushBack } from './ui.js';
 import { characters } from './characters.js';
 import { sfx } from './sfx.js';
 import { profile } from './profile.js';
-import { markRead, openSnap, pendingMentions, newSnaps, thread as threadFor, pick } from './phone-core.js';
+import { markRead, openSnap, pendingMentions, newSnaps, thread as threadFor, pick, mentionBadge, snapBadge, badgeTotal, hushMentions, hushSnaps, readAll, dismissNote, clearNotes } from './phone-core.js';
 import * as D from './phone-dating.js';
 import { loadPrefs, getPrefs, setPrefs, wallpaperCss, lockWallpaper, shrinkImage, arrange, GRADIENTS, ARENAS, CLOCK_STYLES, CLOCK_COLORS, ICON_THEMES, FRAMES, SOUNDS, TEXT_SIZES } from './phone-prefs.js';
 import { ai } from './ai.js';
@@ -160,7 +160,35 @@ export function createPhone(opts) {
     return h('div', { class: `${cls} is-blank` }, h('span', {}, x.icon || '📸'));
   };
 
-  function go(a, key = null) { app = a; if (a === 'thread') threadKey = key; if (a === 'post') postId = key; stopView(); draw(); }
+  function go(a, key = null) {
+    app = a; if (a === 'thread') threadKey = key; if (a === 'post') postId = key; stopView();
+    // v0.30.0: opening an app clears its badge (and its notifications).
+    const ph = opts.getPhone(); let changed = false;
+    if (ph && (a === 'chirp' || a === 'boo')) {
+      changed = (a === 'chirp' ? hushMentions(ph) : hushSnaps(ph)) > 0;
+      const before = ph.notes.length; ph.notes = ph.notes.filter((n) => n.app !== a); changed = changed || ph.notes.length !== before;
+    }
+    if (ph && a === 'dating' && !ph.datingHush) { ph.datingHush = true; changed = true; }
+    if (ph && a === 'deals') for (const d of ph.deals || []) if (d.status === 'offer' && !d.hush) { d.hush = true; changed = true; }
+    if (ph && a === 'thread' && key != null) { const before = ph.notes.length; ph.notes = ph.notes.filter((n) => !(n.app === 'msg' && n.key === key)); changed = changed || ph.notes.length !== before; }
+    if (changed) opts.save?.();
+    draw();
+  }
+  // v0.30.0: dismiss notifications (✕, swipe, or Clear all).
+  function dismiss(id) { const ph = opts.getPhone(); dismissNote(ph, id); opts.save?.(); sfx.play('tap'); draw(); }
+  function clearAll() { const ph = opts.getPhone(); clearNotes(ph); if (ph) { ph.datingHush = true; for (const d of ph.deals || []) if (d.status === 'offer') d.hush = true; } opts.save?.(); sfx.play('tap'); draw(); }
+  const clearBtn = (ph) => (ph?.notes?.length || badgeTotal(ph) ? h('button', { class: 'ph-clear', onClick: (e) => { e.stopPropagation(); clearAll(); } }, 'Clear all') : null);
+  // Swipe a notification sideways to dismiss it. Returns true when it swiped.
+  function swipeable(li, id) {
+    let x0 = null; let dx = 0;
+    li.addEventListener('pointerdown', (e) => { x0 = e.clientX; dx = 0; });
+    li.addEventListener('pointermove', (e) => { if (x0 == null) return; dx = e.clientX - x0; if (Math.abs(dx) > 8) { li.style.transform = `translateX(${dx}px)`; li.style.opacity = String(Math.max(0.2, 1 - Math.abs(dx) / 160)); } });
+    const end = () => { if (x0 == null) return; x0 = null; if (Math.abs(dx) > 70) { li.dataset.swiped = '1'; dismiss(id); } else { li.style.transform = ''; li.style.opacity = ''; } };
+    li.addEventListener('pointerup', end); li.addEventListener('pointercancel', end); li.addEventListener('pointerleave', end);
+    li.addEventListener('click', (e) => { if (li.dataset.swiped || Math.abs(dx) > 8) { e.stopPropagation(); e.preventDefault(); } }, true);
+    return li;
+  }
+  const xBtn = (id) => h('button', { class: 'ph-note-x', 'aria-label': 'Dismiss notification', onClick: (e) => { e.stopPropagation(); dismiss(id); } }, '✕');
   // The back button: out one screen at a time.
   function goBack() {
     if (viewing) { stopView(); draw(); return; }
@@ -175,10 +203,10 @@ export function createPhone(opts) {
   function badgeOf(id, ph) {
     if (!ph) return 0;
     if (id === 'messages') return ph.unread || 0;
-    if (id === 'chirp') return pendingMentions(ph);
-    if (id === 'boo') return newSnaps(ph);
-    if (id === 'deals') return (ph.deals || []).filter((d) => d.status === 'offer').length;
-    if (id === 'dating') return D.nextProfile(ph) && !(ph.dating?.matches.length) ? 1 : 0;
+    if (id === 'chirp') return mentionBadge(ph);
+    if (id === 'boo') return snapBadge(ph);
+    if (id === 'deals') return (ph.deals || []).filter((d) => d.status === 'offer' && !d.hush).length;
+    if (id === 'dating') return !ph.datingHush && D.nextProfile(ph) && !(ph.dating?.matches.length) ? 1 : 0;
     return 0;
   }
   function appIcon(id, label, icon, ph) {
@@ -189,7 +217,12 @@ export function createPhone(opts) {
     return h('button', { class: 'ph-app', onClick: () => go(id) }, h('span', { class: `ph-app-icon is-${id}` }, glyph, n ? h('span', { class: 'ph-dot' }, String(n)) : null), h('span', { class: 'ph-app-label' }, label));
   }
 
-  const openNote = (n) => (n.app === 'msg' ? go('thread', n.key) : ALL_APPS[n.app] && appIds.includes(n.app) ? (n.app === 'chirp' ? (chirpTab = 'mentions', go('chirp')) : go(n.app)) : go('messages'));
+  // Tapping a notification opens it and clears it (go() clears texts, Chirp and Boo).
+  const openNote = (n) => {
+    const ph = opts.getPhone();
+    if (ph && !['msg', 'chirp', 'boo'].includes(n.app)) { ph.notes = ph.notes.filter((x) => x.id !== n.id); opts.save?.(); }
+    return (n.app === 'msg' ? go('thread', n.key) : ALL_APPS[n.app] && appIds.includes(n.app) ? (n.app === 'chirp' ? (chirpTab = 'mentions', go('chirp')) : go(n.app)) : go('messages'));
+  };
 
   // ---------- Lock screen (v0.27.0) ----------
   function lockScreen(ph) {
@@ -206,9 +239,9 @@ export function createPhone(opts) {
       onPointerdown: (e) => { y0 = e.clientY; },
       onPointerup: (e) => { if (y0 != null && y0 - e.clientY > 50) unlock(); y0 = null; } },
     h('div', { class: 'ph-lock-top' }, h('p', { class: 'ph-lock-date', style: `color:${pr.clockColor}` }, new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })), clock),
-    notes.length ? h('ul', { class: 'ph-lnotes' }, notes.map((n) => h('li', {}, h('button', { class: 'ph-lnote', onClick: (e) => { e.stopPropagation(); unlock(() => openNote(n)); } },
+    notes.length ? h('ul', { class: 'ph-lnotes' }, h('li', { class: 'ph-lnotes-head' }, clearBtn(ph)), notes.map((n) => swipeable(h('li', { class: 'ph-note-li' }, h('button', { class: 'ph-lnote', onClick: (e) => { e.stopPropagation(); unlock(() => openNote(n)); } },
       h('span', { class: 'ph-note-app' }, n.app === 'msg' ? 'MESSAGES' : (ALL_APPS[n.app]?.[0] || n.app).toUpperCase()),
-      h('b', {}, n.title), h('span', { class: 'ph-lnote-text' }, pr.previews ? n.text : 'Tap to view'))))) : h('span', { class: 'ph-lnotes' }),
+      h('b', {}, n.title), h('span', { class: 'ph-lnote-text' }, pr.previews ? n.text : 'Tap to view')), xBtn(n.id)), n.id))) : h('span', { class: 'ph-lnotes' }),
     h('button', { class: 'ph-unlock', onClick: () => unlock() }, h('span', { class: 'ph-unlock-bar', 'aria-hidden': 'true' }), 'Swipe up or tap to unlock')));
   }
 
@@ -222,9 +255,9 @@ export function createPhone(opts) {
     screen.style.background = wallpaperCss(getPrefs().home);
     const clockW = h('div', { class: 'ph-widget ph-w-clock' }, h('p', { class: 'ph-clock' }, time()), h('p', { class: 'ph-date' }, new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })),
       ws.length ? h('div', { class: 'ph-widgets' }, ws.map(([v, k]) => h('div', {}, h('p', { class: 'ph-wv' }, String(v)), h('p', { class: 'ph-wk' }, k)))) : null);
-    const notesW = h('div', { class: 'ph-widget ph-w-notes' }, h('p', { class: 'ph-w-h' }, 'NOTIFICATIONS'),
-      notes.length ? h('ul', { class: 'ph-notes' }, notes.map((n) => h('li', {}, h('button', { class: 'ph-note', onClick: () => openNote(n) },
-        h('span', { class: 'ph-note-app' }, n.app === 'msg' ? 'MESSAGES' : (ALL_APPS[n.app]?.[0] || n.app).toUpperCase()), h('span', { class: 'ph-note-title' }, n.title), h('span', { class: 'ph-note-text' }, n.text)))))
+    const notesW = h('div', { class: 'ph-widget ph-w-notes' }, h('div', { class: 'ph-w-hrow' }, h('p', { class: 'ph-w-h' }, 'NOTIFICATIONS'), clearBtn(ph)),
+      notes.length ? h('ul', { class: 'ph-notes' }, notes.map((n) => swipeable(h('li', { class: 'ph-note-li' }, h('button', { class: 'ph-note', onClick: () => openNote(n) },
+        h('span', { class: 'ph-note-app' }, n.app === 'msg' ? 'MESSAGES' : (ALL_APPS[n.app]?.[0] || n.app).toUpperCase()), h('span', { class: 'ph-note-title' }, n.title), h('span', { class: 'ph-note-text' }, n.text)), xBtn(n.id)), n.id)))
         : h('p', { class: 'ph-empty is-small' }, opts.empty ? opts.empty(ph) : 'Nothing new.'));
     const gridEl = h('div', { class: 'ph-grid' }, grid.map(([id, label, icon]) => appIcon(id, label, icon, ph)));
     fill(screen, status(),
@@ -244,7 +277,9 @@ export function createPhone(opts) {
   }
   function messages(ph) {
     if (wide() && ph?.threads?.length) { threadKey = ph.threads[0].key; app = 'thread'; threadView(ph); return; }
-    fill(screen, status(), top('Messages', () => go('home'), newBtn()), messageList(ph));
+    fill(screen, status(), top('Messages', () => go('home'), newBtn()),
+      ph?.unread ? h('div', { class: 'ph-readall-row' }, h('button', { class: 'ph-clear', onClick: () => { readAll(ph); opts.save?.(); sfx.play('tap'); draw(); } }, 'Mark all read')) : null,
+      messageList(ph));
   }
   const newBtn = () => h('button', { class: 'ph-back ph-new', 'aria-label': 'New message', onClick: () => { search = ''; go('compose'); } }, '✏️');
 
@@ -682,7 +717,7 @@ export function createPhone(opts) {
   }
   function refreshBadge() {
     const ph = opts.getPhone();
-    const n = (ph?.unread || 0) + pendingMentions(ph) + newSnaps(ph);
+    const n = badgeTotal(ph);
     badge.hidden = !n; badge.textContent = String(n);
     btn.classList.toggle('has-news', !!n);
   }
