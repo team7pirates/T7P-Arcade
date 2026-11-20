@@ -167,6 +167,9 @@ export function afterFloor(r, ctx) {
   const next = floor + 1;
   r.plan = r.plan || {};
   const foeName = ctx.foes[0]?.name || 'them';
+  // v0.35.0: fewer texts. Optional ones stop once 2 new texts came in this
+  // floor. Boss setups, rematches, contracts and replies always get through.
+  const u0 = ph.unread || 0; const room = () => (ph.unread || 0) - u0 < 2;
   // v0.27.0: everyone you fight goes in your contacts.
   for (const f of ctx.foes || []) if (f?.id != null) meet(ph, { key: `c${f.id}`, name: f.name, cid: f.id, kind: ctx.boss ? 'boss' : 'rival' });
   meet(ph, { key: 'trainer', name: 'Coach Daichi (your trainer)', kind: 'trainer' });
@@ -181,8 +184,8 @@ export function afterFloor(r, ctx) {
   else if (floor % 3 === 0) headline(ph, `${ctx.me} reaches floor ${next}`, `${floor} floors cleared on this climb${ctx.hard ? ' (Hard)' : ''}.`, floor);
 
   // The fighter you just beat has something to say.
-  beatenEvent(r, ctx);
-  allyOfferEvent(r, ctx);
+  if (room()) beatenEvent(r, ctx);
+  if (room()) allyOfferEvent(r, ctx);
   lenzEvent(r, ctx);
   snapEvent(r, ctx);
   // One main event: what decides the next floor.
@@ -191,10 +194,10 @@ export function afterFloor(r, ctx) {
   // A rematch you earned by gloating comes first.
   if (r.revenge && next >= r.revenge.floor && !bossNext && !bossAfter && !r.plan[next]) revengeEvent(r, ctx, next);
   if (bossAfter && !r.plan[next]) { bossEvent(r, ctx, next); }
-  else if (!bossNext && !r.plan[next]) { trashEvent(r, ctx, next); }
+  else if (!bossNext && !r.plan[next] && room() && rand() < 0.45) { trashEvent(r, ctx, next); }
   // Side events.
   if (ctx.hp / ctx.maxHp < 0.45 && !bossNext) trainerEvent(r, ctx);
-  if (rand() < Math.min(0.75, 0.35 * (r.build?.talents?.dealChance || 1)) && !ph.deals.some((d) => d.status === 'active' || d.status === 'offer')) dealEvent(r, ctx);
+  if (room() && rand() < Math.min(0.6, 0.2 * (r.build?.talents?.dealChance || 1)) && !ph.deals.some((d) => d.status === 'active' || d.status === 'offer')) dealEvent(r, ctx);
   if (rand() < 0.5) fanEvent(r, ctx);
 }
 
@@ -245,7 +248,7 @@ function bossEvent(r, ctx, next) {
 function beatenEvent(r, ctx) {
   const foe = ctx.foes[0]; if (!foe) return;
   const big = ctx.callout || ctx.boss || ctx.type === 'lieutenant' || ctx.type === 'revenge';
-  if (!big && ctx.rand() > 0.55) return;
+  if (big ? ctx.rand() > 0.7 : ctx.rand() > 0.2) return;
   const who = { key: `c${foe.id}`, name: foe.name, cid: foe.id, kind: ctx.boss ? 'boss' : 'rival' };
   const salty = ctx.rand() < (ctx.callout || ctx.type === 'revenge' ? 0.75 : 0.5);
   const t = say(r.phone, who, fresh(r, salty ? BEATEN_SALTY : BEATEN_GOOD, ctx.rand), ctx.floor);
@@ -395,7 +398,7 @@ export function askAlly(r, key) {
 // Now and then a Close fighter offers to help (in afterFloor).
 function allyOfferEvent(r, ctx) {
   const ph = r.phone;
-  if (r.ally || ctx.rand() > 0.35) return;
+  if (r.ally || ctx.rand() > 0.2) return;
   const pickable = (ph.met || []).filter((m) => m.cid != null && !allyBlock(r, m.key) && !(ph.threads.find((t) => t.key === m.key)?.pending));
   if (!pickable.length) return;
   const m = pickable.sort((a, b) => bondOf(ph, b.key) - bondOf(ph, a.key))[0];
@@ -449,7 +452,7 @@ export function contractFloor(r, worth, rand = Math.random) {
   }
   // Free agent: minimum pay, and after a few floors companies come calling.
   r.faFloors = (r.faFloors || 0) + 1;
-  if (r.faFloors >= 3 && !ph.threads.some((t) => t.pending?.type === 'contract') && rand() < 0.4) {
+  if (r.faFloors >= 3 && !ph.threads.some((t) => t.pending?.type === 'contract') && rand() < 0.3) {
     const co = COMPANIES[Math.floor(rand() * COMPANIES.length)];
     const offer = offerFrom(co, 10, Math.max(2, Math.round(worth * co.pay)));
     const t = say(ph, coWho(co), `Been watching your climb. ${co.name} wants you: 10 floors, ${offer.pay} Bounty a floor, ${offer.bonus} when you finish.`, r.floor);
@@ -635,7 +638,7 @@ export { BOSS_EVERY };
 // likes you more. Fail and you lose bond (or reputation, if it was your
 // company) and a few followers. Ignore a request and it expires when you
 // start the next floor. Targets come from sims: about a coin flip.
-export const JOB_CHANCE = 0.35;
+export const JOB_CHANCE = 0.25;
 export const JOB_TURNS = [0, 3, 5, 7, 10, 12];
 export const JOB_LOSS = [0, 0.22, 0.38, 0.52, 0.66, 0.76];
 const JOB_MULT = { fast: 1.1, clean: 1.1, danger: 0.7, streak: 1.3, boss: 0.8 };

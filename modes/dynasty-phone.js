@@ -28,7 +28,7 @@ import { pickPhoto } from '../core/phone-scenes.js';
 export const CHAT_BOOST = 3;
 export const COACH_BOOST = 2;
 export const DATE_BOOST = 2;
-export const OFFER_CHANCE = 0.5;
+export const OFFER_CHANCE = 0.3;
 
 const GM_FIRST = ['Darnell', 'Keiko', 'Marco', 'Priya', 'Hank', 'Sofia', 'Tariq', 'Mei', 'Owen', 'Lucia', 'Rashad', 'Yuki', 'Gus', 'Imani', 'Viktor', 'Noor', 'Cal', 'Hana', 'Reggie', 'Ines'];
 const GM_LAST = ['Cole', 'Fujita', 'Russo', 'Shah', 'Briggs', 'Alves', 'Haddad', 'Lin', 'Pratt', 'Moreno', 'Grant', 'Mori', 'Kent', 'Okoye', 'Petrov', 'Aziz', 'Boone', 'Ito', 'Hayes', 'Duarte'];
@@ -307,15 +307,17 @@ export function afterWeek(L, games) {
   if (!ph.welcomed) { ensure(L); return; }
   const rand = Math.random;
   expireOffers(L);
+  // v0.35.0: fewer texts. At most 2 new ones a week from the optional events.
+  const u0 = ph.unread || 0; const room = () => (ph.unread || 0) - u0 < 2;
   const g = games?.find((x) => x.home === L.user.team || x.away === L.user.team);
-  if (rand() < 0.75) coachEvent(L, g);
+  if (rand() < 0.3) coachEvent(L, g);
   socialAfterGame(L, g);
   if (O.tradeOpen(L)) {
     if (ph.shop) { if (offerEvent(L, rand, true)) ph.shop = false; }
-    else if (rand() < OFFER_CHANCE) offerEvent(L, rand);
+    else if (room() && rand() < OFFER_CHANCE) offerEvent(L, rand);
     if (L.week === 4 && !ph.shop) officeEvent(L);
   }
-  squadEvent(L);
+  if (room() && rand() < 0.35) squadEvent(L);
   if (D.dating(ph).matches.length) D.refreshPrompts(ph, dateCtx(L));
   trim(ph);
 }
@@ -328,9 +330,9 @@ export function offseasonOffer(L) {
 // After a playoff game the user is still alive in.
 export function afterPlayoffGame(L, g) {
   if (!L.user || !L.phone) return;
-  coachEvent(L, g);
+  if (Math.random() < 0.4) coachEvent(L, g);
   socialAfterGame(L, g);
-  if (L.playoffs && L.playoffs.champion == null) squadEvent(L);
+  if (L.playoffs && L.playoffs.champion == null && Math.random() < 0.5) squadEvent(L);
 }
 
 export const dateCtx = (L) => ({ rand: Math.random, now: nowOf(L), turn: `s${L.season}w${R.gameWeek(L)}`, turnLabel: 'week', where: 'the AFL broadcast', when: 'game', perk: `+${DATE_BOOST} Aura for your team next game` });

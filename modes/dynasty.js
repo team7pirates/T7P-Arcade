@@ -138,7 +138,7 @@ export async function render() {
     getKey: () => L?.user?.phoneKey || 'p',
     setKey: (k) => { if (L?.user) { L.user.phoneKey = k; save(); } },
     widgets: () => (L?.user ? [[`${me().w}-${me().l}`, 'RECORD'], [L.phase === 'season' ? `WK ${L.week}` : L.phase === 'playoffs' ? 'PLAYOFFS' : 'OFF', 'SEASON ' + L.season], [String(O.picksOwnedBy(L, L.user.team).length), 'DRAFT PICKS']] : []),
-    empty: () => (L ? 'GMs, your squad and the league office text you here every week.' : 'Pick a save first.'),
+    empty: () => (L ? 'GMs, your squad and the league office text you here during the season.' : 'Pick a save first.'),
     dateCtx: () => (L?.user && (L.phase === 'season' || L.phase === 'playoffs') ? DP.dateCtx(L) : null),
     onDate: () => { DP.onDate(L); save(); if (tab === 'coach' || tab === 'league') drawHub(); },
     onReply: (key, optionId) => {

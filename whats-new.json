@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.35.1",
+      "date": "2026-11-20",
+      "title": "Fewer text messages",
+      "items": [
+        "Forbidden Fusion: about half as many texts. At most 2 optional texts a floor, and trash talk, deals and backup offers come less often. Boss setups, rematches, contracts and replies to you still always come through.",
+        "Dynasty: under 1 text a week on average, down from about 2. Squad chats, coach texts and trade calls come less often, with at most 2 a week."
+      ]
+    },
+    {
       "version": "0.35.0",
       "date": "2026-11-20",
       "title": "Real Lenz photos, 4 new songs, movable phone on PC",
