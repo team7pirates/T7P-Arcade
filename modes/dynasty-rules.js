@@ -768,6 +768,7 @@ export function endSeason(league) {
   row.coachOfYear = coy.i;
   if (hooks.seasonRow) hooks.seasonRow(league, row);
   if (hooks.seasonRowLegacy) hooks.seasonRowLegacy(league, row);
+  if (hooks.seasonRowPhone) { try { hooks.seasonRowPhone(league, row); } catch { /* the phone never breaks the season */ } }
   league.history.unshift(row);
   if (league.user) judgeCoach(league);
   league.phase = 'done';

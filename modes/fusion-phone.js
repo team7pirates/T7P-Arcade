@@ -29,6 +29,7 @@
 
 import { floorPower, isBoss, swarmSize, BOSS_EVERY } from './fusion-rules.js';
 import { chirp, lenzPost, snap, answerPost } from '../core/phone-core.js';
+import { pickPhoto } from '../core/phone-scenes.js';
 import { meet, bondOf, addBond, levelOf } from '../core/phone-bonds.js';
 import { COMPANIES, offerFrom, sign, FREE_AGENT_PAY } from './fusion-contracts.js';
 
@@ -320,19 +321,31 @@ export function replyPost(r, id, optionId, ctx) {
 
 // ---------- Lenz and Boo ----------
 const MY_LENZ = ['Floor {floor}. Still standing. 🗼', 'Another one. Floor {floor} ✅', 'They said I\'d stop at {floor}. 🤫', 'Boss down. Who\'s next? 👑', 'Callout answered. 📸', 'Hard work, floor {floor}.'];
-const CHAR_LENZ = ['Training day. 💪', 'Somebody up there is climbing fast. I\'m watching.', 'Rest day. Don\'t get used to it.', 'Warming up for whoever\'s next.', 'New gear, same energy.', 'Tower view hits different tonight.', 'Floor talk is cheap. See you up there.'];
 const SNAP_LOST = ['still sore from that 😤', 'run it back soon', 'my trainer is yelling at me rn', 'ok you hit hard', 'not posting that fight 💀', 'GG. ice bath time 🧊'];
+// v0.35.0: you post only on big moments (a boss, a new best floor, a
+// callout, every 10th floor, a finished contract or job). Other fighters post
+// now and then about their day. Every post has a real photo.
+function myLenz(r, type, caption, when, extra = {}) {
+  const ph = r.phone; const rand = Math.random;
+  return lenzPost(ph, { who: r.meName || 'You', cid: r.build?.faceId ?? null, photo: pickPhoto(ph, type, rand), caption, likes: Math.round((ph.followers || 0) * (0.08 + rand() * 0.06)) + 40, when, mine: true,
+    comments: [{ who: pick(FAN_NAMES, rand), text: fill(pick(FANS, rand), { floor: r.floor }) }, ...(rand() < 0.4 ? [{ who: pick(FAN_NAMES, rand), text: fill(pick(HATERS, rand), { floor: r.floor }) }] : [])], ...extra });
+}
+const CHAR_DAY = { train: ['Training day. 💪', 'Warming up for whoever\'s next.', 'New gear, same energy.'], eat: ['Refuel. 🍜', 'Cheat meal. Earned it.', 'Eating before the climb.'],
+  off: ['Rest day. Don\'t get used to it.', 'Tower view hits different tonight.', 'Recharging.'], fight: ['Somebody up there is climbing fast. I\'m watching.', 'Floor talk is cheap. See you up there.', 'Fight night. 🔒'] };
 function lenzEvent(r, ctx) {
   const ph = r.phone; const { floor, rand } = ctx;
   if (!ph.lenz) ph.lenz = [];
-  if (ctx.boss || ctx.callout || floor % 5 === 0) {
-    const cap = fill(ctx.boss ? MY_LENZ[3] : ctx.callout ? MY_LENZ[4] : fresh(r, MY_LENZ.slice(0, 3).concat(MY_LENZ[5]), rand), { floor });
-    lenzPost(ph, { who: ctx.me, cid: r.build?.faceId ?? null, caption: cap, likes: Math.round(ph.followers * (0.08 + rand() * 0.06)) + 40, when: `Floor ${floor}`, mine: true,
-      comments: [{ who: pick(FAN_NAMES, rand), text: fill(pick(FANS, rand), { floor }) }, ...(rand() < 0.5 ? [{ who: pick(FAN_NAMES, rand), text: fill(pick(HATERS, rand), { floor }) }] : [])] });
-  }
-  if (rand() < 0.35) {
+  r.meName = ctx.me;
+  const newBest = ctx.best != null && floor > ctx.best && floor >= 5 && !r.lenzBest;
+  if (newBest) r.lenzBest = true;
+  if (ctx.boss) myLenz(r, 'win', fill(MY_LENZ[3], { floor }), `Floor ${floor}`);
+  else if (newBest) myLenz(r, 'win', `New personal best. Floor ${floor}. 🗼`, `Floor ${floor}`);
+  else if (ctx.callout && rand() < 0.3) myLenz(r, 'fight', MY_LENZ[4], `Floor ${floor}`);
+  else if (floor % 10 === 0) myLenz(r, pick(['fight', 'train'], rand), fill(fresh(r, MY_LENZ.slice(0, 3).concat(MY_LENZ[5]), rand), { floor }), `Floor ${floor}`);
+  if (rand() < 0.12) {
     const c = pick(ctx.roster.filter((x) => x.portrait), rand);
-    if (c) lenzPost(ph, { who: c.name, cid: c.id, caption: fresh(r, CHAR_LENZ, rand), likes: 300 + Math.floor(rand() * 9000), when: `Floor ${floor}`, verified: (c.powerLevel || 0) >= 85 });
+    const type = pick(['train', 'eat', 'off', 'fight'], rand);
+    if (c) lenzPost(ph, { who: c.name, cid: c.id, photo: pickPhoto(ph, type, rand), caption: pick(CHAR_DAY[type], rand), likes: 300 + Math.floor(rand() * 9000), when: `Floor ${floor}`, verified: (c.powerLevel || 0) >= 85 });
   }
 }
 function snapEvent(r, ctx) {
@@ -424,6 +437,7 @@ export function contractFloor(r, worth, rand = Math.random) {
       c.status = 'done';
       const t = say(ph, coWho(c), `That's ${c.len} floors. Contract complete. Bonus is on its way: ${c.bonus} Bounty. Want 10 more?`, r.floor);
       sys(t, `CONTRACT COMPLETE: +${c.bonus} Bounty bonus.`);
+      myLenz(r, 'win', `${c.len} floors for ${c.name}. Contract done. ✍️`, `Floor ${r.floor}`);
       const next = offerFrom(COMPANIES.find((x) => x.id === c.co) || { id: c.co, name: c.name, icon: c.icon }, 10, Math.round(c.pay * 1.1));
       t.pending = { type: 'contract', offer: next, extend: true, options: [
         { id: 'accept', tone: 'accept', text: 'Run it back. 10 more floors.', hint: `${next.pay} a floor · ${next.bonus} bonus` },
@@ -684,6 +698,7 @@ function jobDone(r, j) {
   if (!j.company) addBond(ph, j.key, 'accept');
   gainFollowers(ph, 40 + j.pay * 6);
   r.jobsDone = (r.jobsDone || 0) + 1;
+  if (j.type === 'boss' || j.type === 'streak' || j.type === 'danger') myLenz(r, j.type === 'danger' ? 'eat' : 'win', pick(['Job done. Paid in full. 💰', 'Said I would. Did it.', 'Bounty collected. Dinner\'s on me.'], Math.random), `Floor ${r.floor}`);
 }
 function jobFailed(r, j, why) {
   const ph = r.phone;

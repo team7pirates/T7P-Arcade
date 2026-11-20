@@ -76,7 +76,7 @@ export function lenzPost(ph, post) {
   ph.lenz = ph.lenz.slice(0, 40);
   if (p.mine) {
     if (!ph.gallery) ph.gallery = [];
-    ph.gallery.unshift({ id: p.id, cid: p.cid ?? null, art: p.art ?? null, caption: p.caption, when: p.when });
+    ph.gallery.unshift({ id: p.id, cid: p.cid ?? null, art: p.art ?? null, photo: p.photo ?? null, caption: p.caption, when: p.when });
     ph.gallery = ph.gallery.slice(0, 60);
   }
   return p;

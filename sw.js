@@ -5,7 +5,7 @@
 // RELEASING AN UPDATE: bump CACHE_VERSION (and APP_VERSION in core/version.js)
 // to the same number, and add any new files to APP_FILES.
 
-const CACHE_VERSION = '0.34.1';
+const CACHE_VERSION = '0.35.0';
 const APP_CACHE = `t7p-app-${CACHE_VERSION}`;
 const ART_CACHE = 't7p-art'; // portraits, models and music: kept across versions
 
@@ -18,6 +18,10 @@ const MUSIC_FILES = [
   'low-rider.mp3',
   'low-riders.mp3',
   'whats-the-rush.mp3',
+  'get-my-punk-on.mp3',
+  'how-to-dance.mp3',
+  'miami-vintage.mp3',
+  'the-flower.mp3',
 ];
 
 const APP_FILES = [

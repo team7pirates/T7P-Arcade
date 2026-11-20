@@ -11,6 +11,30 @@
 import { h } from './ui.js';
 import { characters } from './characters.js';
 
+// v0.35.0: real Lenz photos (no people in them) in art/lenz/, grouped by
+// what the post is about. Any character can post any of them; the post's
+// header shows who. A post picks one with { photo: id }.
+export const LENZ_PHOTOS = {
+  train: [['gloves', 'Tower Gym'], ['dumbbells', 'Tower Gym'], ['jumprope', 'Training Dojo'], ['shoes', 'Morning run'], ['dojo', 'Training Dojo']],
+  eat: [['ramen', 'Ramen Ichiban'], ['burger', 'Downtown'], ['cake', 'Cheat day'], ['feast', 'Team dinner'], ['nightmarket', 'Night Market']],
+  fight: [['arenafloor', 'The Arena'], ['tunnel', 'Arena Tunnel'], ['locker', 'Locker Room'], ['neoncity', 'Downtown at night'], ['elevator', 'Tower Elevator']],
+  win: [['confetti', 'Center Ring'], ['trophy', 'The Arena'], ['medal', 'Center Ring'], ['pressroom', 'Press Room'], ['towertop', 'Top of the Tower']],
+  off: [['couch', 'Day off'], ['beach', 'Sunset Beach'], ['coffee', 'Corner cafe'], ['rooftop', 'Rooftop'], ['hotspring', 'Hot Spring']],
+  grail: [['grail-trophy', 'Championship night']],
+  gpt: [['gpt-trophy', 'Awards night']],
+};
+const PHOTO_LOC = Object.fromEntries(Object.values(LENZ_PHOTOS).flat());
+// Pick a photo of a type, avoiding the last few used (ph.lenzRecent).
+export function pickPhoto(ph, type, rand = Math.random) {
+  const all = (LENZ_PHOTOS[type] || LENZ_PHOTOS.off).map((x) => x[0]);
+  const recent = ph?.lenzRecent || [];
+  const pool = all.filter((x) => !recent.includes(x));
+  const id = (pool.length ? pool : all)[Math.floor(rand() * (pool.length || all.length))];
+  if (ph) ph.lenzRecent = [id, ...recent.filter((x) => x !== id)].slice(0, 8);
+  return id;
+}
+export const photoUrl = (id) => `art/lenz/${id}.webp`;
+
 export const SCENE_ART = [
   // { id: 'gym', file: 'gym.webp', loc: 'Tower Gym' },
 ];
@@ -48,6 +72,12 @@ export function styleFor(p) {
 
 // The photo for a Lenz post. Posts without a character keep their old look.
 export function lenzPhoto(p) {
+  if (p.photo && PHOTO_LOC[p.photo]) {
+    const s = styleFor(p);
+    const f = ['none', 'warm', 'none', 'vintage', 'cool', 'none'][(s.tilt + 4) % 6];
+    return h('div', { class: `ph-lpic lp is-photo f-${f}` }, h('img', { src: photoUrl(p.photo), alt: '', loading: 'lazy' }),
+      s.sticker ? h('span', { class: `lp-sticker is-${s.side}` }, s.sticker) : null, h('span', { class: 'lp-loc' }, `📍 ${PHOTO_LOC[p.photo]}`));
+  }
   const c = p.cid != null ? characters.get(p.cid) : null; const u = c && characters.portraitUrl(c);
   if (!u) {
     if (p.art) return h('div', { class: 'ph-lpic' }, h('img', { src: p.art, alt: '', loading: 'lazy' }));

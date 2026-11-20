@@ -27,7 +27,7 @@ import { aiSetup } from './ai-setup.js';
 import { characterReply } from './phone-ai.js';
 import { languageSwitch, scrub, filterOn } from './language.js';
 import { addBond, bondOf, levelOf, useQuick, QUICK, QUICK_BACK } from './phone-bonds.js';
-import { lenzPhoto } from './phone-scenes.js';
+import { lenzPhoto, photoUrl } from './phone-scenes.js';
 
 const ALL_APPS = {
   messages: ['Messages', '💬'], chirp: ['Chirp', '🐦'], lenz: ['Lenz', '📸'], boo: ['Boo', '👻'],
@@ -43,22 +43,25 @@ const keyLabel = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() 
 
 const FOLD_KEY = 't7p:phoneFolded';
 
-// v0.20.0: on touch screens, drag the phone button anywhere; it remembers
-// where you left it. On PC it stays in the corner.
+// Drag the phone button anywhere; it remembers where you left it.
+// v0.35.0: works with a mouse on PC too. Drop it in the bottom-right corner
+// to send it home. Phone and PC remember their own spots.
 const POS_KEY = 't7p:phoneButton';
 function makeDraggable(btn, onDrag) {
   const touch = () => matchMedia('(pointer: coarse)').matches;
+  const key = () => (touch() ? POS_KEY : `${POS_KEY}:pc`);
   const clamp = (x, y) => [Math.max(6, Math.min(innerWidth - btn.offsetWidth - 6, x)), Math.max(6, Math.min(innerHeight - btn.offsetHeight - 6, y))];
   const place = (x, y) => { const [cx, cy] = clamp(x, y); btn.style.position = 'fixed'; btn.style.left = `${cx}px`; btn.style.top = `${cy}px`; btn.style.right = 'auto'; btn.style.bottom = 'auto'; btn.classList.add('is-moved'); return [cx, cy]; };
   const restore = () => {
-    if (!touch()) return;
-    try { const p = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); if (p) requestAnimationFrame(() => place(p.x * innerWidth, p.y * innerHeight)); } catch { /* ignore */ }
+    try { const p = JSON.parse(localStorage.getItem(key()) || 'null'); if (p) requestAnimationFrame(() => place(p.x * innerWidth, p.y * innerHeight)); } catch { /* ignore */ }
   };
   let start = null;
   btn.addEventListener('pointerdown', (e) => {
-    if (!touch() || e.pointerType === 'mouse') return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     const r = btn.getBoundingClientRect();
     start = { x: e.clientX, y: e.clientY, bx: r.left, by: r.top, moving: false, id: e.pointerId };
+    // A mouse leaves the button before the drag starts; hold on to it.
+    if (e.pointerType === 'mouse') { e.preventDefault(); try { btn.setPointerCapture(e.pointerId); } catch { /* ignore */ } }
   });
   btn.addEventListener('pointermove', (e) => {
     if (!start || e.pointerId !== start.id) return;
@@ -73,12 +76,21 @@ function makeDraggable(btn, onDrag) {
     if (start.moving) {
       onDrag();
       const r = btn.getBoundingClientRect();
-      try { localStorage.setItem(POS_KEY, JSON.stringify({ x: r.left / innerWidth, y: r.top / innerHeight })); } catch { /* ignore */ }
+      // Dropped back in the bottom-right corner: snap home and forget the spot.
+      if (r.right > innerWidth - 90 && r.bottom > innerHeight - 90) {
+        btn.style.position = btn.style.left = btn.style.top = btn.style.right = btn.style.bottom = '';
+        btn.classList.remove('is-moved');
+        try { localStorage.removeItem(key()); } catch { /* ignore */ }
+      } else {
+        try { localStorage.setItem(key(), JSON.stringify({ x: r.left / innerWidth, y: r.top / innerHeight })); } catch { /* ignore */ }
+      }
       btn.classList.remove('is-dragging');
     }
     start = null;
   };
   btn.addEventListener('pointerup', end); btn.addEventListener('pointercancel', end);
+  btn.addEventListener('dragstart', (e) => e.preventDefault());
+  btn.draggable = false;
   addEventListener('resize', () => { if (btn.classList.contains('is-moved')) { const r = btn.getBoundingClientRect(); place(r.left, r.top); } });
   restore();
 }
@@ -154,6 +166,7 @@ export function createPhone(opts) {
     return h('span', { class: `ph-ava ph-ava-${size}${t.hater ? ' is-hater' : ''}` }, icon);
   };
   const pic = (x, cls = 'ph-pic') => {
+    if (x.photo) return h('div', { class: cls }, h('img', { src: photoUrl(x.photo), alt: '', loading: 'lazy', style: 'object-position:center' }));
     const c = x.cid != null ? characters.get(x.cid) : null; const u = c && characters.portraitUrl(c);
     if (u) return h('div', { class: cls }, h('img', { src: u, alt: c.name, loading: 'lazy' }));
     if (x.art) return h('div', { class: cls }, h('img', { src: x.art, alt: '', loading: 'lazy' }));

@@ -948,7 +948,7 @@ export async function render() {
     if (r.phone) {
       FP.onCleared(r, fl);
       const runBefore = r.runBounty;
-      FP.afterFloor(r, { floor: fl, hp, hpBefore: before, maxHp: r.maxHp, foes, roster: characters.list.filter((c) => !c.retired), rand: Math.random, me: me.name, hard: r.hard, underdog, callout: type === 'callout' || type === 'revenge', type, boss: isBoss(fl) && type !== 'lieutenant' });
+      FP.afterFloor(r, { floor: fl, hp, hpBefore: before, maxHp: r.maxHp, foes, roster: characters.list.filter((c) => !c.retired), rand: Math.random, me: me.name, hard: r.hard, underdog, callout: type === 'callout' || type === 'revenge', type, boss: isBoss(fl) && type !== 'lieutenant', best: bestFloor(data) });
       // v0.29.0: contract pay (counts as sponsor money).
       const cp = FP.contractFloor(r, FC.worth(data));
       contractPay = cp.pay + cp.bonus; contractDone = cp.done ? r.contract : null;

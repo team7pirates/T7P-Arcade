@@ -19,6 +19,10 @@ const TRACKS = [
   'music/low-rider.mp3',        // "Low Rider" by SENSHO (Uppbeat)
   'music/low-riders.mp3',       // "Low Riders" by Otto.mp3 (Uppbeat)
   'music/whats-the-rush.mp3',   // "What's The Rush" by Stan Town (Uppbeat)
+  'music/get-my-punk-on.mp3',   // "Get My Punk On" by The Breed (v0.35.0)
+  'music/how-to-dance.mp3',     // "How To Dance" by The Breed (v0.35.0)
+  'music/miami-vintage.mp3',    // "Miami Vintage" by Sonda (Uppbeat, v0.35.0)
+  'music/the-flower.mp3',       // "The Flower" by RA (v0.35.0)
 ];
 
 const FADE_IN_S = 1.5;

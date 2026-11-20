@@ -29,7 +29,8 @@ export function renderAbout() {
       'Made by TEAM7PIRATES.',
       'Fonts: Poppins (Indian Type Foundry) and Inter (Rasmus Andersson), both under the SIL Open Font License.',
       'Music: "Groovy Hip Hop" by Benjamin Tissot (www.bensound.com), license code 8VMZOBIVUXHW8BEQ.',
-      'Music from #Uppbeat: "Hood 2 Hood" by Pecan Pie (uppbeat.io/c/pecan-pie), "Low Riders" and "Lighter" by Otto.mp3 (uppbeat.io/c/ottomp3), "What\'s The Rush" by Stan Town (uppbeat.io/c/stan-town), "Low Rider" by SENSHO (uppbeat.io/c/sensho).',
+      'Music from #Uppbeat: "Hood 2 Hood" by Pecan Pie (uppbeat.io/c/pecan-pie), "Low Riders" and "Lighter" by Otto.mp3 (uppbeat.io/c/ottomp3), "What\'s The Rush" by Stan Town (uppbeat.io/c/stan-town), "Low Rider" by SENSHO (uppbeat.io/c/sensho), "Miami Vintage" by Sonda (uppbeat.io/c/sonda).',
+      'Music: "Get My Punk On" and "How To Dance" by The Breed, "The Flower" by RA.',
     ),
   );
 }

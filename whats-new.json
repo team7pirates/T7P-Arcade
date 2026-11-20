@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.35.0",
+      "date": "2026-11-20",
+      "title": "Real Lenz photos, 4 new songs, movable phone on PC",
+      "items": [
+        "Lenz posts now use 27 real photos: training, food, fight day, after a win, days off, plus the Celestial Grail and the GPT trophy.",
+        "Fewer, bigger posts. Dynasty: playoff wins, upsets, win streaks, a title or a GPT award, and now and then a teammate's day. Forbidden Fusion: bosses, a new best floor, every 10th floor, finished contracts and big jobs.",
+        "Win the Celestial Grail and your team posts the trophy. Have the GPT and they post theirs.",
+        "4 new songs: \"Get My Punk On\" and \"How To Dance\" by The Breed, \"Miami Vintage\" by Sonda, \"The Flower\" by RA.",
+        "On PC you can now drag the phone button anywhere with the mouse. It remembers the spot. Drag it back to the bottom-right corner to put it home."
+      ]
+    },
+    {
       "version": "0.34.1",
       "date": "2026-11-19",
       "title": "Dynasty playoff bye fix",

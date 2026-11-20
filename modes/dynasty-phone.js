@@ -23,6 +23,7 @@ import * as O from './dynasty-off.js';
 import { basePhone, pick, fresh, fillIn, say, mine, back, sys, note, trim, chirp, lenzPost, snap, answerPost } from '../core/phone-core.js';
 import * as D from '../core/phone-dating.js';
 import * as T from './dynasty-tamper.js';
+import { pickPhoto } from '../core/phone-scenes.js';
 
 export const CHAT_BOOST = 3;
 export const COACH_BOOST = 2;
@@ -222,7 +223,14 @@ const FAN_LOVE = ['Been rocking with {tag} since day one 💜', '{tag} got the b
 const FAN_HATE = ['{tag} are a one-season wonder.', 'Can\'t wait for {tag} to fall off.', '{tag} fans are the loudest and the wrongest.', 'Lucky. Every. Week. {tag}'];
 const HYPE_FANS = ['Love you all. See you at the next one. 💜', 'This team plays for you. Keep showing up.', 'Best fans in the AFL. Simple as that.'];
 const CLAP_BACK = ['Check the standings and get back to me.', 'Save this post. You\'ll want to delete it later.', 'Keep watching. I know you will.'];
-const LENZ_WIN = ['Big win. Bigger week. 📸', 'Game day energy. ✅', 'Player of the game. 🏆', 'Locker room was loud tonight.'];
+// v0.35.0: posts only on big moments, at most one from your team a week.
+const LENZ_BIG = { playoff: ['Playoff win. Survive and advance. 📸', 'One step closer to the Grail. 🏆', 'Playoff nights hit different.'],
+  upset: ['Nobody picked us. We noticed. 🤫', 'Upset? Not to us. ✅', 'Tell the power rankings to update. 📈'],
+  streak: ['{n} straight. Don\'t wake us up. 🔥', 'Win streak: {n}. Locker room was loud tonight.', '{n} in a row. Statement. 💯'] };
+const LENZ_DAY = { train: ['Early session. No days off. 💪', 'Film, then the gym. Repeat.', 'Getting better quietly.'],
+  eat: ['Refuel day. 🍜', 'Team dinner. Coach is paying.', 'Cheat meal earned. Don\'t tell the trainer.'],
+  off: ['Recovery day. Phone on silent. 🌅', 'Rest is part of the work.', 'Day off. Back at it tomorrow.'],
+  fight: ['Locked in for this week. 🔒', 'Walking in like it\'s already won.', 'Game week.'] };
 const SNAP_SQUAD = ['coach look at this ice bath 🥶', 'film room again?? 😴', 'gym at 6am, who\'s coming', 'pre-game fit check 🔥', 'we locked in coach 🔒', 'bus ride vibes 🎧'];
 const tagOf = (t) => `@${t.abbr}AFL`;
 function socialAfterGame(L, g) {
@@ -236,11 +244,27 @@ function socialAfterGame(L, g) {
     chirp(ph, { who: pick(FAN_HANDLES, rand), text: fillIn(line(L, won ? WIN_POSTS : LOSS_POSTS), v), likes: 40 + Math.floor(rand() * 900), when });
     if (rand() < 0.6) chirp(ph, { who: pick(FAN_HANDLES, rand), text: fillIn(line(L, won ? LOSS_POSTS : WIN_POSTS), { ...v, tag: tagOf(opp), opp: me.name }), likes: 10 + Math.floor(rand() * 300), when });
     ph.followers = Math.max(0, ph.followers + (won ? 250 + Math.floor(rand() * 400) : -Math.floor(rand() * 150)));
-    if (won) {
+    const wk = `${L.season}:${R.gameWeek(L)}`;
+    if (L.phase !== 'playoffs') ph.winRun = won ? (ph.winRun || 0) + 1 : 0;
+    const big = !won ? null : L.phase === 'playoffs' ? 'playoff' : opp.w > me.w + 1 ? 'upset' : [3, 5, 8].includes(ph.winRun) ? 'streak' : null;
+    if (big && (big === 'playoff' || ph.lenzWeek !== wk)) {
       const best = roster(L, me).filter((p) => p.portrait).sort((a, b) => (b.ovr || b.power || 0) - (a.ovr || a.power || 0));
       const star = best.length ? pick(best.slice(0, 4), rand) : null;
-      if (star) lenzPost(ph, { who: me.name, cid: star.cid, caption: `${line(L, LENZ_WIN)} ${star.name} vs ${opp.name}.`, likes: Math.round(ph.followers * (0.06 + rand() * 0.05)), when, mine: true, verified: true,
-        comments: [{ who: pick(FAN_HANDLES, rand), text: fillIn(pick(FAN_LOVE, rand), v) }] });
+      if (star) {
+        ph.lenzWeek = wk;
+        lenzPost(ph, { who: me.name, cid: star.cid, photo: pickPhoto(ph, big === 'upset' ? 'fight' : 'win', rand), caption: `${pick(LENZ_BIG[big], rand).replace('{n}', ph.winRun)} ${star.name} vs ${opp.name}.`, likes: Math.round(ph.followers * (0.06 + rand() * 0.05)), when, mine: true, verified: true,
+          comments: [{ who: pick(FAN_HANDLES, rand), text: fillIn(pick(FAN_LOVE, rand), v) }] });
+      }
+    }
+    // Now and then a teammate posts about their week (training, food, a day off).
+    if (ph.lenzWeek !== wk && L.phase !== 'playoffs' && rand() < 0.25) {
+      const ps = roster(L, me).filter((p) => p.portrait);
+      const p = ps.length ? pick(ps, rand) : null;
+      if (p) {
+        ph.lenzWeek = wk;
+        const type = pick(['train', 'train', 'eat', 'off', 'fight'], rand);
+        lenzPost(ph, { who: p.name, cid: p.cid, photo: pickPhoto(ph, type, rand), caption: pick(LENZ_DAY[type], rand), likes: Math.round(ph.followers * (0.02 + rand() * 0.03)) + 30, when, verified: (p.ovr || p.power || 0) >= 85 });
+      }
     }
     // One fan @s you directly.
     if (rand() < 0.7) {
@@ -379,4 +403,21 @@ export function accept(L, off) {
 }
 
 R.hooks.afterWeekPhone = afterWeek;
+// v0.35.0: the season's big posts. A Grail photo when you win it all, and a
+// GPT trophy photo when one of your fighters is the GPT.
+R.hooks.seasonRowPhone = (L, row) => {
+  if (!L.user || !L.phone) return;
+  const ph = phoneOf(L); const me = L.teams[L.user.team]; const rand = Math.random;
+  const when = `Season ${row.season}`;
+  if (row.champion === me.i) {
+    const best = roster(L, me).filter((p) => p.portrait).sort((a, b) => (b.ovr || b.power || 0) - (a.ovr || a.power || 0));
+    lenzPost(ph, { who: me.name, cid: best[0]?.cid ?? null, photo: 'grail-trophy', caption: `CHAMPIONS. The Celestial Grail is ours. 🏆 ${row.score[0]}–${row.score[1]}.`, likes: Math.round(ph.followers * 0.25) + 500, when, mine: true, verified: true,
+      comments: [{ who: pick(FAN_HANDLES, rand), text: 'WE DID IT 😭🏆' }, { who: pick(FAN_HANDLES, rand), text: 'Dynasty. Say it with me.' }] });
+  }
+  const gpt = L.players[row.prodigy];
+  if (gpt && gpt.team === me.i) {
+    lenzPost(ph, { who: gpt.name, cid: gpt.cid ?? null, photo: 'gpt-trophy', caption: `GPT. Thank you ${me.name}, thank you coach. 🙏`, likes: Math.round(ph.followers * 0.15) + 300, when, mine: true, verified: true,
+      comments: [{ who: pick(FAN_HANDLES, rand), text: 'Deserved. Best in the league.' }] });
+  }
+};
 R.hooks.tamperWindow = (L) => { phoneOf(L); T.openWindow(L); };
