@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.41.0",
+      "date": "2026-11-23",
+      "title": "My Career part 4: your phone, sponsors, retirement and the Hall",
+      "items": [
+        "Your own phone in My Career: your coach and your agent text you, fans talk about you on Chirp, you post your big nights on Lenz, and teammates snap you. Snap back for a streak: +1 Aura for your next fight.",
+        "Sponsorships: your agent, Nia Vance, brings brand deals: Volt Fizz, Ichiban Ramen, Ironclad Gym, then Ascend, Nova Audio and Shinobi Streetwear, then Lumen and Apex Motors as your fame grows. Up to 3 at once; each pays every season if your Hype is at its bar at season's end.",
+        "Payday at the end of every season: salary plus sponsors, and your career earnings in the Wallet.",
+        "Retirement: from season 7 you can retire after any season; after season 14 you have to.",
+        "The Hall of Fame: your career is scored (titles, the GPT, awards, Player of the Week, seasons, knockouts, peak Power). Clear the line and you're a Hall of Famer; the all-time greats join the Generational Pantheon. Every career you finish is kept in The Hall."
+      ]
+    },
+    {
       "version": "0.40.0",
       "date": "2026-11-23",
       "title": "My Career part 3: contracts, free agency and trades",

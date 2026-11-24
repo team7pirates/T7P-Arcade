@@ -272,6 +272,8 @@ export function cardsFor(L, g, lineups, approach) {
       if (a.power) c.powerLevel = Math.min(99, c.powerLevel + a.power);
       if (a.clutch) c.clutch = Math.min(100, (c.clutch || 50) + a.clutch);
       if (a.aura) c.aura = Math.min(100, (c.aura || 50) + a.aura);
+      // v0.41.0: snap streak bonus from your phone.
+      if (L.career.boost?.k === trainKey(L) && L.career.boost.aura) c.aura = Math.min(100, (c.aura || 50) + L.career.boost.aura);
       c.isMe = true;
     }
     return c;

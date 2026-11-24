@@ -198,7 +198,7 @@ export function startOffseason(L) {
   const inducted = [];
   for (const p of Object.values(L.players)) {
     if (p.retired || p.prospect) continue;
-    if (p.career >= p.careerLen) {
+    if (p.career >= p.careerLen && !p.me) { // v0.41.0: a My Career fighter decides when he retires
       const t = p.team != null ? L.teams[p.team] : null;
       retired.push({ pid: p.pid, team: p.team, name: p.name, power: p.power, seasons: p.career, series: p.series, iron: p.iron });
       if (p.power >= 95) {

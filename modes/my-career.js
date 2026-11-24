@@ -21,6 +21,8 @@ import './dynasty-chamber.js';
 import './dynasty-weekly.js';
 import './dynasty-media.js';
 import * as C from './career-rules.js';
+import * as CP from './career-phone.js';
+import { createPhone } from '../core/phone-ui.js';
 
 const NAME_MAX = 20;
 const fmt = (n) => Math.round(n).toLocaleString();
@@ -41,7 +43,9 @@ const help = howToPlay('my-career', 'My Career', [
   'Awards night: Rookie of the Year, the GPT, breakout jumps. Then the off-season runs and your next season starts.',
   'Contracts: when your deal is up, your team makes an offer (better with more coach trust). Take it, or test free agency and pick from the teams that want you.',
   'Trade requests: once a season, before the Week 8 deadline. Pick a team that wants you; a no costs trust.',
-  'Coming in later updates: your own phone, endorsements, retirement and the Hall of Fame.',
+  'Your phone: your coach, your agent and your teammates text you; fans talk about you on Chirp; you post your big nights on Lenz; teammates snap you (snap back for a streak: +1 Aura for your next fight).',
+  'Sponsorships: your agent brings brand deals. Up to 3 at once; each pays every season as long as your Hype is at its bar at season\'s end. Bigger brands come with more fame.',
+  'Retirement: from season 7 you can retire after any season; after season 14 you have to. Your career is scored for the Hall of Fame, and every retired career is kept in the Hall.',
 ]);
 
 export async function render() {
@@ -50,7 +54,56 @@ export async function render() {
   let L = await store.get(C.slotKey(slot), null);
   const root = h('section', { class: 'screen mode career dynasty' });
   let fightView = null;
-  root._cleanup = () => { closeSheet(); if (fightView) fightView.stop(); };
+  const live = () => !!(L && L.career && !L.career.retired && C.me(L).team != null);
+  const phone = createPhone({
+    apps: ['messages', 'chirp', 'lenz', 'boo', 'news', 'calendar', 'wallet', 'photos', 'settings'],
+    shortcutWhere: 'My Career',
+    mode: 'dynasty',
+    me: () => ({ name: L ? C.me(L).name : 'You', cid: L ? C.me(L).cid : null }),
+    news: () => (L?.news || []).slice(0, 30).map((n) => ({ src: `${n.kind || 'AFL'} · ${n.week ? `WEEK ${n.week}` : `SEASON ${L.season}`}`, title: n.title, text: n.text })),
+    calendar: () => careerCalendar(),
+    aiSetting: () => (live() ? `The player is ${C.me(L).name}, a ${C.me(L).role} on ${C.myTeam(L).name} in the Anime Fighting League (season ${C.me(L).career} of their career, ${L.phase === 'season' ? `week ${L.week}` : L.phase}). They are a fighter, not a coach.` : ''),
+    contacts: () => (live() ? C.myTeam(L).roster.map((pid) => L.players[pid]).filter((x) => x && !x.me).map((x) => ({ key: `p-${x.pid}`, name: x.name, cid: x.cid ?? null, kind: 'player' })) : []),
+    wallet: () => careerWallet(),
+    getPhone: () => (live() ? CP.phoneOf(L) : null),
+    save: () => save(),
+    getKey: () => L?.career?.phoneKey || 'p',
+    setKey: (k) => { if (L?.career) { L.career.phoneKey = k; save(); } },
+    widgets: () => (live() ? [[`${C.me(L).power}`, 'POWER'], [`${C.myTeam(L).w}-${C.myTeam(L).l}`, C.myTeam(L).abbr], [(CP.phoneOf(L).followers || 0).toLocaleString(), 'FANS']] : []),
+    empty: () => 'Your coach, your agent and your teammates text you here.',
+    dateCtx: () => null,
+    streakPerk: `gives +${CP.SNAP_AURA} Aura for your next fight (up to +3)`,
+    onSnapStreak: () => { if (!live()) return null; const t = CP.onSnapStreak(L); save(); return t; },
+    onReply: (key, optionId) => { if (!L) return null; const t = CP.reply(L, key, optionId); save(); if (root.querySelector('.mc-card')) drawHub(); return t; },
+  });
+  phone.show(false);
+  root._cleanup = () => { closeSheet(); if (fightView) fightView.stop(); phone.destroy(); };
+  function careerCalendar() {
+    if (!live()) return [];
+    const t = C.myTeam(L); const out = [];
+    if (L.phase === 'season') {
+      for (let w = L.week; w <= Math.min(R.WEEKS, L.week + 5); w += 1) {
+        const g = L.schedule[w - 1]?.find((x) => x.home === t.i || x.away === t.i);
+        if (!g) continue;
+        const opp = L.teams[g.home === t.i ? g.away : g.home];
+        out.push({ when: `WEEK ${w}`, title: `${g.home === t.i ? 'vs' : 'at'} ${opp.name}`, text: `${opp.w}-${opp.l}${w === L.week ? ' · next up' : ''}`, tag: w === L.week ? 'callout' : '' });
+        if (w === R.TRADE_DEADLINE) out.push({ when: `WEEK ${w}`, title: 'Trade deadline', text: 'Last week to ask for a trade', tag: 'deal' });
+      }
+      out.push({ when: `AFTER WK ${R.WEEKS}`, title: 'Playoffs', text: '10 teams, play-in first', tag: 'boss' });
+    } else if (L.phase === 'playoffs') out.push({ when: 'NOW', title: 'Playoffs', text: 'One and done', tag: 'boss' });
+    return out;
+  }
+  function careerWallet() {
+    if (!live()) return null;
+    const p = C.me(L); const c = L.career;
+    const deals = (c.deals || []).reduce((n, d) => n + d.per, 0);
+    return {
+      big: ['CAREER EARNINGS', (c.earnings || 0).toFixed(1)],
+      note: `${p.name} · ${C.myTeam(L).name}`,
+      rows: [['Salary', `${R.capHit(p)} a season`], ['Contract', C.contractLine(p)], ['Sponsors', `${(c.deals || []).length}/${CP.MAX_DEALS} · ${deals.toFixed(1)} a season`],
+        ...(c.deals || []).map((d) => [d.name, `${d.per} · Hype ${d.bar}+ · ${d.left} left`]), ['From sponsors so far', (c.dealEarnings || 0).toFixed(1)], ['Fans', (CP.phoneOf(L).followers || 0).toLocaleString()]],
+    };
+  }
   const header = (sub, onBack) => modeHeader({ title: 'My Career', sub, onHelp: () => help.show(), onBack });
   const save = () => (L ? store.set(C.slotKey(slot), L) : store.remove(C.slotKey(slot)));
   const team = (i) => L.teams[i];
@@ -59,6 +112,9 @@ export async function render() {
   let tab = 'week';
 
   function draw() {
+    phone.show(live());
+    if (live() && L.phase === 'season' && L.career.phonedSeason !== L.season) { L.career.phonedSeason = L.season; CP.seasonStart(L); save(); }
+    if (L?.career?.retired) return drawRetired();
     if (!L) return drawFiles();
     if (L.career.off?.stage === 'resign') return drawResign();
     if (L.career.off?.stage === 'fa') return drawMarket();
@@ -69,6 +125,7 @@ export async function render() {
 
   // ---------- Save files ----------
   async function drawFiles() {
+    phone.show(false);
     const rows = [];
     for (let n = 1; n <= C.SLOTS; n++) {
       const x = await store.get(C.slotKey(n), null);
@@ -76,7 +133,7 @@ export async function render() {
       rows.push(h('li', { class: 'dy-panel mc-file' },
         p ? face(p) : h('span', { class: 'avatar avatar-md avatar-empty' }, String(n)),
         h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p ? p.name : `File ${n}`),
-          h('span', { class: 'caption muted' }, !p ? 'Empty' : p.team != null ? `${x.teams[p.team].name} · Season ${p.career} · Power ${p.power}` : 'Draft night')),
+          h('span', { class: 'caption muted' }, !p ? 'Empty' : x.career.retired ? `Retired${x.career.retired.hof ? ' · Hall of Famer' : ''} · ${x.career.retired.seasons} seasons` : p.team != null ? `${x.teams[p.team].name} · Season ${p.career} · Power ${p.power}` : 'Draft night')),
         h('span', { class: 'btn-row' },
           h('button', { class: 'btn btn-primary btn-sm', onClick: async () => { slot = n; await profile.update({ careerSlot: n }); L = x; L ? draw() : drawCreate(); } }, p ? 'Continue' : 'New career'),
           p ? h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => {
@@ -87,7 +144,8 @@ export async function render() {
     fill(root, header('Draft · Grind · Legacy'), h('div', { class: 'dy-content' },
       h('section', { class: 'dy-panel mc-hero' }, h('h2', { class: 'dy-h gold' }, 'BE THE PLAYER, NOT THE COACH'),
         h('p', { class: 'body-text' }, 'Make a fighter (or bring yours from Forbidden Fusion), get drafted into the Anime Fighting League, earn your starts and build a career.')),
-      h('ul', { class: 'mc-files' }, rows)));
+      h('ul', { class: 'mc-files' }, rows),
+      h('button', { class: 'btn btn-secondary', onClick: () => drawHall() }, '🏛️ The Hall')));
   }
 
   // ---------- Create ----------
@@ -223,7 +281,7 @@ export async function render() {
       }
       return h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h gold' }, 'THE SEASON IS OVER FOR YOU'),
         h('p', { class: 'body-text' }, L.phase === 'playoffs' && C.myAlive(L) === false && L.playoffs?.seeds.includes(C.myTeam(L).i) ? 'Your playoff run is over.' : L.phase === 'playoffs' ? 'Your team missed the playoffs.' : ''),
-        h('button', { class: 'btn btn-primary btn-wide', onClick: async (e) => { e.target.disabled = true; const sum = C.closeSeason(L); L.career.over = sum; await save(); draw(); } }, 'Awards night'));
+        h('button', { class: 'btn btn-primary btn-wide', onClick: async (e) => { e.target.disabled = true; const sum = C.closeSeason(L); sum.pay = CP.seasonPayday(L); L.career.over = sum; await save(); draw(); } }, 'Awards night'));
     }
     const t = C.myTeam(L); const opp = team(g.home === t.i ? g.away : g.home);
     const starts = C.isStarter(L); const p = P();
@@ -236,7 +294,7 @@ export async function render() {
         : starts ? h('p', { class: 'body-text' }, '✅ Coach has you in the lineup. Pick your approach.')
           : h('p', { class: 'body-text' }, `🪑 Coach is starting someone else this week. (Your chance to start: about ${Math.round(C.startChance(L) * 100)}%. Good grades raise it.)`),
       starts && p.injury <= 0 ? h('div', { class: 'mc-approach' }, Object.entries(C.APPROACHES).map(([k, a]) => h('button', { class: `dy-option dy-option-sm${ap === k ? ' is-on' : ''}`, onClick: async () => { L.career.approach = k; await save(); drawHub(); } }, h('b', {}, a.label), h('span', { class: 'caption' }, a.line)))) : null,
-      starts && p.injury <= 0 ? h('button', { class: 'btn btn-primary btn-wide', onClick: () => fight(g) }, 'Fight') : h('button', { class: 'btn btn-primary btn-wide', onClick: async () => { const e = C.simMyWeek(L); await save(); recap(e, g); } }, 'Sim the week'));
+      starts && p.injury <= 0 ? h('button', { class: 'btn btn-primary btn-wide', onClick: () => fight(g) }, 'Fight') : h('button', { class: 'btn btn-primary btn-wide', onClick: async () => { const e = C.simMyWeek(L); if (e) CP.afterGame(L, e); await save(); recap(e, g); } }, 'Sim the week'));
   }
   function trainPanel() {
     if (!C.canTrain(L)) return h('p', { class: 'dy-boost is-train' }, P().injury > 0 ? '🩹 No training while you\'re hurt.' : '🏋️ You trained this week.');
@@ -343,6 +401,7 @@ export async function render() {
       onDone: async (res) => {
         const r = home ? res : flip(res);
         const e = C.finishGame(L, g, lu, ap, r);
+        CP.afterGame(L, e);
         await save();
         after.hidden = false;
         fill(after, h('button', { class: 'btn btn-primary btn-wide', onClick: () => recap(e, g) }, 'Continue'));
@@ -401,6 +460,32 @@ export async function render() {
         }))))));
   }
 
+  // ---------- Retired / Hall of Fame (v0.41.0) ----------
+  function drawRetired() {
+    const r = L.career.retired; const p = P(); const tr = L.career.trophies || [];
+    phone.show(false);
+    fill(root, header('Retired', () => drawFiles()), h('div', { class: 'dy-content' },
+      h('section', { class: `dy-panel mc-retired${r.hof ? ' is-hof' : ''}` }, face(p, 'lg'),
+        h('p', { class: 'label-spaced gold' }, r.pantheon ? 'THE GENERATIONAL PANTHEON' : r.hof ? 'HALL OF FAME' : 'RETIRED'),
+        h('h2', { class: 'heading' }, r.pantheon ? `${p.name} is one of the all-time greats.` : r.hof ? `${p.name} is a Hall of Famer.` : `${p.name} hangs them up.`),
+        h('p', { class: 'body-text' }, `${r.seasons} seasons · ${r.teams.join(' → ')} · peak Power ${r.peak}. Hall of Fame score ${r.score} (the line is ${CP.HOF_LINE}).`),
+        h('div', { class: 'mc-stats' }, stat('GAMES', r.totals.gp), stat('RECORD', `${r.totals.w}-${r.totals.l}`), stat('DAMAGE', fmt(r.totals.dmg)), stat('KO', r.totals.ko), stat('TITLES', r.titles), stat('EARNINGS', r.earnings.toFixed(1)))),
+      tr.length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h gold' }, `TROPHY CASE · ${tr.length}`),
+        h('ul', { class: 'dy-list' }, tr.map((x) => h('li', {}, h('span', { class: 'dy-num' }, `S${x.season}`), h('span', { class: 'dy-list-text' }, h('span', {}, `${TROPHY_ICON[x.kind] || '🏅'} ${x.name}`)))))) : null,
+      h('button', { class: 'btn btn-secondary btn-wide', onClick: () => drawHall() }, 'The Hall'),
+      h('button', { class: 'btn btn-primary btn-wide', onClick: () => drawFiles() }, 'Back to your files')));
+  }
+  async function drawHall() {
+    phone.show(false);
+    const hall = await CP.hallList();
+    fill(root, header('The Hall', () => (L ? draw() : drawFiles())), h('div', { class: 'dy-content' },
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h gold' }, 'EVERY CAREER YOU FINISHED'),
+        h('p', { class: 'caption muted' }, `Hall of Fame line: a score of ${CP.HOF_LINE}. Titles, the GPT, awards, Player of the Week, seasons, knockouts and peak Power all count.`),
+        hall.length ? h('ul', { class: 'dy-list' }, hall.map((x) => { const c = x.cid != null ? characters.get(x.cid) : null; return h('li', { class: x.hof ? 'is-you' : '' }, c ? avatar(c, characters, 'sm') : null,
+          h('span', { class: 'dy-list-text' }, h('span', {}, `${x.pantheon ? '🌌 ' : x.hof ? '🏛️ ' : ''}${x.name}`), h('span', { class: 'caption muted' }, `${x.seasons} seasons · ${x.teams.join(' → ')} · ${x.titles} title${x.titles === 1 ? '' : 's'} · ${x.trophies} trophies · score ${x.score}`))); }))
+          : h('p', { class: 'body-text' }, 'Nobody yet. Finish a career and it lands here.'))));
+  }
+
   // ---------- Season's end ----------
   function drawSeasonEnd() {
     const s = L.career.over; const t = team(s.team); const p = P();
@@ -412,7 +497,16 @@ export async function render() {
       h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h gold' }, `SEASON ${p.career} · ${t.name.toUpperCase()} ${s.w}-${s.l}`),
         h('div', { class: 'mc-stats' }, stat('GAMES', st.gp), stat('RECORD', `${st.w}-${st.l}`), stat('DAMAGE', fmt(st.dmg)), stat('KO', st.ko), stat('SPECIALS', st.sp), stat('POWER', s.power)),
         lines.length ? h('ul', { class: 'mc-awards' }, lines.map((x) => h('li', { class: 'body-text' }, x))) : h('p', { class: 'body-text' }, 'No hardware this year. Back to work.')),
-      h('section', { class: 'dy-panel' }, h('p', { class: 'body-text' }, p.contract && p.contract.left <= 1 ? `Your contract is up. ${team(s.team).name} will make you an offer, or you can test free agency.` : `Retirements, the draft and free agency run on their own. You're signed through ${p.contract ? `${p.contract.left - 1} more season${p.contract.left - 1 === 1 ? '' : 's'}` : 'next season'}.`),
+      s.pay ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'PAYDAY'),
+        h('p', { class: 'body-text' }, `Salary ${s.pay.salary} + sponsors ${Math.round(s.pay.deals * 10) / 10}. Career earnings: ${(L.career.earnings || 0).toFixed(1)}.`),
+        s.pay.dropped.length ? h('p', { class: 'caption loss' }, `Dropped by ${s.pay.dropped.join(', ')} (Hype under their bar).`) : null) : null,
+      CP.canRetire(L) ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, CP.mustRetire(L) ? 'TIME TO HANG THEM UP' : 'RETIREMENT'),
+        h('p', { class: 'body-text' }, CP.mustRetire(L) ? `Season ${p.career}. Your body is done. It's time.` : `Season ${p.career}. You can keep going (cards start to decline after season 5) or walk away now. Hall of Fame score so far: ${CP.hofScore(L)} (the line is ${CP.HOF_LINE}).`),
+        h('button', { class: `btn ${CP.mustRetire(L) ? 'btn-primary' : 'btn-secondary'} btn-wide`, onClick: async () => {
+          if (!CP.mustRetire(L) && !(await confirmSheet({ title: 'RETIRE?', message: `${p.name}'s career ends here. This can't be undone.`, confirmLabel: 'Retire' }))) return;
+          await CP.retire(L); await save(); sfx.play('correct'); draw();
+        } }, 'Retire')) : null,
+      CP.mustRetire(L) ? null : h('section', { class: 'dy-panel' }, h('p', { class: 'body-text' }, p.contract && p.contract.left <= 1 ? `Your contract is up. ${team(s.team).name} will make you an offer, or you can test free agency.` : `Retirements, the draft and free agency run on their own. You're signed through ${p.contract ? `${p.contract.left - 1} more season${p.contract.left - 1 === 1 ? '' : 's'}` : 'next season'}.`),
         h('button', { class: 'btn btn-primary btn-wide', onClick: async (e) => { e.target.disabled = true; e.target.textContent = 'Running the off-season…'; await new Promise((r) => setTimeout(r, 30)); C.beginOffseason(L); L.career.over = null; await save(); tab = 'week'; sfx.play('correct'); draw(); } }, p.contract && p.contract.left <= 1 ? 'Start the off-season (your contract is up)' : `Start season ${p.career + 1}`))));
   }
 
