@@ -21,6 +21,7 @@ import { go } from '../core/router.js';
 import { shareText } from '../core/grid-board.js';
 import { ROLES, SPECIALS, BEATS, SECOND_PERKS, fighterStats } from '../core/combat.js';
 import { playMatch } from '../core/battle-view.js';
+import { originalsGrid, faceTabs } from '../core/face-grid.js';
 import { FX, ELEMENT_KEYS, ELEMENTS } from '../core/elements.js';
 import {
   GYM, START_BUDGET, ROLE_CHANGE, roleChangeCost, starterBuild, fighterFrom,
@@ -331,7 +332,19 @@ export async function render() {
         name.addEventListener('input', () => { cr.name = name.value; nextBtn.disabled = !cr.name.trim(); });
         const search = h('input', { class: 'ai-input', placeholder: 'Search any character for your face', value: q });
         const grid = h('div', { class: 'ff-cr-faces' });
+        // v0.42.0: Original faces tab (default) and Characters tab.
+        if (cr.faceTab == null) cr.faceTab = cr.faceId == null || characters.get(cr.faceId)?.original ? 'original' : 'chars';
+        const tabs = h('div', { class: 'face-tabs', role: 'tablist' });
+        const shuffleBtn = h('button', { class: 'btn btn-secondary btn-sm', onClick: () => { shuffleFaces(); q = ''; search.value = ''; drawGrid(); } }, '🔀 Shuffle faces');
         const drawGrid = () => {
+          fill(tabs, [['original', 'Original faces'], ['chars', 'Characters']].map(([k, l]) => h('button', { class: `face-tab${cr.faceTab === k ? ' is-on' : ''}`, role: 'tab', 'aria-selected': String(cr.faceTab === k), onClick: () => { cr.faceTab = k; drawGrid(); } }, l)));
+          search.hidden = shuffleBtn.hidden = cr.faceTab === 'original';
+          if (cr.faceTab === 'original') {
+            grid.classList.add('is-originals');
+            fill(grid, characters.originals.map((c) => h('button', { class: `ff-cr-face${cr.faceId === c.id ? ' is-on' : ''}`, 'aria-label': c.name, 'aria-pressed': String(cr.faceId === c.id), onClick: () => { cr.faceId = c.id; sfx.play('pick'); drawGrid(); preview(); } }, avatar(c, characters, 'md'))));
+            return;
+          }
+          grid.classList.remove('is-originals');
           const list = q.trim() ? characters.search ? characters.search(q).filter((c) => c.portrait).slice(0, 18) : characters.list.filter((c) => c.portrait && c.name.toLowerCase().includes(q.toLowerCase())).slice(0, 18) : faces;
           fill(grid, list.map((c) => h('button', { class: `ff-cr-face${cr.faceId === c.id ? ' is-on' : ''}`, 'aria-label': c.name, 'aria-pressed': String(cr.faceId === c.id), onClick: () => { cr.faceId = c.id; sfx.play('pick'); drawGrid(); preview(); } }, avatar(c, characters, 'md'), h('span', { class: 'caption' }, c.name))));
         };
@@ -343,8 +356,8 @@ export async function render() {
         body = h('div', { class: 'ff-cr-body' },
           h('h2', { class: 'heading' }, 'Who are you?'),
           h('div', { class: 'ff-cr-namerow' }, pv, h('label', { class: 'ai-field' }, h('span', { class: 'caption' }, 'Name'), name)),
-          h('p', { class: 'label-spaced' }, 'YOUR FACE'), search, grid,
-          h('button', { class: 'btn btn-secondary btn-sm', onClick: () => { shuffleFaces(); q = ''; search.value = ''; drawGrid(); } }, '🔀 Shuffle faces'),
+          h('p', { class: 'label-spaced' }, 'YOUR FACE'), tabs, search, grid,
+          shuffleBtn,
           h('div', { class: 'btn-row ff-cr-nav' }, h('button', { class: 'btn btn-secondary', onClick: drawSlots }, 'Cancel'), nextBtn));
         fill(root, header(`FILE ${n} · NEW FIGHTER`, drawSlots), steps, body);
         setTimeout(() => name.focus(), 50);
@@ -769,18 +782,16 @@ export async function render() {
       count.textContent = list.length ? '' : 'No characters match that search.';
     };
     search.addEventListener('input', draw);
+    const grid = originalsGrid(draft.faceId, (c) => { draft.faceId = c.id; closeSheet(); redraw(); });
     sheet({
       title: 'PICK A FACE',
       wide: true,
       content: h('div', { class: 'picker' },
-        h('p', { class: 'caption muted' }, 'The face is the look and the name tag. Your stats come from the Talent Tree.'),
-        h('div', { class: 'search-wrap' }, icon('search', 18), search),
-        count,
-        results,
+        h('p', { class: 'caption muted' }, 'The face is the look. Pick an original face, or borrow a character\'s. Your stats come from the Talent Tree.'),
+        faceTabs(grid, h('div', {}, h('div', { class: 'search-wrap' }, icon('search', 18), search), count, results), characters.get(draft.faceId)?.original || draft.faceId == null ? 'original' : 'chars'),
       ),
     });
     draw();
-    search.focus();
   }
 
   // ---------- The Tower ----------

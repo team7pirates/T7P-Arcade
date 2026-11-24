@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "0.42.0",
+      "date": "2026-11-23",
+      "title": "40 original faces for your fighters",
+      "items": [
+        "My Career and Forbidden Fusion: pick from 40 original faces made for the game, each with its own style: dreads and a gold chain, braids and a headband, masks, hoods, a bear-ear cap, swords on the back, ink tattoos and more. Scroll the Original faces tab, or borrow a character's face from the Characters tab.",
+        "Dynasty and My Career: top-7 picks now start in their rookie season on every team, not just yours.",
+        "Rookie of the Year now goes to the rookie with the best production per game, not the one on the best team."
+      ]
+    },
+    {
       "version": "0.41.0",
       "date": "2026-11-23",
       "title": "My Career part 4: your phone, sponsors, retirement and the Hall",

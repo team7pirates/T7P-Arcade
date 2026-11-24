@@ -19,6 +19,16 @@ function fold(text) {
     .toLowerCase();
 }
 
+// v0.42.0: original faces for created fighters (art/players/cpNN.webp). They
+// are picture-only entries: get() and portraitUrl() know them, but they never
+// appear in list or search, so no mode can pick them as a character.
+export const ORIGINAL_FACES = Array.from({ length: 40 }, (_, i) => {
+  const n = String(i + 1).padStart(2, '0');
+  return { id: 9001 + i, name: `Original face #${i + 1}`, series: 'Original', franchise: 'Original', portrait: true, art: `art/players/cp${n}.webp`, original: true };
+});
+const EXTRA = new Map(ORIGINAL_FACES.map((c) => [c.id, c]));
+EXTRA.set(9500, { id: 9500, name: 'Halestorm', series: 'Team7Pirates', franchise: 'Team7Pirates', portrait: true, art: 'art/players/halestorm.webp', original: true });
+
 export const characters = {
   get loaded() { return !!roster; },
   get version() { return roster ? roster.rosterVersion : null; },
@@ -38,7 +48,8 @@ export const characters = {
     return roster;
   },
 
-  get(id) { return byId.get(Number(id)) || null; },
+  get(id) { return byId.get(Number(id)) || EXTRA.get(Number(id)) || null; },
+  get originals() { return ORIGINAL_FACES; },
 
   // Name search: matches the name, label, aliases and series, ignoring accents.
   // Names that start with the search come first.
@@ -72,6 +83,6 @@ export const characters = {
   // Portraits are added later as portraits/<id>.webp. The roster marks the ones
   // that exist with "portrait": true, so we never ask for a missing file.
   portraitUrl(c) {
-    return c && c.portrait ? `portraits/${c.id}.webp` : null;
+    return c && c.portrait ? (c.art || `portraits/${c.id}.webp`) : null;
   },
 };

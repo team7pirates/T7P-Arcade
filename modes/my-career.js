@@ -23,6 +23,7 @@ import './dynasty-media.js';
 import * as C from './career-rules.js';
 import * as CP from './career-phone.js';
 import { createPhone } from '../core/phone-ui.js';
+import { originalsGrid, faceTabs } from '../core/face-grid.js';
 
 const NAME_MAX = 20;
 const fmt = (n) => Math.round(n).toLocaleString();
@@ -151,7 +152,7 @@ export async function render() {
   // ---------- Create ----------
   async function drawCreate() {
     const icon0 = characters.get(profile.value.iconId);
-    const cr = { name: '', faceId: icon0?.portrait ? icon0.id : null, role: null, second: null, path: 'balanced', fusion: null };
+    const cr = { name: '', faceId: null, role: null, second: null, path: 'balanced', fusion: null };
     const fusion = [];
     for (let n = 1; n <= 3; n++) {
       const d = await store.get(`fusion:slot${n}`, null);
@@ -205,8 +206,9 @@ export async function render() {
         avatar(c, characters, 'sm'), h('span', { class: 'pick-text' }, h('span', { class: 'pick-name' }, c.name), h('span', { class: 'pick-series' }, c.series))))));
     search.addEventListener('input', drawList);
     drawList();
-    sheet({ title: 'PICK A FACE', content: h('div', {}, h('p', { class: 'caption muted' }, 'Just the look. Your name and ratings are your own.'), search, results) });
-    setTimeout(() => search.focus(), 50);
+    const grid = originalsGrid(cr.faceId, (c) => { cr.faceId = c.id; closeSheet(); redraw(); });
+    sheet({ title: 'PICK A FACE', wide: true, content: h('div', {}, h('p', { class: 'caption muted' }, 'Just the look. Your name and ratings are your own. Scroll the original faces, or borrow a character\'s.'),
+      faceTabs(grid, h('div', {}, search, results), cr.faceId == null || characters.get(cr.faceId)?.original ? 'original' : 'chars')) });
   }
 
   // ---------- Draft night ----------

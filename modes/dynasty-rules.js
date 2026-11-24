@@ -382,7 +382,9 @@ export const available = (p) => p.injury <= 0 && !(p.chamber && p.chamber.team =
 // AI picks its five: one of each role if it can, skipping the worn down.
 export function aiStarters(league, team) {
   const ps = team.roster.map((pid) => league.players[pid]).filter(available);
-  const score = (p) => effPower(league, p) - (p.fatigue > 60 ? 6 : 0);
+  // v0.42.0: a top-7 pick starts in his rookie season (the same rule My Career uses).
+  const topRookie = (p) => p.career === 1 && p.draftPick != null && p.draftPick <= 7 && p.draftSeason === league.season - 1;
+  const score = (p) => effPower(league, p) - (p.fatigue > 60 ? 6 : 0) + (topRookie(p) ? 25 : 0);
   const chosen = [];
   for (const r of ROLES) {
     const best = ps.filter((p) => p.role === r && !chosen.includes(p)).sort((a, b) => score(b) - score(a))[0];
@@ -810,7 +812,12 @@ export function endSeason(league) {
   // the games). The winner moves up a dev trait (Normal → Star → Superstar);
   // a Superstar rookie gets +2 Power instead.
   const half = (t) => Math.max(1, Math.ceil((t.w + t.l) / 2));
-  const roy = race.find((x) => x.p.career === 1 && (x.p.draftSeason != null || x.p.undrafted) && x.p.stats.gp >= half(league.teams[x.p.team]));
+  // v0.42.0: Rookie of the Year is about the rookie's own production (damage,
+  // knockouts, specials), with team wins counting only a little: the best
+  // rookies usually go to the worst teams.
+  const rookieScore = (p) => ((p.stats.dmg / 1000 + p.stats.ko * 3 + p.stats.sp * 1.5) / Math.max(1, p.stats.gp)) * WEEKS + p.stats.w * 1.5;
+  const roy = race.filter((x) => x.p.career === 1 && (x.p.draftSeason != null || x.p.undrafted) && x.p.stats.gp >= half(league.teams[x.p.team]))
+    .sort((a, b) => rookieScore(b.p) - rookieScore(a.p))[0];
   if (roy) {
     const p = roy.p; row.roy = p.pid; row.royTeam = p.team;
     if (p.dev < 2) { p.dev += 1; row.royGift = 'dev'; } else { p.potential = Math.min(99, Math.max(p.potential, p.power) + 2); p.power = Math.min(99, p.power + 2); row.royGift = 'power'; }

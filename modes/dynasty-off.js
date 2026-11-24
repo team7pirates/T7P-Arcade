@@ -108,6 +108,21 @@ export function buildDraftClass(L) {
     L.players[p.pid] = p;
     return p.pid;
   });
+  addSpecialProspect(L, rand, used);
+}
+// A rare special prospect in a league's 3rd draft class. The roll is made once
+// per league (outside the league's random stream, so nothing else changes).
+const SPECIAL = { cid: 9500, name: 'Halestorm', series: 'Team7Pirates', franchise: 'Team7Pirates', role: 'Speedster', second: 'Mystic', chance: 0.25, classNo: 3 };
+function addSpecialProspect(L, rand, used) {
+  L.classNo = (L.classNo || 0) + 1;
+  if (L.specialRoll == null) L.specialRoll = Math.random() < SPECIAL.chance;
+  if (!L.specialRoll || L.classNo !== SPECIAL.classNo) return;
+  if (Object.values(L.players).some((p) => p.cid === SPECIAL.cid)) return;
+  const p = makeProspect(L, { cid: SPECIAL.cid, series: SPECIAL.series, franchise: SPECIAL.franchise, portrait: true, role: SPECIAL.role, second: SPECIAL.second }, rand, used);
+  Object.assign(p, { name: SPECIAL.name, power: 78, potential: 99, dev: 2, gen: true, gem: true, bust: false, iron: false, careerLen: 10, stars: 5,
+    aura: 74, clutch: 72, chaos: 60, hype: 65, lowKey: false, aiEye: 125 });
+  L.players[p.pid] = p;
+  L.draftClass.unshift(p.pid);
 }
 
 function prospectName(rand, used) {
@@ -207,7 +222,7 @@ export function startOffseason(L) {
       }
       if (t) t.roster = t.roster.filter((x) => x !== p.pid);
       p.retired = true; p.team = null; p.contract = null; p.retiredSeason = L.season;
-      if (!L.draftClass.some((pid) => L.players[pid].cid === p.cid)) L.headshots.push({ cid: p.cid, series: p.series, franchise: p.franchise, portrait: p.portrait, role: p.role, second: p.second });
+      if (p.cid !== SPECIAL.cid && !L.draftClass.some((pid) => L.players[pid].cid === p.cid)) L.headshots.push({ cid: p.cid, series: p.series, franchise: p.franchise, portrait: p.portrait, role: p.role, second: p.second });
     }
   }
   L.headshots = L.headshots.slice(-160);
