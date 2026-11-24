@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "0.37.0",
+      "date": "2026-11-23",
+      "title": "New main menu: Quick Play and My Career",
+      "items": [
+        "The main menu has three big cards: Forbidden Fusion, Dynasty and My Career (coming next: be the player, not the coach).",
+        "Brawl, Grids, Gauntlet, Tier Target and Blind Tier List are together under Quick Play, for games you finish in one sitting."
+      ]
+    },
+    {
       "version": "0.36.0",
       "date": "2026-11-23",
       "title": "Training, a 2-round draft, playoff seeds, snap streaks and second-role perks",

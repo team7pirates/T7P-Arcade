@@ -1,6 +1,7 @@
 // Main menu (v0.24.0): fills the screen. Your icon and a Continue card on
-// top, three big flagship cards with art, the four other modes in one row,
-// and a small icon bar for the extras.
+// top, three big flagship cards with art (v0.37.0: Forbidden Fusion, Dynasty,
+// My Career), a QUICK PLAY row for the one-sitting modes (Brawl first), and a
+// small icon bar for the extras.
 
 import { h, icon, avatar, sheet } from '../ui.js';
 import { MODES } from '../modes.js';
@@ -22,6 +23,8 @@ export function renderMenu() {
   fillContinue(cont);
   const art = {};
   flagships.forEach((m) => { art[m.id] = h('span', { class: 'mode-art', 'aria-hidden': 'true' }); });
+  const brawlArt = h('span', { class: 'mode-art', 'aria-hidden': 'true' });
+  art.brawl = brawlArt;
   fillArt(art);
   const nudge = h('div', { class: 'menu-nudge-slot' });
   fillNudge(nudge);
@@ -41,7 +44,9 @@ export function renderMenu() {
 
     h('nav', { class: 'mode-grid', 'aria-label': 'Game modes' },
       h('div', { class: 'mode-flagships' }, flagships.map((m) => modeTile(m, art[m.id]))),
-      h('div', { class: 'mode-pair' }, others.map((m) => modeTile(m))),
+      h('div', { class: 'mode-quick' },
+        h('h2', { class: 'mode-quick-h label-spaced' }, 'QUICK PLAY', h('span', { class: 'caption muted' }, ' · one sitting, no saves to babysit')),
+        h('div', { class: 'mode-pair' }, others.map((m) => modeTile(m, m.id === 'brawl' ? brawlArt : null)))),
     ),
 
     h('div', { class: 'menu-iconbar', role: 'toolbar', 'aria-label': 'More' },
@@ -96,11 +101,11 @@ function modeTile(m, art = null) {
   },
     art,
     h('span', { class: 'mode-tile-inner' },
-      m.flagship ? h('span', { class: 'mode-tag' }, 'FLAGSHIP') : null,
+      m.flagship ? h('span', { class: 'mode-tag' }, m.ready ? 'FLAGSHIP' : 'NEW') : null,
       h('span', { class: 'mode-name' }, m.name),
       h('span', { class: 'mode-sub' }, m.sub),
       m.flagship ? h('span', { class: 'mode-blurb' }, m.blurb) : null,
-      m.ready ? null : h('span', { class: 'mode-soon' }, `Coming in Wave ${m.wave}`),
+      m.ready ? null : h('span', { class: 'mode-soon' }, m.soon || `Coming in Wave ${m.wave}`),
     ),
   );
 }
@@ -159,6 +164,8 @@ async function fillArt(art) {
     art.dynasty.classList.add('is-dynasty');
     art.dynasty.append(h('img', { class: 'mode-art-bg', src: 'art/afl/arenas/2001.webp', alt: '' }), h('img', { class: 'mode-art-crest', src: `art/afl/crests/${crest}.webp`, alt: '' }));
   } catch { /* no art */ }
+  // My Career: the walk-out tunnel.
+  if (art['my-career']) { art['my-career'].classList.add('is-career'); art['my-career'].append(h('img', { src: 'art/lenz/tunnel.webp', alt: '' })); }
   // Brawl: three fighters in a row.
   const three = bigNames.map((n) => characters.list.find((x) => x.name === n)).filter(Boolean).sort(() => Math.random() - 0.5).slice(0, 3);
   art.brawl.classList.add('is-trio');
@@ -171,7 +178,7 @@ function openModePreview(m) {
     content: h('div', {},
       h('p', { class: 'label-spaced' }, m.sub.toUpperCase()),
       h('p', { class: 'body-text' }, m.blurb),
-      h('p', { class: 'body-text muted' }, `${m.name} is being rebuilt and arrives in Wave ${m.wave}.`),
+      h('p', { class: 'body-text muted' }, m.soon ? `${m.name} is being built now. It's next up.` : `${m.name} is being rebuilt and arrives in Wave ${m.wave}.`),
     ),
   });
 }

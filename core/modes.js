@@ -1,4 +1,5 @@
-// The seven modes on the main menu, in menu order. Each mode's code lives in
+// The modes on the main menu, in menu order. v0.37.0: three big cards on top
+// (flagship) and a Quick Play row for the one-sitting modes (quick). Each mode's code lives in
 // modes/<id>.js and is switched on here (ready: true, plus a load function)
 // when its wave ships. The loading screen calls load() for each ready mode.
 
@@ -19,28 +20,33 @@ export const MODES = [
     blurb: 'Coach an Anime Fighting League team: set your lineup every week, outthink the rival coach and chase the Celestial Grail.',
   },
   {
+    id: 'my-career', loadingLine: 'LACING UP', name: 'My Career', sub: 'Draft · Grind · Legacy',
+    flagship: true, ready: false, soon: 'Coming next',
+    blurb: 'Be the player, not the coach. Get drafted into the Anime Fighting League, earn your minutes and build a Hall of Fame career.',
+  },
+  {
     id: 'brawl', loadingLine: 'DRAWING UP THE BRACKET', name: 'Brawl', sub: 'Draft · Bracket · Champion',
-    flagship: true, wave: 4, ready: true, load: loader('brawl'),
+    flagship: false, quick: true, wave: 4, ready: true, load: loader('brawl'),
     blurb: 'Draft a squad and fight through a bracket to be crowned champion.',
   },
   {
     id: 'grids', loadingLine: 'SHUFFLING THE GRIDS', name: 'Grids', sub: 'Solo deployment',
-    flagship: false, wave: 1, ready: true, load: loader('grids'),
+    flagship: false, quick: true, wave: 1, ready: true, load: loader('grids'),
     blurb: 'Fill the grid with characters that match both the row and the column.',
   },
   {
     id: 'gauntlet', loadingLine: 'WINDING THE GAUNTLET CLOCK', name: 'Gauntlet', sub: 'Survival time attack',
-    flagship: false, wave: 1, ready: true, load: loader('gauntlet'),
+    flagship: false, quick: true, wave: 1, ready: true, load: loader('gauntlet'),
     blurb: 'Clear grid after grid against the clock. How far can you get?',
   },
   {
     id: 'tier-target', loadingLine: 'LINING UP TIER TARGETS', name: 'Tier Target', sub: 'Multiply · Splash',
-    flagship: false, wave: 2, ready: true, load: loader('tier-target'),
+    flagship: false, quick: true, wave: 2, ready: true, load: loader('tier-target'),
     blurb: 'Hit the target score by picking characters from the right tiers.',
   },
   {
     id: 'blind-tier-list', loadingLine: 'SEALING THE BLIND TIER LIST', name: 'Blind Tier List', sub: 'Rank on instinct',
-    flagship: false, wave: 2, ready: true, load: loader('blind-tier-list'),
+    flagship: false, quick: true, wave: 2, ready: true, load: loader('blind-tier-list'),
     blurb: 'Characters arrive one at a time. Place each one before you see the next.',
   },
 ];

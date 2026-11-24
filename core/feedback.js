@@ -66,7 +66,7 @@ export const SECTIONS = [
     { id: 'else', kind: 'text', q: 'Anything else?' },
   ] },
 ];
-export const RATED = [...MODES.map((m) => [m.id, m.name]), ['phone', 'The phone (texts, Chirp, Lenz, Boo)']];
+export const RATED = [...MODES.filter((m) => m.ready).map((m) => [m.id, m.name]), ['phone', 'The phone (texts, Chirp, Lenz, Boo)']];
 
 export function guessDevice() {
   if (matchMedia('(pointer: coarse)').matches) return Math.min(screen.width, screen.height) >= 700 ? 'Tablet' : 'Phone';

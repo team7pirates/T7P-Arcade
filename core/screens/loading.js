@@ -18,7 +18,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function runLoading(app, { onRetry } = {}) {
   const steps = [
     { label: 'Characters', line: () => `LOADING ${characters.count || ''} CHARACTERS`.replace('  ', ' '), task: () => characters.load() },
-    ...MODES.map((m) => ({ label: m.name, line: () => m.loadingLine, task: () => (m.load ? m.load() : null) })),
+    ...MODES.filter((m) => m.ready).map((m) => ({ label: m.name, line: () => m.loadingLine, task: () => (m.load ? m.load() : null) })),
   ];
 
   const segs = steps.map(() => h('span', { class: 'ld-seg' }));
