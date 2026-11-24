@@ -33,6 +33,15 @@ export const BEATS = {
 export const beats = (a, b) => !!a && !!b && BEATS[a]?.includes(b);
 
 // One special move per role. Fires when the Aura meter is full.
+// v0.36.0: what a second role adds on its own (small on purpose).
+export const SECOND_PERKS = {
+  Striker: '+1.5% damage',
+  Tank: '1.5% less damage taken',
+  Speedster: 'dodges 2% of hits',
+  Mystic: 'special moves hit 10% harder',
+  Tactician: '+3% damage in a bad matchup',
+};
+
 export const SPECIALS = {
   Striker: { name: 'Finisher', text: 'A huge hit for 2× damage.' },
   Tank: { name: 'Iron Wall', text: 'Heals 15% health and halves the next hit taken.' },
@@ -64,7 +73,9 @@ export const TUNING = {
   meterAura: 0.08,
   meterPerHit: 8,
   maxTurns: 80,           // safety: after this, the side with more health % wins
-  allyMult: 1.6,          // v0.28.0: an ally's assist hits like 1.6 of their normal attacks
+  allyMult: 1.6,
+  // v0.36.0: a second role also gives a small passive.
+  second: { Striker: 0.015, Tank: 0.015, Speedster: 0.02, Mystic: 0.10, Tactician: 0.03 },          // v0.28.0: an ally's assist hits like 1.6 of their normal attacks
 };
 
 // Seeded random numbers, so a fight can be replayed exactly.
@@ -234,14 +245,18 @@ function runRound(sides, round, deciding, rand, events, startHp, ally = null) {
       if (special) me.firstSpDone = true;
       const stand = me.lastStand && me.hp < me.maxHp * 0.25 ? 1 + me.lastStand : 1;
       const adv = beats(me.mainRole, foe.mainRole);
+      const perk = (me.secondRole === 'Striker' ? 1 + TUNING.second.Striker : 1)
+        * (me.secondRole === 'Tactician' && beats(foe.mainRole, me.mainRole) ? 1 + TUNING.second.Tactician : 1)
+        * (foe.secondRole === 'Tank' ? 1 - TUNING.second.Tank : 1);
 
       const hit = (mult, extra = {}) => {
         const crit = rand() < TUNING.critChance;
-        let dmg = Math.max(1, Math.round(base * mult * (special ? (me.spMult || 1) * domain : 1) * stand * swing() * (crit ? TUNING.critMult : 1)));
+        let dmg = Math.max(1, Math.round(base * mult * perk * (special ? (me.spMult || 1) * domain * (me.secondRole === 'Mystic' ? 1 + TUNING.second.Mystic : 1) : 1) * stand * swing() * (crit ? TUNING.critMult : 1)));
         if (domain > 1) extra.domain = true;
         if (stand > 1) extra.lastStand = true;
         if (crit) extra.crit = true;
         if (foe.guard) { dmg = Math.round(dmg / 2); foe.guard = false; extra.guarded = true; }
+        if (foe.secondRole === 'Speedster' && rand() < TUNING.second.Speedster) { events.push({ t: 'attack', side, move: special ? special.name : 'Strike', special: !!special, role: me.mainRole, adv, dmg: 0, dodged: true, ...extra }); return false; }
         events.push({ t: 'attack', side, move: special ? special.name : 'Strike', special: !!special, role: me.mainRole, adv, dmg, ...extra });
         return applyDamage(state, foeSide, foe, dmg, deciding, rand, events, 'hit');
       };
@@ -258,8 +273,9 @@ function runRound(sides, round, deciding, rand, events, startHp, ally = null) {
         ko = hit(TUNING.hex);
         if (!ko) {
           const el = elementOf(me);
-          foe.fx = { el, turns: FX[el].turns };
-          events.push({ t: 'status', side: foeSide, status: el, turns: FX[el].turns });
+          const turns = FX[el].turns;
+          foe.fx = { el, turns };
+          events.push({ t: 'status', side: foeSide, status: el, turns });
         }
       } else if (me.mainRole === 'Tactician') {
         ko = hit(1.2);

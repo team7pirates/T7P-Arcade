@@ -35,14 +35,29 @@ const OPENERS = ['Okay, your profile is way too good. What\'s the catch?', 'My f
   'Okay I have to ask: was that really you on {where}? 👀', 'Hi! Your profile made me laugh. That\'s rare.', 'So... do you always look that serious, or just in photos?',
   'You matched with me. Bold move. 😄', 'Hey you. Saw you on {where}. Impressive.',
 ];
-const FLIRT = ['You have a great smile. Just saying.', 'I\'d skip a fight for you. Maybe.', 'Okay, you just became my favorite notification.', 'You\'re even better in person, I bet.', 'Pretty sure you just made my whole week.', 'I was going to play it cool. That\'s over now.', 'Is it hot in here or is that just the screen?'];
-const FUNNY = ['I can do one push-up. Impressed yet?', 'My cooking is a fighting style. Nobody survives it.', 'I talk to my plants. They don\'t answer either. 😅', 'Fair warning: my best move is falling asleep during movies.', 'Rate my skills 1 to 10. Wrong answers only.', 'I\'d say I\'m a catch, but I drop things a lot.', 'I promise I\'m funnier than my profile. Low bar, I know.'];
-const ASK = ['Dinner on me after my next {when}?', 'There\'s a night market this week. Come with me?', 'Want to grab food after my next {when}?', 'Let me take you out. You pick the place.', 'Coffee this week? I\'ll even let you win an argument.'];
+// v0.36.0: each mode has its own lines. In Dynasty you're a coach (games,
+// the season, your team); in Forbidden Fusion you're a fighter in the Tower
+// (floors, Bounty). ctx.mode picks the set; Fusion is the fallback.
+const SETS = {
+  fusion: {
+    FLIRT: ['You have a great smile. Just saying.', 'I\'d skip a floor for you. Maybe.', 'Okay, you just became my favorite notification.', 'You\'re even better than your Lenz, I bet.', 'Pretty sure you just made my whole climb.', 'I was going to play it cool. That\'s over now.', 'I\'ve fought bosses less scary than texting you.'],
+    FUNNY: ['I can do one push-up. Impressed yet?', 'My cooking is a fighting style. Nobody survives it.', 'I talk to my plants. They don\'t answer either. 😅', 'Fair warning: my best move is falling asleep during movies.', 'Rate my skills 1 to 10. Wrong answers only.', 'I spent my Bounty on snacks. No regrets.', 'I take the Tower elevator because stairs are a boss fight.'],
+    ASK: ['Dinner on me after my next {when}?', 'There\'s a night market by the Tower this week. Come with me?', 'Want to grab food after my next {when}?', 'Let me take you out. My Bounty, your pick.', 'Coffee this week? I\'ll even let you win an argument.'],
+    NO: ['Maybe once I know you a little better. 😊', 'You\'re mid-climb. Ask me again after a few floors.', 'Slow down, champ. Keep talking to me first.'],
+    AFTER: ['Tonight was really fun. Go clear the next floor for me. 💜', 'Best date I\'ve had in a long time. Good luck up there!', 'Okay, you\'re officially my favorite fighter in the Tower.'],
+  },
+  dynasty: {
+    FLIRT: ['You have a great smile. Just saying.', 'I\'d skip film study for you. Maybe.', 'Okay, you just became my favorite notification.', 'You\'re even better than on the broadcast, I bet.', 'Pretty sure you just made my whole week. Even after that loss.', 'I was going to play it cool. That\'s over now.', 'You\'re the best thing on my schedule this week.'],
+    FUNNY: ['I can draw up a play. I cannot cook. 😅', 'My team listens to me. My plants don\'t.', 'Fair warning: I fall asleep during game film.', 'Rate my coaching 1 to 10. Wrong answers only.', 'I yell at refs for a living. On dates I\'m very calm.', 'My clipboard has more dates on it than my calendar.', 'I promise I\'m funnier than my press conferences.'],
+    ASK: ['Dinner on me after my next {when}?', 'There\'s a night market this week. Come with me?', 'Come to my next {when}? Best seat in the arena.', 'Let me take you out on our off day. You pick the place.', 'Coffee before practice this week?'],
+    NO: ['Maybe once I know you a little better. 😊', 'You\'re in the middle of a season. Ask me again after a few games?', 'Slow down, coach. Keep talking to me first.'],
+    AFTER: ['Tonight was really fun. Go get your team a win this week. 💜', 'Best date I\'ve had in a long time. Good luck this week, coach!', 'Okay, your team is officially my favorite team now.'],
+  },
+};
+const setOf = (ctx) => SETS[ctx?.mode] || SETS.fusion;
 const LIKE_BACK = ['Okay, you win this round. 😊', 'Blushing. Don\'t tell anyone.', 'Haha okay, you\'re smooth. 😊', 'Stop, I\'m smiling at my phone like a weirdo.', 'Okay that was actually good.', 'You\'re trouble. I like it.'];
 const MEH_BACK = ['...lol okay.', 'Interesting choice of words. 😅', 'I\'ll let that one slide.'];
 const YES = ['Yes! It\'s a date. 🥰', 'Okay, you talked me into it. See you there!', 'Finally. I was waiting for you to ask.'];
-const NO = ['Maybe once I know you a little better. 😊', 'This week is crazy for me. Ask me again soon?', 'Slow down, champ. Keep talking to me first.'];
-const AFTER = ['Tonight was really fun. Go win the next one for me. 💜', 'Best date I\'ve had in a long time. Good luck out there!', 'Okay, you\'re officially my favorite fighter now.'];
 
 export function dating(ph) {
   if (!ph.dating) ph.dating = { seen: [], matches: [], dates: 0, last: null };
@@ -65,11 +80,11 @@ function prompt(ph, t, p, m, ctx) {
   const dated = m.lastDate === ctx.turn;
   const chance = askChance(m);
   t.pending = { type: 'date', id: p.id, options: [
-    { id: 'flirt', tone: 'flirt', text: pickF(ph, FLIRT, ctx), hint: 'Usually builds a spark ♥' },
-    { id: 'funny', tone: 'funny', text: pickF(ph, FUNNY, ctx), hint: 'A spark if it lands' },
+    { id: 'flirt', tone: 'flirt', text: pickF(ph, setOf(ctx).FLIRT, ctx), hint: 'Usually builds a spark ♥' },
+    { id: 'funny', tone: 'funny', text: pickF(ph, setOf(ctx).FUNNY, ctx), hint: 'A spark if it lands' },
     dated
       ? { id: 'later', tone: 'later', text: 'Can\'t stop thinking about our date.', hint: `You already went out this ${ctx.turnLabel || 'turn'}` }
-      : { id: 'ask', tone: 'date', text: fillIn(pickF(ph, ASK, ctx), { when: ctx.when || 'fight' }), hint: `${Math.round(chance * 100)}% they say yes · a yes is a date: ${ctx.perk || 'a small boost'}` },
+      : { id: 'ask', tone: 'date', text: fillIn(pickF(ph, setOf(ctx).ASK, ctx), { when: ctx.when || 'fight' }), hint: `${Math.round(chance * 100)}% they say yes · a yes is a date: ${ctx.perk || 'a small boost'}` },
   ] };
 }
 export const askChance = (m) => Math.min(0.9, 0.3 + 0.15 * (m.sparks || 0));
@@ -106,11 +121,11 @@ export function reply(ph, key, optionId, ctx) {
     if (ctx.rand() < askChance(m)) {
       back(t, pickF(ph, YES, ctx));
       sys(t, `DATE NIGHT with ${p.name}: ${ctx.perk || 'a small boost'}.`);
-      back(t, pickF(ph, AFTER, ctx));
+      back(t, pickF(ph, setOf(ctx).AFTER, ctx));
       m.dates += 1; m.lastDate = ctx.turn; m.sparks = Math.max(1, (m.sparks || 0) - 1);
       dating(ph).dates += 1; dating(ph).last = { id: p.id, turn: ctx.turn };
       date = p; line = `Date with ${p.name.split(' ')[0]}! ${ctx.perk || ''}`.trim();
-    } else { back(t, pickF(ph, NO, ctx)); m.sparks = Math.max(0, (m.sparks || 0) - 1); line = 'Not yet. Keep talking.'; }
+    } else { back(t, pickF(ph, setOf(ctx).NO, ctx)); m.sparks = Math.max(0, (m.sparks || 0) - 1); line = 'Not yet. Keep talking.'; }
   } else {
     back(t, 'Me neither. 😊'); line = 'Aww.';
   }

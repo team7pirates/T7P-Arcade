@@ -19,7 +19,7 @@ import { characterCard, roleChips } from '../core/card.js';
 import { modeHeader, howToPlay } from '../core/mode-kit.js';
 import { go } from '../core/router.js';
 import { shareText } from '../core/grid-board.js';
-import { ROLES, SPECIALS, BEATS, fighterStats } from '../core/combat.js';
+import { ROLES, SPECIALS, BEATS, SECOND_PERKS, fighterStats } from '../core/combat.js';
 import { playMatch } from '../core/battle-view.js';
 import { FX, ELEMENT_KEYS, ELEMENTS } from '../core/elements.js';
 import {
@@ -53,6 +53,7 @@ const help = howToPlay('forbidden-fusion', 'Forbidden Fusion', [
   'Climb the Tower: one fight per floor. A fused fighter has twice a normal card\'s health, and it carries over. You get 40% back after each floor and 45% after a boss. Watch for DANGER floors: tougher fights that pay 40% more.',
   'Every 10th floor is a boss. Past floor 10 the Omega swarms send two, then three cards at you.',
   'Clearing floors earns Bounty: more as you climb, half again for an underdog win, and double on Hard. Bounty is your score and your Hall of Fame.',
+  'Your second role adds a small perk: Striker +1.5% damage, Tank 1.5% less damage taken, Speedster dodges 2% of hits, Mystic specials hit 10% harder, Tactician +3% damage in a bad matchup.',
   'Roles lock when you save your fighter. Changing the main role later costs 10 talent points and the second role 5, for good.',
   'Your phone: after floor 1, people text you. Trash talkers you answer hostile become your next opponent (a callout, Bounty ×1.5); answer humble and the climb goes on as normal. Bosses test you or send their crew, sponsors offer deals, and your trainer checks in when you\'re hurt. Open it with the Open phone button or the P key (change the key in the phone\'s Settings).',
   'After you beat someone, they may text you. Gloat for followers, but they come back for a rematch 3 floors later (+3 Power, Bounty ×1.5). Show respect and they send a tip: +4 Aura next floor.',
@@ -160,7 +161,7 @@ const withFollowers = (f, r) => ({ ...f, aura: Math.min(100, (f.aura || 0) + FP.
 
 const fmtN = (n) => (n >= 10000 ? `${(n / 1000).toFixed(1)}k` : Math.round(n).toLocaleString());
 // Matchup: one date per floor; a date is +5 Aura for the next fight.
-const dateCtx = (r) => ({ rand: Math.random, now: r.floor || 0, turn: `f${r.next?.floor ?? r.floor}`, turnLabel: 'floor', where: `floor ${r.floor || 1} of the Tower`, when: 'fight', perk: `+${FP.DATE_AURA} Aura for your next floor` });
+const dateCtx = (r) => ({ mode: 'fusion', rand: Math.random, now: r.floor || 0, turn: `f${r.next?.floor ?? r.floor}`, turnLabel: 'floor', where: `floor ${r.floor || 1} of the Tower`, when: 'fight', perk: `+${FP.DATE_AURA} Aura for your next floor` });
 
 function newRun(hard) {
   const build = structuredClone(data.build);
@@ -191,6 +192,7 @@ function fusionCalendar() {
   if (r.revenge) add(r.revenge.floor, `${r.revenge.name} wants a rematch`, 'From around this floor', 'callout');
   if (r.tip?.floor >= next) add(r.tip.floor, `+${r.tip.aura} Aura tip`, 'From a fighter you showed respect', '');
   if (r.dateBoost?.floor >= next) add(r.dateBoost.floor, `+${FP.DATE_AURA} Aura from your date`, '', '');
+  if (r.snapBoost?.floor >= next) add(r.snapBoost.floor, `+${r.snapBoost.n} Aura from a snap streak 🔥`, '', '');
   for (const d of (r.phone?.deals || []).filter((x) => x.status === 'active')) out.push({ floor: next + 0.5, when: 'DEAL', title: d.brand, text: `${d.label}${d.task === 'clear3' ? ` · ${d.progress}/3` : ''}`, tag: 'deal' });
   return out.sort((a, z) => a.floor - z.floor);
 }
@@ -219,6 +221,7 @@ export async function render() {
   const phone = createPhone({
     apps: ['messages', 'chirp', 'lenz', 'boo', 'dating', 'news', 'deals', 'calendar', 'wallet', 'photos', 'settings'],
     shortcutWhere: 'Forbidden Fusion',
+    mode: 'fusion',
     followerNote: 'every 2,500 is +1 Aura in the Tower (max +10)',
     me: () => ({ name: run?.build?.name || data?.build?.name || 'You', cid: (run?.build || data?.build)?.faceId ?? null }),
     onPostReply: (id, optionId) => {
@@ -246,6 +249,8 @@ export async function render() {
     empty: () => (!data ? 'Pick a save file first.' : run ? 'Clear a floor and your phone lights up.' : 'Start a climb. People will be watching.'),
     dateCtx: () => (run ? dateCtx(run) : null),
     onDate: () => { if (run) { run.dateBoost = { floor: run.next.floor }; saveRun(); if (view === 'tower') drawTower(); } },
+    streakPerk: `gives +${FP.SNAP_STREAK_AURA} Aura for your next floor (up to +${FP.SNAP_STREAK_AURA * 2})`,
+    onSnapStreak: (n) => { const t = FP.onSnapStreak(run, n); if (t) { saveRun(); if (view === 'tower') drawTower(); } return t; },
     getKey: () => data?.phoneKey || 'p',
     setKey: (k) => { if (data) { data.phoneKey = k; saveData(); } },
     onReply: (key, optionId) => {
@@ -353,6 +358,7 @@ export async function render() {
         cr.mainRole === 'Mystic' ? elementChips(cr.element || faceElement(cr.faceId), (k) => { cr.element = k; draw(); }) : null,
         h('p', { class: 'label-spaced' }, 'SECOND STYLE (OPTIONAL)'),
         h('div', { class: 'ff-cr-chips' }, [null, ...ROLES.filter((r) => r !== cr.mainRole)].map((r) => h('button', { class: `dy-option dy-option-sm${cr.secondRole === r ? ' is-on' : ''}`, onClick: () => { cr.secondRole = r; sfx.play('pick'); draw(); } }, r || 'None'))),
+        cr.secondRole ? h('p', { class: 'caption muted' }, `Second role perk: ${SECOND_PERKS[cr.secondRole]}.`) : null,
         nav(!!cr.mainRole));
       if (cr.step === 3) body = h('div', { class: 'ff-cr-body' }, h('h2', { class: 'heading' }, 'What are you like?'),
         h('div', { class: 'dy-options' }, FC.PERSONALITIES.map((o) => opt(cr.personality === o.id, () => { cr.personality = o.id; }, o.icon, o.name, o.text, o.perk))), nav(!!cr.personality));

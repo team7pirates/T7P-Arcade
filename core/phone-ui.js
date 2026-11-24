@@ -19,14 +19,14 @@ import { h, fill, avatar, pushBack } from './ui.js';
 import { characters } from './characters.js';
 import { sfx } from './sfx.js';
 import { profile } from './profile.js';
-import { markRead, openSnap, pendingMentions, newSnaps, thread as threadFor, pick, mentionBadge, snapBadge, badgeTotal, hushMentions, hushSnaps, readAll, dismissNote, clearNotes } from './phone-core.js';
+import { markRead, openSnap, pendingMentions, newSnaps, thread as threadFor, pick, mentionBadge, snapBadge, badgeTotal, hushMentions, hushSnaps, readAll, dismissNote, clearNotes, snapBack, streakOf, STREAK_BONUS } from './phone-core.js';
 import * as D from './phone-dating.js';
 import { loadPrefs, getPrefs, setPrefs, wallpaperCss, lockWallpaper, shrinkImage, arrange, GRADIENTS, ARENAS, CLOCK_STYLES, CLOCK_COLORS, ICON_THEMES, FRAMES, SOUNDS, TEXT_SIZES } from './phone-prefs.js';
 import { ai } from './ai.js';
 import { aiSetup } from './ai-setup.js';
 import { characterReply } from './phone-ai.js';
 import { languageSwitch, scrub, filterOn } from './language.js';
-import { addBond, bondOf, levelOf, useQuick, QUICK, QUICK_BACK } from './phone-bonds.js';
+import { addBond, bondOf, levelOf, useQuick, quickFor, quickBackFor } from './phone-bonds.js';
 import { lenzPhoto, photoUrl } from './phone-scenes.js';
 
 const ALL_APPS = {
@@ -36,7 +36,7 @@ const ALL_APPS = {
 };
 const TONES = {
   hostile: '🔥 HOSTILE', humble: '🤝 HUMBLE', accept: '✅ ACCEPT', decline: '✋ PASS', flirt: '💘 FLIRT', funny: '😂 FUNNY', date: '📅 ASK OUT',
-  hype: '📣 HYPE', focus: '🧠 FOCUS', loose: '⚡ LET LOOSE', gloat: '😤 GLOAT', respect: '🤝 RESPECT', later: '💜 SWEET',
+  hype: '📣 HYPE', focus: '🧠 FOCUS', loose: '⚡ LET LOOSE', power: '💪 POWER UP', gloat: '😤 GLOAT', respect: '🤝 RESPECT', later: '💜 SWEET',
 };
 const fmtN = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 10000 ? `${(n / 1000).toFixed(1)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : Math.round(n || 0).toLocaleString());
 const keyLabel = (k) => (k === ' ' ? 'Space' : k.length === 1 ? k.toUpperCase() : k);
@@ -399,12 +399,13 @@ export function createPhone(opts) {
     }
     const setup = h('button', { class: 'ph-linkbtn', onClick: () => { setPage = 'ai'; go('settings'); } }, ai.hasKey() ? 'AI replies are off or out for today. Check Settings.' : 'Type your own: add a free AI key in Settings ›');
     if (t.pending) return h('div', { class: 'ph-composer is-hint' }, setup);
-    const quick = isDate(t) ? [{ tone: 'flirty', text: 'Thinking about you 😊' }, ...QUICK.filter((q) => q.tone !== 'hostile')] : QUICK;
+    const QK = quickFor(opts.mode);
+    const quick = isDate(t) ? [{ tone: 'flirty', text: 'Thinking about you 😊' }, ...QK.filter((q) => q.tone !== 'hostile')] : QK;
     return h('div', { class: 'ph-composer is-quick' },
       h('div', { class: 'ph-quick' }, quick.map((q) => h('button', { class: `ph-qchip is-${q.tone}`, onClick: () => {
         if (!useQuick(ph, t.key)) { flash(`${shortName(t.name)} is busy. Text again tomorrow.`); return; }
         t.msgs.push({ from: 'me', text: q.text });
-        const backs = q.tone === 'flirty' ? ['Same 😊', 'Stop it, you\'re sweet', 'Was just about to text you!'] : QUICK_BACK[q.tone];
+        const backs = q.tone === 'flirty' ? ['Same 😊', 'Stop it, you\'re sweet', 'Was just about to text you!'] : quickBackFor(opts.mode)[q.tone];
         t.msgs.push({ from: 'them', text: pick(backs, Math.random) });
         const d = addBond(ph, t.key, q.tone, { romance: isDate(t) });
         opts.save?.(); sfx.play(q.tone === 'hostile' ? 'special' : 'tap'); draw();
@@ -521,22 +522,33 @@ export function createPhone(opts) {
 
   // ---------- Boo (snaps) ----------
   function stopView() { clearTimeout(viewTimer); viewTimer = null; viewing = null; }
+  function sendBack(ph, s) {
+    const n = snapBack(ph, s.id); if (!n) return;
+    addBond(ph, s.key, 'friendly');
+    let msg = n >= 2 ? `🔥 ${n}-snap streak with ${shortName(s.from)}.` : `Snapped back. Start a streak with ${shortName(s.from)}.`;
+    if (n >= STREAK_BONUS) { const extra = opts.onSnapStreak?.(n, s); if (extra) msg += ` ${extra}`; }
+    opts.save?.(); sfx.play('tap'); flash(msg);
+  }
   function booApp(ph) {
     const list = ph?.snaps || [];
     if (viewing) {
       const s = viewing;
-      fill(screen, h('button', { class: 'ph-snap-view', 'aria-label': 'Close snap', onClick: () => { stopView(); draw(); } },
-        pic(s, 'ph-snap-pic'), h('span', { class: 'ph-snap-bar' }, h('span', {})), h('span', { class: 'ph-snap-from' }, `👻 ${s.from}`), h('span', { class: 'ph-snap-cap' }, s.caption)));
+      const n = streakOf(ph, s.key);
+      fill(screen, h('div', { class: 'ph-snap-view' },
+        h('button', { class: 'ph-snap-close', 'aria-label': 'Close snap', onClick: () => { stopView(); draw(); } }),
+        pic(s, 'ph-snap-pic'), h('span', { class: 'ph-snap-bar' }, h('span', {})), h('span', { class: 'ph-snap-from' }, `👻 ${s.from}${n ? ` · 🔥 ${n}` : ''}`), h('span', { class: 'ph-snap-cap' }, s.caption),
+        s.key && !s.back ? h('button', { class: 'ph-snap-back', onClick: (e) => { e.stopPropagation(); sendBack(ph, s); stopView(); draw(); } }, `📸 Snap back${n ? ` · keep the 🔥 ${n} going` : ''}`) : null));
       return;
     }
     fill(screen, status(), h('div', { class: 'ph-boo-top' }, h('button', { class: 'ph-back', 'aria-label': 'Back', onClick: () => go('home') }, '‹'), h('span', { class: 'ph-boo-logo' }, '👻 Boo'), h('span')),
       list.length ? h('ul', { class: 'ph-list' }, list.map((s) => h('li', {}, h('button', { class: `ph-row${s.seen ? '' : ' is-unread'}`, onClick: () => {
+        if (s.seen && s.key && !s.back) { sendBack(ph, s); draw(); return; }
         if (s.seen) { flash('Opened snaps are gone. It\'s saved in Photos.'); return; }
         openSnap(ph, s.id); opts.save?.(); viewing = s; sfx.play('flip'); draw();
         viewTimer = setTimeout(() => { if (viewing === s) { stopView(); if (open && app === 'boo') draw(); } }, 5000);
-      } }, face({ cid: s.cid, icon: s.icon, who: s.from }), h('span', { class: 'ph-row-text' }, h('span', { class: 'ph-row-name' }, s.from), h('span', { class: 'ph-row-last' }, s.seen ? `Opened${s.when ? ` · ${s.when}` : ''}` : `New snap${s.when ? ` · ${s.when}` : ''}`)),
+      } }, face({ cid: s.cid, icon: s.icon, who: s.from }), h('span', { class: 'ph-row-text' }, h('span', { class: 'ph-row-name' }, s.from, streakOf(ph, s.key) ? h('span', { class: 'ph-streak' }, ` 🔥${streakOf(ph, s.key)}`) : null), h('span', { class: 'ph-row-last' }, s.seen ? `${s.back ? 'Snapped back' : s.key ? 'Opened · tap to snap back' : 'Opened'}${s.when ? ` · ${s.when}` : ''}` : `New snap${s.when ? ` · ${s.when}` : ''}`)),
         h('span', { class: `ph-snap-sq${s.seen ? ' is-seen' : ''}`, 'aria-hidden': 'true' }))))) : h('p', { class: 'ph-empty' }, 'No snaps yet.'),
-      h('p', { class: 'ph-muted ph-pad' }, 'A snap disappears after you open it. You get 5 seconds.'));
+      h('p', { class: 'ph-muted ph-pad' }, `A snap disappears after you open it. You get 5 seconds. Snap back to start a streak 🔥; at ${STREAK_BONUS} or more, every snap back ${opts.streakPerk || 'gives a small bonus'}. Miss one and it resets.`));
   }
 
   // ---------- Photos ----------

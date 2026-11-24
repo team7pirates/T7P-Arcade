@@ -27,17 +27,19 @@ import { createPhone } from '../core/phone-ui.js';
 
 const help = howToPlay('dynasty', 'Dynasty', [
   'You are the new head coach of an Anime Fighting League team. Pick any team that missed last season\'s playoffs.',
+  'Every week you can also Train this week: a random stat (Power, Aura or Clutch) goes up +1 for 3 random healthy cards. Above 90, +1 Power costs 2 skill points.',
   'Every week, open the Game Plan. You can see the other team\'s lineup: set your five in order so your roles beat theirs.',
+  'A card\'s second role adds a small perk: Striker +1.5% damage, Tank 1.5% less damage taken, Speedster dodges 2% of hits, Mystic specials hit 10% harder, Tactician +3% damage in a bad matchup.',
   'When you lock in, the rival coach sees your order and gets one final swap. Think one step ahead.',
   'Your phone (Open phone button, or P): GMs call with trade offers until the deadline, some with draft picks. Text your squad before each game for +3 Aura, Clutch or Chaos. After a win the other coach texts you. Matchup is the dating app: a date is +2 Aura next game. Phone boosts last one game and stack to +5.',
   'Cards wear down. Tired cards fight weaker and can get hurt, so rotate your bench.',
   'Playoffs: 10 teams. The 4 division winners are seeds 1–4 and the next 2 best records are 5–6. Seeds 7–10 play a one-game play-in (7 vs 10, 8 vs 9) for the last two spots. Then quarterfinals, semifinals and the Zenith Clash, all one and done.',
   'Hype comes from winning fights. Aura comes from being seen: magazine picks and awards. Both carry over.',
   'Meet the front office\'s expectation or your job security drops. Miss it three seasons running and you\'re fired.',
-  'Front Office: trade until the Week 8 deadline (and again after the season until draft day), release cards and sign free agents into open spots (the waiver wire, through Week 10), grow bench cards in the Time Chamber (Roster tab), and stay under the hard salary cap (160 in season 1, up 5% every off-season). A max deal is 35 a season; deals near the max are supermax, and a team can carry 3.',
+  'Front Office: trade until the Week 8 deadline (and again after the season until draft day), release cards and sign free agents into open spots (the waiver wire, through Week 10), grow bench cards in the Time Chamber (Roster tab), and stay under the hard salary cap (168 in season 1, up 5% every off-season). A max deal is 35 a season; deals near the max are supermax, and a team can carry 3.',
   'Each time you open a save you get the Weekly Recap, then the Weekly Preview. Tick "Don\'t show again this week" to skip them; both are also on the Next Game card.',
   'Draft: you earn 8 scouting points a week. 6 points reveals a prospect\'s potential; a deep scout shows 💎 (a gem: Star or Superstar, 2x growth or more), nothing (solid: could be any of the three) or 💔 a broken diamond (a bust: Normal, 1x). Power stays hidden until they are drafted.',
-  'Off-season: retirements, awards night, re-sign (one Franchise Tag), up to 2 development upgrades, a one-round draft, then 3 rounds of free agency.',
+  'Off-season: retirements, awards night, re-sign (one Franchise Tag), up to 2 development upgrades, a two-round draft, then 3 rounds of free agency. Awards night also names a Rookie of the Year (up a dev trait) and breakout jumps for young cards who played most of the season (+3 Power, +5 max).',
   'Whispers (re-sign step): text up to 3 cards on other teams whose contracts ran out. If it works they skip re-signing and lean your way in free agency. If the texts leak it is a scandal: a cap fine, then your draft pick. AI teams tamper with your cards too, and you can report them.',
   'Media: OSM prints an issue every 3 weeks. The cover star and your spotlight player gain Aura. The Fight Night Dojo picks the big games every week.',
   'Museum: every champion, award winner, rivalry trophy and Pantheon member. Your office wall and trophy shelf live on the Coach tab.',
@@ -120,6 +122,7 @@ export async function render() {
   const phone = createPhone({
     apps: ['messages', 'chirp', 'lenz', 'boo', 'dating', 'news', 'calendar', 'wallet', 'photos', 'settings'],
     shortcutWhere: 'Dynasty',
+    mode: 'dynasty',
     me: () => ({ name: L?.user ? me().name : 'You', cid: null }),
     onPostReply: (id, optionId) => {
       if (!L) return null;
@@ -141,6 +144,8 @@ export async function render() {
     empty: () => (L ? 'GMs, your squad and the league office text you here during the season.' : 'Pick a save first.'),
     dateCtx: () => (L?.user && (L.phase === 'season' || L.phase === 'playoffs') ? DP.dateCtx(L) : null),
     onDate: () => { DP.onDate(L); save(); if (tab === 'coach' || tab === 'league') drawHub(); },
+    streakPerk: `gives +${DP.SNAP_STREAK_AURA} Aura for your team next game`,
+    onSnapStreak: (n) => { if (!L) return null; const t = DP.onSnapStreak(L, n); if (t) { save(); if (tab === 'coach') drawHub(); } return t; },
     onReply: (key, optionId) => {
       if (!L) return null;
       const line = DP.reply(L, key, optionId);
@@ -357,6 +362,7 @@ export async function render() {
         (() => { const b = MD.boostNow(L); return b ? h('p', { class: `dy-boost is-${b.stat}` }, `OSM QUOTE: +${MD.QUOTE_BOOST} ${b.stat.toUpperCase()} · THROUGH WEEK ${Math.min(b.to, R.WEEKS)}`) : null; })(),
         (() => { const b = DP.boostText(L); return b ? h('p', { class: 'dy-boost is-phone' }, `📱 FROM YOUR PHONE: ${b} · THIS GAME`) : null; })(),
         (() => { const n = !L.user.autoSpend ? R.teamPoints(L, me()) : 0; return n ? h('button', { class: 'dy-boost is-phone dy-sp-alert', onClick: () => { tab = 'roster'; drawHub(); } }, `⬆ ${n} SKILL POINT${n > 1 ? 'S' : ''} TO SPEND · ROSTER ›`) : null; })(),
+        trainRow(),
         h('button', { class: 'btn btn-primary btn-wide', onClick: () => openGamePlan() }, '📋 Game Plan'),
         h('div', { class: 'btn-row dy-next-links' },
           h('button', { class: 'btn btn-secondary btn-sm', onClick: autoWeek }, 'Auto-play week'),
@@ -371,7 +377,9 @@ export async function render() {
           h('p', { class: 'label-spaced gold' }, R.roundLabel(L.playoffs, g) === 'THE ZENITH CLASH' ? 'THE ZENITH CLASH' : `PLAYOFF ${R.roundLabel(L.playoffs, g)}`),
           h('p', { class: 'caption muted' }, R.roundLabel(L.playoffs, g) === 'PLAY-IN' ? 'One game. Win and you\'re in the quarterfinals; lose and your season is over.' : 'One and done.'),
           h('div', { class: 'dy-next-row' }, crest(opp, 56), h('p', { class: 'heading' }, opp.name)),
-          h('button', { class: 'btn btn-primary btn-wide', onClick: () => openGamePlan() }, 'Game Plan'));
+          trainRow(),
+          h('button', { class: 'btn btn-primary btn-wide', onClick: () => openGamePlan() }, 'Game Plan'),
+          h('button', { class: 'btn btn-secondary btn-sm', onClick: () => { tab = 'standings'; drawHub(); } }, 'Seeds and bracket'));
       }
       // v0.34.1: a top-6 seed sits out the play-in. That's a bye, not the end.
       if (R.userAlive(L)) {
@@ -379,7 +387,8 @@ export async function render() {
         return h('section', { class: 'dy-next dy-panel' },
           h('p', { class: 'label-spaced gold' }, `PLAYOFFS · NO. ${seed} SEED`),
           h('p', { class: 'body-text' }, `You earned a bye through the ${R.roundLabel(L.playoffs, R.roundGames(L.playoffs)[0]).toLowerCase()}. Seeds 7 to 10 play for the last two spots; then you play your quarterfinal.`),
-          h('button', { class: 'btn btn-primary btn-wide', onClick: async () => { R.simPlayoffs(L, true); await save(); toast('The play-in is done. Your quarterfinal is up.'); drawHub(); } }, 'Sim the play-in'));
+          h('button', { class: 'btn btn-primary btn-wide', onClick: async () => { R.simPlayoffs(L, true); await save(); toast('The play-in is done. Your quarterfinal is up.'); drawHub(); } }, 'Sim the play-in'),
+          h('button', { class: 'btn btn-secondary btn-sm', onClick: () => { tab = 'standings'; drawHub(); } }, 'Seeds and bracket'));
       }
       return h('section', { class: 'dy-next dy-panel' },
         h('p', { class: 'label-spaced gold' }, 'THE PLAYOFFS'),
@@ -767,7 +776,7 @@ export async function render() {
           h('span', { class: 'dy-rstats' },
             h('span', { class: 'dy-num dy-big' }, String(eff)),
             eff !== p.power ? h('span', { class: 'caption muted' }, `base ${p.power}`) : null,
-            usable(p) ? h('span', { class: 'dy-sp-badge' }, `+${usable(p)} SP`) : locked(p) ? h('span', { class: 'dy-sp-badge is-locked', title: 'At max: needs an upgrade' }, `🔒 ${locked(p)} SP`) : null,
+            usable(p) ? h('span', { class: 'dy-sp-badge' }, `+${usable(p)} SP`) : locked(p) ? h('span', { class: 'dy-sp-badge is-locked', title: R.maxOf(p) > p.power ? 'Above 90, +1 Power costs 2 points' : 'At max: needs an upgrade' }, `🔒 ${locked(p)} SP`) : null,
             fatigueBar(p),
             p.injury > 0 ? h('span', { class: 'dy-inj' }, `OUT ${p.injury} WK`) : null,
             CH.isIn(L, p) ? h('span', { class: 'dy-inj is-chamber' }, '⏳ CHAMBER') : null)));
@@ -838,14 +847,14 @@ export async function render() {
       h('div', { class: 'dy-panel-head' }, h('h2', { class: 'dy-h' }, 'SKILL POINTS'),
         h('label', { class: 'dy-auto' }, h('input', { type: 'checkbox', checked: auto, onChange: async (e) => {
           L.user.autoSpend = e.target.checked;
-          if (L.user.autoSpend) { const n = R.spendAll(L, t); if (n) toast(`Auto spent ${n} point${n > 1 ? 's' : ''} on Power.`); }
+          if (L.user.autoSpend) { const n = R.spendAll(L, t); if (n) toast(`Auto upgrade: +${n} Power across the roster.`); }
           await save(); drawHub();
         } }), h('span', {}, 'Auto upgrade'))),
-      h('p', { class: 'caption muted' }, auto ? 'Auto is on: points go into Power as soon as there\'s room under each card\'s max, like the AI teams.' : 'Growth every 3 weeks gives each card skill points: 1 point = +1 Power, up to that card\'s max. Points past the max wait, unspent, until a Star or Superstar upgrade raises it (Star: up to +10, Superstar: +5 or +10, never past 99).'),
-      !auto && withPts.length ? h('ul', { class: 'dy-list' }, withPts.map((p) => h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `Power ${p.power} · max ${R.maxOf(p)} · ${p.sp} point${p.sp === 1 ? '' : 's'}${locked(p) ? ` (${locked(p)} waiting for an upgrade)` : ''}`)),
+      h('p', { class: 'caption muted' }, auto ? 'Auto is on: points go into Power as soon as there\'s room under each card\'s max, like the AI teams.' : 'Growth every 3 weeks gives each card skill points: 1 point = +1 Power up to 90, and 2 points per +1 Power above 90, up to that card\'s max. Points past the max wait, unspent, until a Star or Superstar upgrade raises it (Star: up to +10, Superstar: +5 or +10, never past 99).'),
+      !auto && withPts.length ? h('ul', { class: 'dy-list' }, withPts.map((p) => h('li', {}, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `Power ${p.power} · max ${R.maxOf(p)} · ${p.sp} point${p.sp === 1 ? '' : 's'}${p.power >= R.STAR_LINE ? ' · 2 points per +1 above 90' : ''}${locked(p) ? ` (${locked(p)} waiting${R.maxOf(p) > p.power ? ' for more points' : ' for an upgrade'})` : ''}`)),
         usable(p) ? h('span', { class: 'btn-row' },
-          h('button', { class: 'btn btn-secondary btn-sm', onClick: async () => { R.spendPoints(p, 1); sfx.play('tap'); await save(); drawHub(); } }, '+1'),
-          h('button', { class: 'btn btn-primary btn-sm', onClick: async () => { const n = R.spendPoints(p); sfx.play('correct'); await save(); toast(`${p.name}: +${n} Power.`); drawHub(); } }, `Spend ${usable(p)}`))
+          h('button', { class: 'btn btn-secondary btn-sm', title: `Costs ${R.pointCost(p.power)} point${R.pointCost(p.power) > 1 ? 's' : ''}`, onClick: async () => { R.spendPoints(p, 1); sfx.play('tap'); await save(); drawHub(); } }, '+1'),
+          h('button', { class: 'btn btn-primary btn-sm', onClick: async () => { const n = R.spendPoints(p); sfx.play('correct'); await save(); toast(`${p.name}: +${n} Power.`); drawHub(); } }, `+${R.powerGainNow(p)} Power`))
           : h('span', { class: 'caption muted dy-why' }, R.maxOf(p) >= 99 ? '🔒 At 99' : `🔒 At max · ${p.dev < 2 && p.career <= 4 ? 'upgrade to raise it' : 'can\'t be upgraded'}`))))
         : !auto ? h('p', { class: 'caption muted' }, 'No skill points right now.') : null,
       !auto && pts ? h('button', { class: 'btn btn-secondary btn-wide', onClick: async () => { const n = R.spendAll(L, t); await save(); toast(`+${n} Power across the roster.`); drawHub(); } }, `Spend all ${pts}`) : null);
@@ -950,7 +959,7 @@ export async function render() {
           h('span', { class: 'dy-list-text' }, O.isSlot(x)
             ? h('span', {}, `No. ${O.slotOf(x) + 1} pick · today${L.off.from && L.off.from[O.slotOf(x)] !== tm.i ? ` (from ${team(L.off.from[O.slotOf(x)]).abbr})` : ''}`)
             : h('span', {}, `${team(x).abbr} draft pick${x !== tm.i ? ` (from ${team(x).name})` : ''}`),
-            h('span', { class: 'caption muted' }, O.isSlot(x) ? 'Draft day · one round' : `Projected No. ${O.projectedSlot(L, x)} · one round`))))));
+            h('span', { class: 'caption muted' }, O.isSlot(x) ? 'Draft day · first-round pick' : `Projected No. ${O.projectedSlot(L, x)} · first round`))))));
     };
     const pick = (list, pid) => { const i = list.indexOf(pid); if (i >= 0) list.splice(i, 1); else if (list.length < 2) list.push(pid); else toast('Up to 2 cards each way.'); drawOffice(); };
     const col = (tm, list) => h('ul', { class: 'dy-list dy-pickable' }, players(tm).sort((a, b) => b.power - a.power).map((p) => h('li', {},
@@ -1286,7 +1295,7 @@ export async function render() {
       h('section', { class: 'dy-panel' },
         h('div', { class: 'dy-scout-head' },
           h('div', {}, h('h2', { class: 'dy-h' }, `SEASON ${L.season} DRAFT CLASS`),
-            h('p', { class: 'caption muted' }, `${n} prospects · one round in the off-season. The board shows stars, role and world. Scouting tells you the rest.`)),
+            h('p', { class: 'caption muted' }, `${n} prospects · two rounds in the off-season. The board shows stars, role and world. Scouting tells you the rest.`)),
           h('div', { class: 'dy-scout-pts' }, h('p', { class: 'label-spaced' }, 'SCOUTING POINTS'), h('p', { class: 'stat' }, String(L.user.scoutPts || 0)), h('p', { class: 'caption muted' }, `+${R.SCOUT_WEEKLY} a week`))),
         h('p', { class: 'caption muted' }, 'Newcomers wear the headshots of cards who retire this year, under new names from any culture. Any of them could be a Generational Talent.')),
       draftRoomView('scout')));
@@ -1387,6 +1396,12 @@ export async function render() {
           h('div', {}, gpp ? pAvatar(gpp, 'lg') : null, h('h2', { class: 'display-md' }, row.prodigyName), h('p', { class: 'caption muted' }, `${R.AWARDS.prodigy} · ${team(row.prodigyTeam).name}`)))),
       h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'BEST AT THEIR ROLE'),
         h('ul', { class: 'dy-awards-grid' }, R.ROLES.map((r) => { const p = award(row.roleAwards[r]); return p ? h('li', {}, trophy(R.AWARDS[r], 96), pAvatar(p), h('p', { class: 'heading' }, p.name), h('p', { class: 'caption muted' }, `${R.AWARDS[r]} · ${team(p.team ?? row.prodigyTeam)?.abbr || ''}`)) : null; }))),
+      row.roy != null && award(row.roy) ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'ROOKIE OF THE YEAR'),
+        h('div', { class: 'dy-list-row' }, pAvatar(award(row.roy), 'md'), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, award(row.roy).name),
+          h('span', { class: 'caption muted' }, `${team(row.royTeam)?.name || ''} · ${row.royGift === 'dev' ? `moves up to ${DEV_LABEL[award(row.roy).dev]} development. The best rookie in the class.` : 'already a Superstar: +2 Power.'}`)))) : null,
+      (row.breakouts || []).length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'BREAKOUT JUMPS'),
+        h('p', { class: 'caption muted' }, 'Young cards (seasons 1–3, under 90 Power) who played most of the season and had a big year: +3 Power and +5 to their max.'),
+        h('ul', { class: 'dy-list' }, row.breakouts.map(award).filter(Boolean).sort((a, b) => (b.team === L.user.team) - (a.team === L.user.team)).slice(0, 8).map((p) => h('li', { class: p.team === L.user.team ? 'is-you' : '' }, pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${team(p.team)?.abbr || ''} · ${p.role} · now Power ${p.power}`)))))) : null,
       h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'SPECIALTY AWARDS'),
         h('ul', { class: 'dy-list' }, special,
           h('li', {}, trophy(R.AWARDS.coach, 64), crest(team(row.coachOfYear), 32), h('span', { class: 'dy-list-text' }, h('span', {}, team(row.coachOfYear).coachName), h('span', { class: 'caption muted' }, `${R.AWARDS.coach} · Coach of the Year, ${team(row.coachOfYear).name}`)))))),
@@ -1479,16 +1494,16 @@ export async function render() {
     const myPick = myPicks.length ? myPicks[0] : -1;
     const done = clock == null;
     const recent = o.picks.slice(-6).reverse();
-    const strip = h('ol', { class: 'dy-order' }, o.order.slice(o.pick, o.pick + 8).map((i, k) => h('li', { class: i === t.i ? 'is-me' : '' }, h('span', { class: 'caption' }, `${o.pick + k + 1}`), crest(team(i), 28))));
+    const strip = h('ol', { class: 'dy-order' }, o.order.slice(o.pick, o.pick + 8).map((i, k) => h('li', { class: i === t.i ? 'is-me' : '' }, h('span', { class: 'caption' }, `${O.roundOfPick(L, o.pick + k) === 2 ? 'R2·' : ''}${O.pickInRound(L, o.pick + k)}`), crest(team(i), 28))));
     offFrame('THE DRAFT', h('div', { class: 'dy-off-body' },
       h('section', { class: 'dy-panel' },
-        h('p', { class: 'label-spaced gold' }, done ? 'THE DRAFT IS OVER' : mine ? 'YOU ARE ON THE CLOCK' : `PICK ${o.pick + 1}: ${team(clock).name.toUpperCase()}`),
+        h('p', { class: 'label-spaced gold' }, done ? 'THE DRAFT IS OVER' : `ROUND ${O.roundOfPick(L, o.pick)} · ${mine ? 'YOU ARE ON THE CLOCK' : `PICK ${O.pickInRound(L, o.pick)}: ${team(clock).name.toUpperCase()}`}`),
         myPick < 0 ? h('p', { class: 'body-text loss' }, t.forfeitPick ? (t.forfeitWhy === 'tampering' ? 'You lost your pick: caught tampering.' : 'You lost your pick: over the soft cap two seasons running.') : 'You traded your pick away.')
-          : h('p', { class: 'caption muted' }, `Your pick${myPicks.length > 1 ? 's' : ''}: ${myPicks.map((k) => `No. ${k + 1}${o.from && o.from[k] !== t.i ? ` (from ${team(o.from[k]).abbr})` : ''}`).join(', ')}. One round. Rookie deals run 3 seasons.`),
+          : h('p', { class: 'caption muted' }, `Your pick${myPicks.length > 1 ? 's' : ''}: ${myPicks.map((k) => `Round ${O.roundOfPick(L, k)} No. ${O.pickInRound(L, k)}${o.from && o.from[k] !== t.i ? ` (from ${team(o.from[k]).abbr})` : ''}`).join(', ')}. Two rounds. First-round deals run 3 seasons; second-rounders sign for ${O.R2_DEAL.per} a season for ${O.R2_DEAL.years}.`),
         done ? null : strip,
         h('p', { class: 'caption muted' }, `Scouting points left: ${L.user.scoutPts || 0}. You can still scout now.`)),
       recent.length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'LATEST PICKS'),
-        h('ul', { class: 'dy-list' }, recent.map((x) => { const p = L.players[x.pid]; return h('li', {}, h('span', { class: 'dy-num' }, `${x.pick}`), crest(team(x.team), 24), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${p.role} · ${p.series}`))); }))) : null,
+        h('ul', { class: 'dy-list' }, recent.map((x) => { const p = L.players[x.pid]; return h('li', {}, h('span', { class: 'dy-num' }, x.round === 2 ? `R2·${x.pick - (o.r1 || 0)}` : `${x.pick}`), crest(team(x.team), 24), pAvatar(p), h('span', { class: 'dy-list-text' }, h('span', {}, p.name), h('span', { class: 'caption muted' }, `${p.role} · ${p.series}`))); }))) : null,
       done ? null : draftRoomView('pick')),
     done || !left().length
       ? nextBtn(done ? 'On to free agency' : 'Finish the draft')
@@ -1509,8 +1524,15 @@ export async function render() {
       fill(body,
         h('div', { class: 'dy-offer-top' }, pAvatar(p, 'md'), h('div', {}, h('p', { class: 'heading' }, p.name), h('p', { class: 'caption muted' }, `${p.role} · Power ${p.power} · ${p.series} · season ${p.career}${p.lowKey ? ' · low-key' : ''}`),
           h('p', { class: 'caption' }, `Asks about ${Math.round(ask * 10) / 10} a season for ${O.wantYears(p)} season${O.wantYears(p) > 1 ? 's' : ''}`))),
-        h('label', { class: 'dy-field' }, h('span', { class: 'label-spaced' }, `PER SEASON: ${st.per}`),
-          h('input', { type: 'range', min: String(O.MIN_SALARY), max: String(Math.max(2, Math.round(ask * 1.6))), step: '0.1', value: String(st.per), onInput: (e) => { st.per = Number(e.target.value); draw(); } })),
+        // v0.36.0: the slider no longer redraws the sheet while you drag it
+        // (that stopped the drag after one step). It updates when you let go.
+        h('label', { class: 'dy-field' }, h('span', { class: 'label-spaced dy-per-lbl' }, `PER SEASON: ${st.per}`),
+          h('span', { class: 'dy-per-row' },
+            h('button', { class: 'btn btn-secondary btn-sm', type: 'button', 'aria-label': 'Offer 0.1 less', onClick: (e) => { e.preventDefault(); st.per = Math.max(O.MIN_SALARY, Math.round((st.per - 0.1) * 10) / 10); draw(); } }, '−'),
+            h('input', { type: 'range', min: String(O.MIN_SALARY), max: String(Math.max(2, Math.round(ask * 1.6))), step: '0.1', value: String(st.per),
+              onInput: (e) => { st.per = Number(e.target.value); const l = body.querySelector('.dy-per-lbl'); if (l) l.textContent = `PER SEASON: ${st.per}`; },
+              onChange: (e) => { st.per = Number(e.target.value); draw(); } }),
+            h('button', { class: 'btn btn-secondary btn-sm', type: 'button', 'aria-label': 'Offer 0.1 more', onClick: (e) => { e.preventDefault(); st.per = Math.min(Math.max(2, Math.round(ask * 1.6)), Math.round((st.per + 0.1) * 10) / 10); draw(); } }, '+'))),
         h('div', { class: 'dy-field' }, h('span', { class: 'label-spaced' }, 'SEASONS'),
           h('span', { class: 'dy-yrs' }, [1, 2, 3, 4].map((y) => h('button', { class: `dy-chip${y === st.years ? ' is-on' : ''}`, 'aria-pressed': y === st.years ? 'true' : 'false', onClick: () => { st.years = y; draw(); } }, String(y))))),
         it.blocked ? h('p', { class: 'body-text loss' }, it.blocked) : meter(it.score, bar, `signs this round at ${bar}+ (if nobody beats you)`),
@@ -1550,7 +1572,7 @@ export async function render() {
       h('section', { class: 'dy-panel' },
         h('p', { class: 'label-spaced gold' }, fa.done ? 'FREE AGENCY IS CLOSED' : `ROUND ${fa.round} OF ${O.FA_ROUNDS}`),
         h('p', { class: 'body-text' }, fa.done ? `Fill any empty spots with the best leftovers on one-season bargain deals (${Math.round(O.BARGAIN * 100)}% of their ask), then start the season.`
-          : `You have ${spots} open spot${spots === 1 ? '' : 's'}. Make offers, then run the round. Every player picks the offer they like most. This round they sign at ${O.FA_BAR[fa.round - 1]}+ interest; they get less picky each round.`),
+          : `You have ${spots} open spot${spots === 1 ? '' : 's'}${O.FA_OVER ? ` (you can sign up to ${O.FA_OVER} more and cut down to ${R.ROSTER_SIZE} before the season)` : ''}. Make offers, then run the round. Every player picks the offer they like most. This round they sign at ${O.FA_BAR[fa.round - 1]}+ interest; they get less picky each round.`),
         offers.length ? h('ul', { class: 'dy-list' }, offers.map(({ p, o }) => pLine(p, h('button', { class: 'btn btn-secondary btn-sm', onClick: () => offerSheet(p) }, 'Edit'), `Your offer: ${o.per} × ${o.years} · interest ${O.interest(L, p, t, o).score}`))) : null,
         fa.done ? null : h('button', { class: 'btn btn-primary btn-wide', onClick: async () => {
           O.resolveRound(L); await save(); offFA();
@@ -1562,7 +1584,7 @@ export async function render() {
       fa.done ? null : h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'FREE AGENTS'), boardChipsFA(),
         h('ul', { class: 'dy-list' }, pool.map((p) => pLine(p, fa.offers[p.pid] ? h('span', { class: 'caption gold' }, 'OFFERED')
           : O.interest(L, p, t, { per: O.asking(p), years: O.wantYears(p) }).blocked ? h('span', { class: 'caption muted dy-why' }, `You have ${R.MAX_PER_SERIES} from this world`)
-          : h('button', { class: 'btn btn-secondary btn-sm', disabled: spots - offers.length <= 0, onClick: () => offerSheet(p) }, 'Offer'),
+          : h('button', { class: 'btn btn-secondary btn-sm', disabled: O.faSpots(L, t) - offers.length <= 0, onClick: () => offerSheet(p) }, 'Offer'),
         `${yearLabel(p)} ${p.role} · Power ${p.power} · asks ${O.asking(p)} · ${p.series}${p.formerTeam != null ? ` · ex-${team(p.formerTeam).abbr}` : ''}`)))));
     offFrame('FREE AGENCY', body, fa.done && t.roster.length === R.ROSTER_SIZE ? nextBtn('On to the new season') : null);
   }
@@ -2194,10 +2216,47 @@ export async function render() {
       }))));
   }
 
+  // v0.36.0: Train this week (one random stat, 3 random cards).
+  function trainRow() {
+    if (R.canTrain(L)) return h('button', { class: 'btn btn-secondary btn-wide dy-train', onClick: async () => {
+      const r = R.trainWeek(L); if (!r) return; sfx.play('correct'); await save();
+      toast(`Training: ${r.out.map((x) => `${x.name} +1 ${x.stat === 'power' ? 'Power' : x.stat === 'aura' ? 'Aura' : 'Clutch'}`).join(' · ')}`); drawHub();
+    } }, '🏋️ Train this week');
+    const t = L.user.lastTrain;
+    if (!t || t.key !== R.trainKey(L)) return null;
+    return h('p', { class: 'dy-boost is-train' }, `🏋️ TRAINED THIS WEEK: ${t.out.map((x) => `${x.name.split(' ')[0]} +1 ${x.stat.toUpperCase()}`).join(' · ')}`);
+  }
+
   // ---------- Standings ----------
+  // v0.36.0: the seeding. In the playoffs it's the real seeds and who's still
+  // alive; late in the season it's "if the season ended today".
+  function seedingPanel() {
+    const po = L.playoffs; const live = !!po;
+    if (!live && !(L.phase === 'season' && L.week >= 6)) return null;
+    const seeds = live ? po.seeds : R.seedsNow(L);
+    const out = new Set(); if (live) for (const [k] of R.ROUNDS) for (const g of R.roundGames(po, k)) if (g.result) out.add(g.result.winner === g.home ? g.away : g.home);
+    const you = L.user?.team; const mySeed = seeds.indexOf(you);
+    const next = live ? R.playoffGameForUser(L) : null;
+    const nextOpp = next ? team(next.home === you ? next.away : next.home) : null;
+    let note;
+    if (live) note = po.champion != null ? null : nextOpp ? `Next: ${nextOpp.name} (No. ${po.seeds.indexOf(nextOpp.i) + 1} seed) in the ${R.roundLabel(po, next).toLowerCase()}.` : R.userAlive(L) ? 'You have a bye. Your quarterfinal is set after the play-in.' : mySeed >= 0 ? 'Your run is over.' : 'You missed the playoffs.';
+    else {
+      const cut = R.standings(L).find((t) => t.i === seeds[R.PLAYOFF_TEAMS - 1]);
+      note = mySeed >= 0 ? `If the season ended today you'd be the No. ${mySeed + 1} seed (${R.seedTag(mySeed).toLowerCase()}).` : `If the season ended today you'd miss the playoffs. The last spot is ${team(seeds[R.PLAYOFF_TEAMS - 1]).name} at ${cut ? `${cut.w}-${cut.l}` : '—'}.`;
+    }
+    return h('section', { class: 'dy-panel' },
+      h('h2', { class: 'dy-h gold' }, live ? 'PLAYOFF SEEDS' : 'PLAYOFF PICTURE'),
+      h('p', { class: 'caption muted' }, live ? 'Seeds 1–4 won their divisions. 1–6 skip the play-in; 7–10 play for the last two spots.' : `Week ${L.week} of ${R.WEEKS}. Division winners take seeds 1–4, the next six best records take 5–10.`),
+      h('ol', { class: 'dy-seeds' }, seeds.map((i, k) => { const t = team(i); return h('li', { class: `${i === you ? 'is-you' : ''}${out.has(i) ? ' is-out' : ''}${k === 6 ? ' is-cut' : ''}` },
+        h('span', { class: 'dy-seed-n' }, String(k + 1)), crest(t, 26),
+        h('span', { class: 'dy-seed-name' }, t.name, h('span', { class: 'caption muted' }, ` ${t.w}-${t.l}`)),
+        h('span', { class: `dy-seed-tag ${k < 6 ? 'is-bye' : 'is-pi'}` }, out.has(i) ? 'Out' : R.seedTag(k))); })),
+      note ? h('p', { class: 'body-text' }, note) : null);
+  }
   function drawStandings() {
     const po = L.playoffs;
     shell(h('div', { class: 'dy-content dy-standings' },
+      seedingPanel(),
       po ? h('section', { class: 'dy-panel' },
         h('h2', { class: 'dy-h gold' }, 'PLAYOFFS'),
         h('div', { class: 'dy-bracket' },
@@ -2205,7 +2264,6 @@ export async function render() {
           ...(po.quarters || []).map((g) => bracketMatch('Quarterfinal', g)),
           ...(po.semis || []).map((g) => bracketMatch('Semifinal', g)),
           po.final ? bracketMatch('The Zenith Clash', po.final) : h('div', { class: 'dy-bk' }, h('p', { class: 'label-spaced' }, 'THE ZENITH CLASH'), h('p', { class: 'caption muted' }, 'Waiting on the earlier rounds'))),
-        h('p', { class: 'caption muted' }, `Seeds: ${po.seeds.map((i, k) => `${k + 1}. ${team(i).abbr}`).join(' · ')}. Seeds 1–4 won their divisions. 7–10 play in.`),
         po.champion != null ? h('p', { class: 'heading gold' }, `${team(po.champion).name} won the Celestial Grail.`) : null) : null,
       R.DIVISIONS.map((d, di) => h('section', { class: 'dy-panel' },
         h('h2', { class: 'dy-h' }, `${d.toUpperCase()} DIVISION`),

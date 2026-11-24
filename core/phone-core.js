@@ -81,8 +81,28 @@ export function lenzPost(ph, post) {
   }
   return p;
 }
+// v0.36.0: snap streaks. Open a snap and send one back to keep a streak with
+// that person going. If they snap again before you snapped back the last one,
+// the streak breaks. At STREAK_BONUS or more, each snap back gives the mode's
+// small bonus (see opts.onSnapStreak in phone-ui).
+export const STREAK_BONUS = 3;
+export const streakOf = (ph, key) => (key && ph?.streaks?.[key]?.n) || 0;
+export function snapBack(ph, id) {
+  const s = (ph.snaps || []).find((x) => x.id === id);
+  if (!s || !s.seen || s.back || !s.key) return null;
+  s.back = true;
+  if (!ph.streaks) ph.streaks = {};
+  const st = ph.streaks[s.key] || (ph.streaks[s.key] = { n: 0, best: 0, name: s.from, cid: s.cid ?? null });
+  st.n += 1; st.best = Math.max(st.best, st.n); st.name = s.from;
+  return st.n;
+}
 export function snap(ph, s) {
   if (!ph.snaps) ph.snaps = [];
+  // Their last snap never got one back: the streak breaks.
+  if (s.key && ph.streaks?.[s.key]?.n) {
+    const prev = ph.snaps.find((y) => y.key === s.key);
+    if (prev && !prev.back) ph.streaks[s.key].n = 0;
+  }
   const x = { id: ph.seq++, seen: false, ...s };
   ph.snaps.unshift(x);
   ph.snaps = ph.snaps.filter((y, i) => !y.seen || i < 30).slice(0, 30);
@@ -94,7 +114,7 @@ export function openSnap(ph, id) {
   if (!s || s.seen) return null;
   s.seen = true;
   if (!ph.gallery) ph.gallery = [];
-  ph.gallery.unshift({ id: s.id, cid: s.cid ?? null, art: s.art ?? null, caption: `${s.from}: ${s.caption}`, when: s.when });
+  ph.gallery.unshift({ id: s.id, cid: s.cid ?? null, art: s.art ?? null, photo: s.photo ?? null, caption: `${s.from}: ${s.caption}`, when: s.when });
   ph.gallery = ph.gallery.slice(0, 60);
   return s;
 }

@@ -8,7 +8,7 @@
 //     veteran. Accept, or pass. An offer is good for one week.
 //   - Shop your pick: text the League Office and next week a GM calls about it.
 //   - Team chat: text your squad before the next game. HYPE (+3 Aura),
-//     FOCUS (+3 Clutch) or LET LOOSE (+3 Chaos), for the next game only.
+//     FOCUS (+3 Clutch) or LET LOOSE (+2 Power), for the next game only.
 //   - After a win, the losing coach texts you. GLOAT (+2 Chaos next game) or
 //     show RESPECT (+2 Aura next game).
 //   - Matchup (core/phone-dating.js): a date is +2 Aura next game.
@@ -24,8 +24,10 @@ import { basePhone, pick, fresh, fillIn, say, mine, back, sys, note, trim, chirp
 import * as D from '../core/phone-dating.js';
 import * as T from './dynasty-tamper.js';
 import { pickPhoto } from '../core/phone-scenes.js';
+import { streakOf } from '../core/phone-core.js';
 
 export const CHAT_BOOST = 3;
+export const POWER_BOOST = 2; // v0.36.0: LET LOOSE is now +2 Power (Power counts for more).
 export const COACH_BOOST = 2;
 export const DATE_BOOST = 2;
 export const OFFER_CHANCE = 0.3;
@@ -37,7 +39,7 @@ export const gmName = (t) => `${GM_FIRST[t.i % GM_FIRST.length]} ${GM_LAST[(t.i 
 const SQUAD_OPENERS = ['Coach, the whole squad is in the chat. Talk to us.', 'Film session done. Anything before {opp}?', '{opp} said we\'re soft. Your move, coach.', 'Last practice before {opp}. Words?', 'Coach, big one this week. Say something.', 'Group chat is quiet. Hype us up, coach.', 'We\'re locked in. What\'s the message for {opp}?', 'Coach. {opp} are talking. Your call.'];
 const HYPE = ['This is our league. Fight like it.', 'Every camera in the arena is on us. Smile, then win.', 'Make them regret showing up.', 'Nobody in this league wants to see us. Let\'s go!', 'We are the main event. Act like it.', 'They came to watch us. Give them a show.'];
 const FOCUS = ['Win the first round and the rest follows.', 'Trust the matchups. Trust each other.', 'One fight at a time. No highlights, just wins.', 'Stick to the game plan. Win your matchup.', 'Heads down. Every round counts.', 'Discipline wins this one. Stay sharp.'];
-const LOOSE = ['Throw the playbook out. Surprise me.', 'Go out there and cause problems.', 'Play like it\'s the backyard. Have fun.', 'Have fun out there. Swing big.', 'No pressure. Go be dangerous.', 'Break their game plan. Get weird with it.'];
+const LOOSE = ['Hit them hard and early. Make them feel it.', 'Full power from the first bell. No holding back.', 'Bully them tonight. Every exchange.', 'Swing heavy. They can\'t take what we bring.', 'Power game tonight. Run right through them.', 'Turn it all the way up. Nobody walks out of there standing.'];
 const SQUAD_BACK = ['Heard 🗣️', 'We got you coach', 'Running through walls rn', '💯', '🔥🔥🔥', 'LET\'S GOOO', 'Say less coach 💪', 'Locked in.', '🫡'];
 const LOSER = ['Your fighters showed up today. Mine didn\'t.', 'Well coached. I\'ll be studying that tape.', 'We\'ll get you in the rematch.', 'Good win. We\'ll see you again.', 'You got us this time.', 'Enjoy it. Next time is different.', 'Respect. Your squad came ready.'];
 const GLOAT = ['Maybe take notes next time.', 'Tell your owner I said hi.', 'Rough day at the office, huh?', 'Tell your fighters to get used to it.', 'Same time next season?', 'We didn\'t even need the swap.'];
@@ -70,13 +72,13 @@ export function ensure(L) {
 export function addBoost(L, stat, n) {
   const wk = R.gameWeek(L);
   let b = L.user.phoneBoost;
-  if (!b || b.season !== L.season || b.week !== wk) b = L.user.phoneBoost = { season: L.season, week: wk, aura: 0, clutch: 0, chaos: 0 };
-  b[stat] = Math.min(R.PHONE_BOOST_MAX, (b[stat] || 0) + n);
+  if (!b || b.season !== L.season || b.week !== wk) b = L.user.phoneBoost = { season: L.season, week: wk, power: 0, aura: 0, clutch: 0, chaos: 0 };
+  b[stat] = Math.min(stat === 'power' ? POWER_BOOST : R.PHONE_BOOST_MAX, (b[stat] || 0) + n);
 }
 export function boostText(L) {
   const b = R.phoneBoostNow(L);
   if (!b) return null;
-  const parts = ['aura', 'clutch', 'chaos'].filter((k) => b[k]).map((k) => `+${b[k]} ${k.toUpperCase()}`);
+  const parts = ['power', 'aura', 'clutch', 'chaos'].filter((k) => b[k]).map((k) => `+${b[k]} ${k.toUpperCase()}`);
   return parts.length ? parts.join(' · ') : null;
 }
 
@@ -197,7 +199,7 @@ function squadEvent(L) {
   th.pending = { type: 'squad', week: R.gameWeek(L), season: L.season, options: [
     { id: 'hype', tone: 'hype', text: line(L, HYPE), hint: `+${CHAT_BOOST} Aura for your fighters next game` },
     { id: 'focus', tone: 'focus', text: line(L, FOCUS), hint: `+${CHAT_BOOST} Clutch next game` },
-    { id: 'loose', tone: 'loose', text: line(L, LOOSE), hint: `+${CHAT_BOOST} Chaos next game` },
+    { id: 'loose', tone: 'power', text: line(L, LOOSE), hint: `+${POWER_BOOST} Power next game` },
   ] };
 }
 
@@ -231,7 +233,10 @@ const LENZ_DAY = { train: ['Early session. No days off. 💪', 'Film, then the g
   eat: ['Refuel day. 🍜', 'Team dinner. Coach is paying.', 'Cheat meal earned. Don\'t tell the trainer.'],
   off: ['Recovery day. Phone on silent. 🌅', 'Rest is part of the work.', 'Day off. Back at it tomorrow.'],
   fight: ['Locked in for this week. 🔒', 'Walking in like it\'s already won.', 'Game week.'] };
-const SNAP_SQUAD = ['coach look at this ice bath 🥶', 'film room again?? 😴', 'gym at 6am, who\'s coming', 'pre-game fit check 🔥', 'we locked in coach 🔒', 'bus ride vibes 🎧'];
+// v0.36.0: snaps come with a real photo of what they're doing.
+const SNAP_SQUAD = { off: ['coach look at this ice bath 🥶', 'recovery day. don\'t call me 😴', 'off day views 🌅'], train: ['film room then gym. again 😴', 'gym at 6am, who\'s coming', 'extra reps after practice 💪'],
+  fight: ['pre-game fit check 🔥', 'we locked in coach 🔒', 'bus ride vibes 🎧'], eat: ['team dinner >>> 🍜', 'cheat meal. tell no one 🍔', 'refuel 🍰'] };
+export const SNAP_STREAK_AURA = 1; // v0.36.0: a 3+ snap streak: +1 Aura next game per snap back
 const tagOf = (t) => `@${t.abbr}AFL`;
 function socialAfterGame(L, g) {
   const ph = phoneOf(L); const me = mineTeam(L); const rand = Math.random;
@@ -281,8 +286,11 @@ function socialAfterGame(L, g) {
   // A fighter sends a snap.
   if (rand() < 0.45) {
     const ps = roster(L, me).filter((p) => p.portrait && p.injury <= 0);
-    const p = ps.length ? pick(ps, rand) : null;
-    if (p) snap(ph, { from: p.name, cid: p.cid, caption: line(L, SNAP_SQUAD), when });
+    // Half the time it's someone you already have a streak with.
+    const streaky = ps.filter((p) => streakOf(ph, `snap-${p.pid}`));
+    const p = streaky.length && rand() < 0.5 ? pick(streaky, rand) : ps.length ? pick(ps, rand) : null;
+    const type = pick(['off', 'train', 'fight', 'eat'], rand);
+    if (p) snap(ph, { from: p.name, cid: p.cid, key: `snap-${p.pid}`, photo: pickPhoto(ph, type, rand), caption: pick(SNAP_SQUAD[type], rand), when });
   }
   // Old mentions you didn't answer close after a week.
   for (const x of ph.feed || []) if (x.pending && (x.pending.season !== L.season || x.pending.week < R.gameWeek(L))) x.pending = null;
@@ -335,7 +343,13 @@ export function afterPlayoffGame(L, g) {
   if (L.playoffs && L.playoffs.champion == null && Math.random() < 0.5) squadEvent(L);
 }
 
-export const dateCtx = (L) => ({ rand: Math.random, now: nowOf(L), turn: `s${L.season}w${R.gameWeek(L)}`, turnLabel: 'week', where: 'the AFL broadcast', when: 'game', perk: `+${DATE_BOOST} Aura for your team next game` });
+// v0.36.0: a 3+ snap streak with a teammate: +1 Aura for your team next game.
+export function onSnapStreak(L, n) {
+  if (!L.user || (L.phase !== 'season' && L.phase !== 'playoffs')) return null;
+  addBoost(L, 'aura', SNAP_STREAK_AURA);
+  return `+${SNAP_STREAK_AURA} Aura for your team next game.`;
+}
+export const dateCtx = (L) => ({ mode: 'dynasty', rand: Math.random, now: nowOf(L), turn: `s${L.season}w${R.gameWeek(L)}`, turnLabel: 'week', where: 'the AFL broadcast', when: 'game', perk: `+${DATE_BOOST} Aura for your team next game` });
 export function onDate(L) { addBoost(L, 'aura', DATE_BOOST); }
 
 // ---------- Replies ----------
@@ -351,11 +365,12 @@ export function reply(L, key, optionId) {
   if (p.type === 'tampered') return T.replyTampered(L, th, p, o);
   if (p.type === 'squad') {
     if (p.season !== L.season || p.week !== R.gameWeek(L)) { sys(th, 'That game already happened.'); return 'Too late for that game.'; }
-    const stat = { hype: 'aura', focus: 'clutch', loose: 'chaos' }[o.id];
-    addBoost(L, stat, CHAT_BOOST);
+    const stat = { hype: 'aura', focus: 'clutch', loose: 'power' }[o.id];
+    const n = stat === 'power' ? POWER_BOOST : CHAT_BOOST;
+    addBoost(L, stat, n);
     back(th, line(L, SQUAD_BACK));
-    sys(th, `+${CHAT_BOOST} ${stat.toUpperCase()} for your fighters next game.`);
-    return `+${CHAT_BOOST} ${stat[0].toUpperCase()}${stat.slice(1)} next game.`;
+    sys(th, `+${n} ${stat.toUpperCase()} for your fighters next game.`);
+    return `+${n} ${stat[0].toUpperCase()}${stat.slice(1)} next game.`;
   }
   if (p.type === 'coach') {
     const stat = o.id === 'gloat' ? 'chaos' : 'aura';

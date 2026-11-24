@@ -16,7 +16,7 @@ const randOf = (L) => () => R.nextRand(L);
 const roster = (L, t) => t.roster.map((pid) => L.players[pid]);
 export const seriesCount = (L, t, series, skip = []) => roster(L, t).filter((p) => p.series === series && !skip.includes(p.pid)).length;
 
-export const DRAFT_SIZE = 48;
+export const DRAFT_SIZE = 72; // v0.36.0: was 48; 2 rounds × 32 teams = 64 picks
 export const UPGRADES_PER_TEAM = 2;
 // v0.19.0 (Khalil): salary follows the growth speed, 1x / 2x / 3x.
 // Normal→Star doubles the cap hit; Star→Superstar is 1.5x more (3x the
@@ -53,6 +53,10 @@ export function capCheck(L, t, per, drop = [], extra = 0) {
 export const asking = (p) => R.payFor(p.power, p.hype, p.lowKey);
 export const capRoom = (L, t) => r1(R.capOf(t) - R.payroll(L, t));
 export const openSpots = (L, t) => ROSTER_SIZE - t.roster.length;
+// v0.36.0: with two draft picks your roster is often full by free agency, so
+// you can sign up to 2 over and cut back to 10 before the season starts.
+export const FA_OVER = 2;
+export const faSpots = (L, t) => openSpots(L, t) + (L.user && t.i === L.user.team ? FA_OVER : 0);
 export function wantYears(p) { return p.career <= 2 ? 4 : p.career <= 4 ? 3 : p.career <= 6 ? 2 : 1; }
 const news = (L, item) => { L.news.unshift({ week: 0, off: true, ...item }); L.news = L.news.slice(0, 40); };
 
@@ -97,7 +101,7 @@ export function buildDraftClass(L) {
   while (faces.length < DRAFT_SIZE && pool.length) faces.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
   // Thin year: borrow faces from veterans who are close to the end.
   const vets = Object.values(L.players).filter((p) => !p.retired && !p.prospect && !seen.has(p.cid) && p.careerLen && p.career >= p.careerLen - 1);
-  while (faces.length < 32 && vets.length) { const v = vets.splice(Math.floor(rand() * vets.length), 1)[0]; seen.add(v.cid); faces.push({ cid: v.cid, series: v.series, franchise: v.franchise, portrait: v.portrait, role: v.role, second: v.second }); }
+  while (faces.length < 64 && vets.length) { const v = vets.splice(Math.floor(rand() * vets.length), 1)[0]; seen.add(v.cid); faces.push({ cid: v.cid, series: v.series, franchise: v.franchise, portrait: v.portrait, role: v.role, second: v.second }); }
   const used = new Set(Object.values(L.players).map((p) => p.name));
   L.draftClass = faces.slice(0, DRAFT_SIZE).map((f) => {
     const p = makeProspect(L, f, rand, used);
@@ -453,7 +457,12 @@ function aiUpgrades(L) {
   }
 }
 
-// ---------- 5. The draft: 1 round ----------
+// ---------- 5. The draft: 2 rounds (v0.36.0) ----------
+// Round 2 goes in the same order. Traded picks are round-1 picks; every team
+// keeps its own second-rounder (unless the league took its pick). Second-round
+// picks sign cheap 2-season deals.
+export const DRAFT_ROUNDS = 2;
+export const R2_DEAL = { per: 1.2, years: 2 };
 export function setDraftOrder(L) {
   const last = L.history[0];
   const po = L.playoffs;
@@ -469,8 +478,9 @@ export function setDraftOrder(L) {
   forfeit.forEach((i) => news(L, { kind: L.teams[i].forfeitWhy === 'tampering' ? 'SCANDAL' : 'CAP', team: i, title: `${L.teams[i].name} lose their draft pick`, text: L.teams[i].forfeitWhy === 'tampering' ? 'Caught tampering this off-season. The league takes the pick.' : 'Over the soft cap two seasons running. The league takes the pick.' }));
   // v0.18.0: picks traded on the phone go to their new owner.
   const kept = order.filter((i) => !L.teams[i].forfeitPick);
-  L.off.from = kept.slice();
-  L.off.order = kept.map((i) => pickOwner(L, i));
+  L.off.from = [...kept, ...kept];
+  L.off.order = [...kept.map((i) => pickOwner(L, i)), ...kept];
+  L.off.r1 = kept.length;
   kept.forEach((i) => { const o = pickOwner(L, i); if (o !== i) news(L, { kind: 'DRAFT', team: o, title: `${L.teams[o].name} pick for ${L.teams[i].name}`, text: `The pick came over in a trade during the season.` }); });
   L.pickOwner = {};
   L.off.pick = 0; L.off.picks = [];
@@ -481,18 +491,20 @@ export const picksOwnedBy = (L, owner) => L.teams.map((t) => t.i).filter((i) => 
 export const onTheClock = (L) => (L.off.order ? L.off.order[L.off.pick] : null);
 export const draftBoard = (L) => (L.draftClass || []).map((pid) => L.players[pid]).filter((p) => p.prospect);
 
-function rookieDeal(pick) { return { per: r1(clamp(5 - pick * 0.1, 1.6, 5)), years: 3 }; }
+function rookieDeal(pick, round1 = Infinity) { return pick >= round1 ? { ...R2_DEAL } : { per: r1(clamp(5 - pick * 0.1, 1.6, 5)), years: 3 }; }
+export const roundOfPick = (L, n) => (L.off.r1 != null && n >= L.off.r1 ? 2 : 1);
+export const pickInRound = (L, n) => (roundOfPick(L, n) === 2 ? n - L.off.r1 : n) + 1;
 
 export function makePick(L, ti, pid) {
   const p = L.players[pid]; const t = L.teams[ti];
   if (!p || !p.prospect) return false;
   if (seriesCount(L, t, p.series) >= MAX_PER_SERIES) return false;
   const n = L.off.pick;
-  const deal = rookieDeal(n);
-  p.prospect = false; p.team = ti; p.career = 1; p.draftPick = n + 1; p.draftSeason = L.season;
+  const deal = rookieDeal(n, L.off.r1 ?? Infinity);
+  p.prospect = false; p.team = ti; p.career = 1; p.draftPick = n + 1; p.draftSeason = L.season; p.draftRound = roundOfPick(L, n);
   setContract(p, deal.per, deal.years);
   t.roster.push(pid);
-  L.off.picks.push({ pick: n + 1, team: ti, pid });
+  L.off.picks.push({ pick: n + 1, team: ti, pid, round: roundOfPick(L, n) });
   L.off.pick += 1;
   if (n === 0) news(L, { kind: 'DRAFT', team: ti, title: `${t.name} take ${p.name} first overall`, text: `A ${p.role} from ${p.series}. The headshot looks familiar. The name is brand new.` });
   return true;
@@ -579,7 +591,7 @@ export function openFreeAgency(L) {
 export function makeOffer(L, pid, per, years) {
   const fa = L.off.fa; const t = L.teams[L.user.team];
   per = Math.min(per, R.maxDeal());
-  if (!fa.offers[pid] && Object.keys(fa.offers).length >= openSpots(L, t)) return { ok: false, why: 'No roster spots left for more offers.' };
+  if (!fa.offers[pid] && Object.keys(fa.offers).length >= faSpots(L, t)) return { ok: false, why: `No room for more offers (you can go up to ${FA_OVER} over and cut later).` };
   // Every open offer has to fit under the cap at once.
   const others = Object.entries(fa.offers).filter(([k]) => Number(k) !== pid).map(([, o]) => o.per);
   const supers = others.filter((x) => R.isSupermax(x)).length;
@@ -624,7 +636,7 @@ export function resolveRound(L) {
   const order = [...bids.keys()].map((pid) => L.players[pid]).sort((a, b) => b.power - a.power);
   for (const p of order) {
     const list = bids.get(p.pid)
-      .filter((b) => openSpots(L, L.teams[b.ti]) > 0)
+      .filter((b) => faSpots(L, L.teams[b.ti]) > 0)
       .map((b) => ({ ...b, i: interest(L, p, L.teams[b.ti], b) }))
       .filter((b) => !b.i.blocked)
       .sort((a, b) => b.i.score - a.i.score);

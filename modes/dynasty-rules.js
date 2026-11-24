@@ -21,7 +21,7 @@ export const TRADE_DEADLINE = 8;
 // v0.21.0 (Khalil): a hard cap, no soft-cap penalties. Sized so a team can
 // carry 3 supermax deals and fill the rest of a 10-card roster. The cap and
 // all new contracts grow 5% a season.
-export const CAP = 160;            // the season-1 cap
+export const CAP = 168;            // the season-1 cap (v0.36.0: was 160; room for a second-round pick)
 export const CAP_GROWTH = 1.05;
 export const MAX_DEAL = 35;        // the most any contract pays a season (season 1)
 export const SUPERMAX_SHARE = 0.85; // a deal at 85%+ of the max is a supermax
@@ -349,7 +349,7 @@ export function effPower(league, p, ctx = {}) {
 export function fightCard(league, p, ctx = {}) {
   const big = ctx.big && p.hype >= 80 ? 1 : 0;
   return {
-    id: p.cid, pid: p.pid, name: p.name, powerLevel: effPower(league, p, ctx), mainRole: p.role, secondRole: p.second,
+    id: p.cid, pid: p.pid, name: p.name, powerLevel: Math.min(99, effPower(league, p, ctx) + phoneBoost(league, p, 'power')), mainRole: p.role, secondRole: p.second,
     aura: Math.min(100, p.aura + boost(league, p, 'aura') + phoneBoost(league, p, 'aura')), clutch: Math.min(100, p.clutch + big * 8 + phoneBoost(league, p, 'clutch')), chaos: Math.min(100, p.chaos + boost(league, p, 'chaos') + phoneBoost(league, p, 'chaos')), franchise: p.franchise, portrait: p.portrait,
   };
 }
@@ -554,14 +554,50 @@ export function endWeek(league) {
 // Auto); AI teams always spend.
 export const manualPoints = (league, p) => !!league.user && p.team === league.user.team && !league.user.autoSpend;
 export const maxOf = (p) => Math.min(99, Math.max(p.power, p.potential));
-export const usablePoints = (p) => Math.max(0, Math.min(p.sp || 0, maxOf(p) - p.power));
+// v0.36.0: stars take longer. Each +1 Power above 90 costs 2 skill points.
+export const STAR_LINE = 90;
+export const pointCost = (power) => (power >= STAR_LINE ? 2 : 1);
+// How many Power a card can gain right now, and the points that costs.
+function affordable(p, limit = Infinity) {
+  let pw = p.power; let left = p.sp || 0; let gain = 0; let cost = 0;
+  while (gain < limit && pw < maxOf(p) && left >= pointCost(pw)) { left -= pointCost(pw); cost += pointCost(pw); pw += 1; gain += 1; }
+  return { gain, cost };
+}
+// Skill points that can go in now (not the Power they buy).
+export const usablePoints = (p) => affordable(p).cost;
+export const powerGainNow = (p) => affordable(p).gain;
+// Spend up to n Power worth of points. Returns the Power gained.
 export function spendPoints(p, n = Infinity) {
-  const can = Math.max(0, Math.min(usablePoints(p), n));
-  p.power += can; p.sp = (p.sp || 0) - can;
-  return can;
+  const { gain, cost } = affordable(p, n);
+  p.power += gain; p.sp = (p.sp || 0) - cost;
+  return gain;
 }
 export function teamPoints(league, team) {
   return team.roster.reduce((n, pid) => n + usablePoints(league.players[pid]), 0);
+}
+// v0.36.0: Train this week. Once a game week, the user's team trains: a random
+// stat (Power, Aura or Clutch) goes up +1 for 3 random healthy cards. Power
+// stays under each card's max; a card already at its max gets +1 Aura instead.
+export const TRAIN_STATS = ['power', 'aura', 'clutch'];
+export const TRAIN_CARDS = 3;
+export const trainKey = (league) => `${league.season}:${gameWeek(league)}`;
+export const canTrain = (league) => !!league.user && (league.phase === 'season' || league.phase === 'playoffs') && league.user.trained !== trainKey(league);
+export function trainWeek(league, rand = Math.random) {
+  if (!canTrain(league)) return null;
+  const team = league.teams[league.user.team];
+  const pool = team.roster.map((pid) => league.players[pid]).filter(available);
+  const stat = TRAIN_STATS[Math.floor(rand() * TRAIN_STATS.length)];
+  const picked = [];
+  while (picked.length < TRAIN_CARDS && pool.length) picked.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
+  const out = picked.map((p) => {
+    let st = stat;
+    if (st === 'power' && p.power >= maxOf(p)) st = 'aura';
+    if (st === 'power') p.power += 1; else p[st] = Math.min(100, (p[st] || 0) + 1);
+    return { pid: p.pid, name: p.name, stat: st };
+  });
+  league.user.trained = trainKey(league);
+  league.user.lastTrain = { key: league.user.trained, stat, out };
+  return { stat, out };
 }
 export function spendAll(league, team) {
   let n = 0; for (const pid of team.roster) n += spendPoints(league.players[pid]);
@@ -659,12 +695,18 @@ export const ROUNDS = [['playin', 'PLAY-IN'], ['quarters', 'QUARTERFINAL'], ['se
 const game = (home, away) => ({ home, away, result: null });
 const winnerOf = (g) => g.result.winner;
 const loserOf = (g) => (g.result.winner === g.home ? g.away : g.home);
-export function startPlayoffs(league) {
-  league.phase = 'playoffs';
+// v0.36.0: the seeding on its own, so the hub can show "if the season ended
+// today" before the playoffs start.
+export function seedsNow(league) {
   const byRecord = (a, b) => (b.w - a.w) || ((b.rw - b.rl) - (a.rw - a.rl)) || (strength(league, b) - strength(league, a));
   const winners = [0, 1, 2, 3].map((d) => divisionTable(league, d)[0]).sort(byRecord);
   const rest = standings(league).filter((t) => !winners.includes(t)).slice(0, PLAYOFF_TEAMS - 4);
-  const seeds = [...winners, ...rest].map((t) => t.i);
+  return [...winners, ...rest].map((t) => t.i);
+}
+export const seedTag = (k) => (k < 4 ? 'Division winner · bye' : k < 6 ? 'Bye' : 'Play-in');
+export function startPlayoffs(league) {
+  league.phase = 'playoffs';
+  const seeds = seedsNow(league);
   league.playoffs = {
     seeds, round: 'playin',
     playin: [game(seeds[6], seeds[9]), game(seeds[7], seeds[8])],
@@ -763,6 +805,34 @@ export function endSeason(league) {
   if (wake && wake.power > wake.startPower) { row.awakening = wake.pid; wake.aura = Math.min(100, wake.aura + 3); }
   const phoenix = active.filter((p) => p.startHype != null && p.startHype < 45).sort((a, b) => (b.hype - b.startHype) - (a.hype - a.startHype))[0];
   if (phoenix && phoenix.hype > phoenix.startHype + 5) { row.phoenix = phoenix.pid; phoenix.aura = Math.min(100, phoenix.aura + 3); }
+  // v0.36.0: Rookie of the Year (first-season cards who played at least half
+  // the games). The winner moves up a dev trait (Normal → Star → Superstar);
+  // a Superstar rookie gets +2 Power instead.
+  const half = (t) => Math.max(1, Math.ceil((t.w + t.l) / 2));
+  const roy = race.find((x) => x.p.career === 1 && (x.p.draftSeason != null || x.p.undrafted) && x.p.stats.gp >= half(league.teams[x.p.team]));
+  if (roy) {
+    const p = roy.p; row.roy = p.pid; row.royTeam = p.team;
+    if (p.dev < 2) { p.dev += 1; row.royGift = 'dev'; } else { p.potential = Math.min(99, Math.max(p.potential, p.power) + 2); p.power = Math.min(99, p.power + 2); row.royGift = 'power'; }
+    p.aura = Math.min(100, p.aura + 3);
+  }
+  // v0.36.0: breakout jumps. A card in seasons 1–3 who played 75% of their
+  // team's games and had a big year (top 35% of the GPT race, or a top-3
+  // finish in the Breakout season race) breaks through: +3 Power and +5 to their
+  // max. One per team a season.
+  const cutoff = race[Math.floor(race.length * 0.35)]?.s ?? Infinity;
+  const wakeTop = new Set(active.filter((p) => p.startPower != null && p.career <= 3 && p.power > p.startPower).sort((a, b) => (b.power - b.startPower) - (a.power - a.startPower)).slice(0, 3).map((p) => p.pid));
+  const jumps = {};
+  for (const { p, s: sc } of race) {
+    if (Object.keys(jumps).length >= 8) break; // at most 8 a season, league-wide
+    if (p.career > 3 || jumps[p.team] != null || (p.startPower ?? p.power) >= 90) continue; // stars don't 'break out'
+    const t = league.teams[p.team];
+    if (p.stats.gp < Math.ceil((t.w + t.l) * 0.75)) continue;
+    if (sc < cutoff && !wakeTop.has(p.pid)) continue;
+    jumps[p.team] = p.pid;
+    p.potential = Math.min(99, Math.max(p.potential, p.power) + 5);
+    p.power = Math.min(p.potential, p.power + 3);
+  }
+  row.breakouts = Object.values(jumps);
   // Coach of the year: most wins above expectation.
   const coy = league.teams.slice().sort((a, b) => (b.w - expectedWins(b)) - (a.w - expectedWins(a)))[0];
   row.coachOfYear = coy.i;

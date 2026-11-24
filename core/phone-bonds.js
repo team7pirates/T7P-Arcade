@@ -59,15 +59,38 @@ export function meet(ph, who) {
 }
 
 // Quick texts: the no-key way to keep in touch.
-export const QUICK = [
-  { tone: 'friendly', text: 'Hey, how have you been? 👋' },
-  { tone: 'hype', text: 'You\'ve been looking strong lately 🔥' },
-  { tone: 'funny', text: 'Random question: who wins, you or a vending machine?' },
-  { tone: 'hostile', text: 'You\'re not ready for me. Just saying.' },
-];
-export const QUICK_BACK = {
-  friendly: ['Doing good! Thanks for checking in.', 'Busy, but good. You?', 'Ha, been a while. All good here.', 'Appreciate you reaching out 🙏'],
-  hype: ['Means a lot coming from you 💪', 'You too, honestly.', 'Ha, been putting in the work.', 'Stop, you\'re gonna make me blush.'],
-  funny: ['The vending machine. It never misses.', 'LMAO depends if it has snacks', 'Why would you ask me this at this hour 😂', 'Me. Obviously. ...probably.'],
-  hostile: ['Bold words. We\'ll see.', 'Keep talking. I\'m saving the screenshot.', 'Cute. Real cute.', '...ok then.'],
+// v0.36.0: each mode has its own. Dynasty: you're a coach. Fusion: a fighter
+// in the Tower. quickFor(mode) picks; Fusion is the fallback.
+export const QUICK_BY = {
+  fusion: [
+    { tone: 'friendly', text: 'Hey, how\'s the climb going? 👋' },
+    { tone: 'hype', text: 'Saw your last floor. You\'ve been looking strong 🔥' },
+    { tone: 'funny', text: 'Random question: who wins, you or the Tower elevator?' },
+    { tone: 'hostile', text: 'You\'re not ready for me. See you up the Tower.' },
+  ],
+  dynasty: [
+    { tone: 'friendly', text: 'Hey, how\'s the season treating you? 👋' },
+    { tone: 'hype', text: 'Caught your last game. You\'ve been playing great 🔥' },
+    { tone: 'funny', text: 'Random question: who wins, you or the team mascot?' },
+    { tone: 'hostile', text: 'Enjoy it while it lasts. We\'re coming for your spot in the standings.' },
+  ],
 };
+export const QUICK_BACK_BY = {
+  fusion: {
+    friendly: ['Doing good! Still climbing.', 'Busy with the Tower, but good. You?', 'Ha, been a while. All good up here.', 'Appreciate you reaching out 🙏'],
+    hype: ['Means a lot coming from you 💪', 'You too, honestly. Saw your floors.', 'Ha, been putting in the work.', 'Stop, you\'re gonna make me blush.'],
+    funny: ['The elevator. It never misses.', 'LMAO depends if it has snacks', 'Why would you ask me this mid-climb 😂', 'Me. Obviously. ...probably.'],
+    hostile: ['Bold words. See you on the next floor.', 'Keep talking. I\'m saving the screenshot.', 'Cute. Real cute.', '...ok then. Bring your Bounty.'],
+  },
+  dynasty: {
+    friendly: ['Doing good! Long season, but good.', 'Busy with practice. You?', 'Ha, been a while. All good here.', 'Appreciate you checking in, coach 🙏'],
+    hype: ['Means a lot coming from you, coach 💪', 'Your team\'s been rolling too, honestly.', 'Ha, been putting in the work in practice.', 'Stop, you\'re gonna make me blush.'],
+    funny: ['The mascot. Undefeated.', 'LMAO depends if the mascot\'s been training', 'Why would you ask me this on a game week 😂', 'Me. Obviously. ...probably.'],
+    hostile: ['Bold words. See you on game day.', 'Keep talking. It\'s going on the locker room wall.', 'Cute. Check the standings.', '...ok then, coach.'],
+  },
+};
+export const quickFor = (mode) => QUICK_BY[mode] || QUICK_BY.fusion;
+export const quickBackFor = (mode) => QUICK_BACK_BY[mode] || QUICK_BACK_BY.fusion;
+// Older imports.
+export const QUICK = QUICK_BY.fusion;
+export const QUICK_BACK = QUICK_BACK_BY.fusion;

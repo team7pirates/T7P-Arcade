@@ -108,7 +108,7 @@ export function renderFightLab() {
   function wheelPanel() {
     return h('section', { class: 'panel fl-wheel' },
       h('h2', { class: 'label-spaced set-title' }, 'ROLE WHEEL'),
-      h('p', { class: 'caption muted' }, 'Main role beating the other card\'s main role: +10% damage. Second role beating it: +5%. A full special meter fires the role\'s special move.'),
+      h('p', { class: 'caption muted' }, 'Main role beating the other card\'s main role: +10% damage. Second role beating it: +5%. A second role also adds a small perk (Striker +1.5% damage, Tank 1.5% less damage taken, Speedster dodges 2% of hits, Mystic specials hit 10% harder, Tactician +3% damage in a bad matchup). A full special meter fires the role\'s special move.'),
       h('table', { class: 'rec-table fl-wheel-table' },
         h('thead', {}, h('tr', {}, ['Role', 'Beats', 'Special'].map((t) => h('th', { scope: 'col' }, t)))),
         h('tbody', {}, ROLES.map((r) => h('tr', {},

@@ -1,6 +1,25 @@
 {
   "releases": [
     {
+      "version": "0.36.0",
+      "date": "2026-11-23",
+      "title": "Training, a 2-round draft, playoff seeds, snap streaks and second-role perks",
+      "items": [
+        "Dynasty: Train this week. Once a week, a random stat (Power, Aura or Clutch) goes up +1 for 3 random healthy cards.",
+        "Dynasty: stars take longer. Above 90, each +1 Power costs 2 skill points.",
+        "Dynasty: the draft is 2 rounds. Second-rounders sign for 1.2 a season for 2 seasons, and the cap starts at 168 to make room. In free agency you can sign up to 2 over and cut down to 10 before the season.",
+        "Dynasty: Rookie of the Year. The best rookie moves up a dev trait (a Superstar rookie gets +2 Power).",
+        "Dynasty: breakout jumps. Young cards under 90 Power who played 75% of the games and had a big year get +3 Power and +5 to their max (one per team, up to 8 a season).",
+        "Dynasty: a Playoff Picture from week 6 (\"if the season ended today\") and a seeds list in the playoffs, in Standings.",
+        "Dynasty: the squad chat's third option is now POWER UP: +2 Power next game (it was +3 Chaos).",
+        "Dynasty: the free agency slider drags smoothly now, and there are − / + buttons.",
+        "Second roles add a small perk: Striker +1.5% damage, Tank 1.5% less damage taken, Speedster dodges 2% of hits, Mystic specials hit 10% harder, Tactician +3% damage in a bad matchup.",
+        "Boo snaps now come with real photos. Snap back to start a 🔥 streak; at 3+, every snap back gives a small Aura bonus. Miss one and it resets.",
+        "Quick texts and Matchup dating lines are different in Dynasty (games, the season) and Forbidden Fusion (the Tower, floors).",
+        "The floating phone button no longer covers buttons at the bottom of the page."
+      ]
+    },
+    {
       "version": "0.35.1",
       "date": "2026-11-20",
       "title": "Fewer text messages",

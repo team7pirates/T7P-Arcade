@@ -195,6 +195,7 @@ export function playMatch(container, { teamA, teamB, seed, speed: startSpeed, be
         flash(ev.side, ev.side === 'A' ? 'anim-lunge-r' : 'anim-lunge-l');
         if (ev.special) pop(ev.side, `${ev.move.toUpperCase()}!`, 'pop-move');
         if (ev.heal) { live[ev.side].hp[live[ev.side].idx] = ev.hp; drawCard(ev.side); pop(ev.side, `+${fmt(ev.heal)}`, 'pop-heal'); }
+        if (ev.dodged) { pop(other(ev.side), 'DODGE', 'pop-adv'); break; }
         if (ev.crit) pop(other(ev.side), 'CRIT!', 'pop-crit');
         if (ev.adv && !ev.special) pop(ev.side, 'ADVANTAGE', 'pop-adv');
         break;

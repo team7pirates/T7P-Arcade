@@ -4,6 +4,7 @@
 
 import { h, avatar } from './ui.js';
 import { characters } from './characters.js';
+import { SECOND_PERKS } from './combat.js';
 
 export const STAT_LABELS = { powerLevel: 'Power', aura: 'Aura', clutch: 'Clutch', chaos: 'Chaos' };
 
@@ -15,7 +16,7 @@ export function tierBadge(c, { hidden = false } = {}) {
 
 export function roleChips(c) {
   const roles = [c.mainRole, c.secondRole].filter(Boolean);
-  return h('span', { class: 'role-chips' }, roles.map((r, i) => h('span', { class: `chip role-${r.toLowerCase()}${i ? ' is-second' : ''}` }, r)));
+  return h('span', { class: 'role-chips' }, roles.map((r, i) => h('span', { class: `chip role-${r.toLowerCase()}${i ? ' is-second' : ''}`, title: i ? `Second role: ${SECOND_PERKS[r]}` : null }, r)));
 }
 
 // opts.hideNumbers: Hard Mode (no Power Level, no stat numbers, no tier).

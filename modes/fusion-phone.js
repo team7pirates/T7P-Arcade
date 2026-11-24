@@ -324,7 +324,12 @@ export function replyPost(r, id, optionId, ctx) {
 
 // ---------- Lenz and Boo ----------
 const MY_LENZ = ['Floor {floor}. Still standing. 🗼', 'Another one. Floor {floor} ✅', 'They said I\'d stop at {floor}. 🤫', 'Boss down. Who\'s next? 👑', 'Callout answered. 📸', 'Hard work, floor {floor}.'];
-const SNAP_LOST = ['still sore from that 😤', 'run it back soon', 'my trainer is yelling at me rn', 'ok you hit hard', 'not posting that fight 💀', 'GG. ice bath time 🧊'];
+// v0.36.0: snaps come with a real photo. Fighters you beat snap you, and so do
+// fighters you already have a streak with.
+const SNAP_LOST = { off: ['still sore from that 😤', 'GG. ice bath time 🧊', 'not posting that fight 💀'], train: ['run it back soon', 'my trainer is yelling at me rn', 'back in the gym because of you 😤'],
+  eat: ['stress eating after that one 🍜', 'losing makes me hungry ok', 'ramen fixes everything'], fight: ['ok you hit hard', 'see you on a higher floor', 'next time it\'s different 🔒'] };
+const SNAP_PAL = { off: ['rest day. tower can wait 🌅', 'hot spring therapy ♨️'], train: ['early session. you up? 💪', 'new gloves who dis'], eat: ['feast before the climb 🍖', 'night market run 🏮'], fight: ['heading up. wish me luck 🗼', 'locker room focus 🔒'] };
+export const SNAP_STREAK_AURA = 2; // v0.36.0: a 3+ snap streak: +2 Aura next floor per snap back
 // v0.35.0: you post only on big moments (a boss, a new best floor, a
 // callout, every 10th floor, a finished contract or job). Other fighters post
 // now and then about their day. Every post has a real photo.
@@ -352,9 +357,24 @@ function lenzEvent(r, ctx) {
   }
 }
 function snapEvent(r, ctx) {
+  const ph = r.phone; const rand = ctx.rand;
+  const type = pick(['off', 'train', 'eat', 'fight'], rand);
+  // Someone you already have a streak with checks in.
+  const pals = Object.entries(ph.streaks || {}).filter(([, st]) => st.n > 0);
+  if (pals.length && rand() < 0.35) {
+    const [key, st] = pick(pals, rand);
+    snap(ph, { from: st.name, cid: st.cid ?? null, key, photo: pickPhoto(ph, type, rand), caption: pick(SNAP_PAL[type], rand), when: `Floor ${ctx.floor}` });
+    return;
+  }
   const foe = ctx.foes?.[0];
-  if (!foe || ctx.rand() > 0.4) return;
-  snap(r.phone, { from: foe.name, cid: foe.id ?? null, caption: fresh(r, SNAP_LOST, ctx.rand), when: `Floor ${ctx.floor}` });
+  if (!foe || rand() > 0.4) return;
+  snap(ph, { from: foe.name, cid: foe.id ?? null, key: `c${foe.id}`, photo: pickPhoto(ph, type, rand), caption: pick(SNAP_LOST[type], rand), when: `Floor ${ctx.floor}` });
+}
+// v0.36.0: a 3+ snap streak: +2 Aura for your next floor.
+export function onSnapStreak(r, n) {
+  if (!r || !r.next) return null;
+  r.snapBoost = { floor: r.next.floor, n: Math.min(2 * SNAP_STREAK_AURA, ((r.snapBoost?.floor === r.next.floor ? r.snapBoost.n : 0) + SNAP_STREAK_AURA)) };
+  return `+${r.snapBoost.n} Aura for your next floor.`;
 }
 
 // ---------- Allies (v0.28.0) ----------
@@ -619,6 +639,7 @@ export function phoneAura(r) {
   let n = 0;
   if (r.tip && r.tip.floor === r.next.floor) n += r.tip.aura;
   if (r.dateBoost && r.dateBoost.floor === r.next.floor) n += DATE_AURA;
+  if (r.snapBoost && r.snapBoost.floor === r.next.floor) n += r.snapBoost.n;
   return n;
 }
 export function markRead(r, key) {
