@@ -26,6 +26,7 @@ const NAME_MAX = 20;
 const fmt = (n) => Math.round(n).toLocaleString();
 const crestUrl = (t) => `art/afl/crests/${t.crest}.webp`;
 const crest = (t, size = 32) => h('img', { class: 'dy-crest', src: crestUrl(t), alt: '', width: size, height: size, style: `width:${size}px;height:${size}px` });
+const TROPHY_ICON = { title: '🏆', gpt: '👑', roy: '🌟', role: '🎖️', allafl: '⭐', awakening: '🔥', phoenix: '🐦‍🔥', breakout: '📈', potw: '🏅' };
 const ROLE_CLASS = (r) => `role-${(r || '').toLowerCase()}`;
 
 const help = howToPlay('my-career', 'My Career', [
@@ -33,10 +34,12 @@ const help = howToPlay('my-career', 'My Career', [
   'A Fusion fighter starts over as a rookie: a 99 in the Tower comes in around 74 with a high ceiling, and a deep Tower record helps your draft stock.',
   'Draft night: watch the board until a team calls your name. Two rounds; nobody is guaranteed a spot.',
   'Every week: train once (Power, Aura or Clutch), then see if the coach starts you. If you start, pick your approach and fight.',
-  'Coach trust: good grades and wins earn more starts. A bad night costs you. Once you are one of the team\'s best five, you start every week.',
+  'Coach trust: good grades and wins earn more starts. A bad night costs you. Once you are one of the team\'s best five, you start every week. A top-7 pick starts every game of his rookie season.',
+  'Talk to the coach every 3 weeks: ask for more starts, ask to lead off (fight first), ask what to work on (that training counts double), or just tell him you\'re all in.',
+  'Awards: Player of the Week (league-wide), and at season\'s end the GPT, Rookie of the Year, best at your role, All-AFL First Team and more. They all go in your trophy case (Career tab).',
   'Growth: like every card, you bank skill points every 3 weeks. Above 90, +1 Power costs 2 points.',
   'Awards night: Rookie of the Year, the GPT, breakout jumps. Then the off-season runs and your next season starts.',
-  'Coming in later updates: minutes and coach talks, contracts and free agency, your own phone, endorsements and the Hall of Fame.',
+  'Coming in later updates: contracts and free agency, trade requests, your own phone, endorsements and the Hall of Fame.',
 ]);
 
 export async function render() {
@@ -162,6 +165,7 @@ export async function render() {
         h('p', { class: 'label-spaced gold' }, `ROUND ${p.draftRound} · PICK ${O.pickInRound(L, p.draftPick - 1)} (No. ${p.draftPick} overall)`),
         h('h2', { class: 'heading' }, `The ${team(p.team).name} select ${p.name}.`),
         h('p', { class: 'body-text' }, `A ${p.role} out of ${L.career.imported ? 'the Tower' : p.series}. Rookie deal: ${R.capHit(p)} a season for ${p.contract.years} seasons.`),
+        p.draftPick <= C.TOP_PICK ? h('p', { class: 'dy-boost gold' }, `Top-${C.TOP_PICK} pick: they need you now. You start every game of your rookie season.`) : h('p', { class: 'caption muted' }, 'You\'ll have to earn your starts. Good grades build coach trust.'),
         h('button', { class: 'btn btn-primary btn-wide', onClick: async (e) => { e.target.disabled = true; C.finishPreseason(L); await save(); sfx.play('correct'); tab = 'week'; draw(); } }, 'Start your rookie season'))
         : h('section', { class: 'dy-panel' },
           h('div', { class: 'mc-me-row' }, face(p, 'lg'), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name),
@@ -194,8 +198,14 @@ export async function render() {
       h('div', { class: 'mc-stats' },
         stat('POWER', `${p.power}`, `max ${R.maxOf(p)}`), stat('AURA', p.aura), stat('CLUTCH', p.clutch), stat('CHAOS', p.chaos), stat('HYPE', p.hype),
         stat('POINTS', p.sp || 0, p.power >= R.STAR_LINE ? '2 per +1' : '')),
-      h('div', { class: 'mc-trust' }, h('span', { class: 'label-spaced' }, `COACH TRUST · ${trust}`), h('span', { class: 'mc-bar' }, h('span', { style: `width:${trust}%` }))),
+      h('div', { class: 'mc-trust' }, h('span', { class: 'label-spaced' }, `${C.standing(L).toUpperCase()} · COACH TRUST ${trust} (${C.trustLabel(L)})`), h('span', { class: 'mc-bar' }, h('span', { style: `width:${trust}%` }))),
+      C.topPickRookie(L) ? h('p', { class: 'caption gold' }, `Top-${C.TOP_PICK} pick: you start every game of your rookie season.`) : null,
+      activeNotes(),
       p.injury > 0 ? h('p', { class: 'dy-boost' }, `🩹 Injured: out ${p.injury} more week${p.injury > 1 ? 's' : ''}.`) : null);
+  }
+  function activeNotes() {
+    const xs = [C.promiseBoost(L) ? '🤝 Coach promised more starts' : null, C.leadsOff(L) ? '🥇 You lead off' : null, C.focusStat(L) ? `🎯 Coach's focus: ${C.TRAIN[C.focusStat(L)].label} counts double` : null].filter(Boolean);
+    return xs.length ? h('p', { class: 'caption mc-notes' }, xs.join(' · ')) : null;
   }
   const stat = (k, v, sub = '') => h('span', { class: 'mc-stat' }, h('span', { class: 'caption muted' }, k), h('b', {}, String(v)), sub ? h('span', { class: 'caption muted' }, sub) : null);
 
@@ -228,6 +238,16 @@ export async function render() {
     return h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'TRAIN THIS WEEK'),
       h('div', { class: 'mc-train' }, Object.entries(C.TRAIN).map(([k, x]) => h('button', { class: 'dy-option dy-option-sm', onClick: async () => { const r = C.train(L, k); sfx.play('correct'); await save(); toast(`Training: ${r}.`); drawHub(); } }, h('b', {}, x.label), h('span', { class: 'caption' }, x.line)))));
   }
+  function talkPanel() {
+    const t = C.myTeam(L);
+    const last = L.career.talk && L.career.talk.season === L.season ? L.career.talk : null;
+    const lastBox = last ? h('div', { class: `mc-talk-last${last.ok ? '' : ' is-no'}` }, h('span', { class: 'caption muted' }, `Coach ${last.coach}:`), h('span', { class: 'body-text' }, `"${last.line}"`), h('span', { class: 'caption' }, last.effect)) : null;
+    if (!C.canTalk(L)) return h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'TALK TO THE COACH'), lastBox, h('p', { class: 'caption muted' }, `You can talk to him again in ${Math.max(1, C.nextTalkWeek(L) - R.gameWeek(L))} week${C.nextTalkWeek(L) - R.gameWeek(L) === 1 ? '' : 's'}.`));
+    return h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, `TALK TO COACH ${t.coachName.toUpperCase()}`),
+      h('p', { class: 'caption muted' }, 'One talk every 3 weeks. Pick what you want from him.'),
+      h('div', { class: 'mc-train' }, Object.entries(C.TALKS).map(([k, x]) => h('button', { class: 'dy-option dy-option-sm', onClick: async () => { const r = C.talk(L, k); sfx.play(r?.ok ? 'correct' : 'wrong'); await save(); drawHub(); } }, h('b', {}, x.label), h('span', { class: 'caption' }, x.line)))),
+      lastBox);
+  }
   function logPanel() {
     const gs = L.career.games.filter((x) => x.season === L.season);
     if (!gs.length) return null;
@@ -236,6 +256,24 @@ export async function render() {
         h('span', { class: `dy-num ${x.won ? 'win' : 'loss'}` }, x.won ? 'W' : 'L'), crest(team(x.opp), 22),
         h('span', { class: 'dy-list-text' }, h('span', {}, `${x.round || `Week ${x.week}`} vs ${team(x.opp).abbr} · ${x.score.join('–')}`),
           h('span', { class: 'caption muted' }, x.played ? `Grade ${x.grade} · ${fmt(x.line?.[0] || 0)} dmg · ${x.line?.[1] || 0} KO${x.mvp ? ' · MVP' : ''}` : 'Did not play'))))));
+  }
+  function potwLine() {
+    const x = L.career.lastPotw;
+    if (!x || L.phase !== 'season' || x.week !== L.week - 1) return null;
+    return h('p', { class: `dy-boost${x.me ? ' gold' : ''}` }, x.me ? `🏅 You're the AFL Player of the Week (Week ${x.week})!` : `🏅 Player of the Week ${x.week}: ${x.name} (${team(x.team)?.abbr || ''})`);
+  }
+  function careerPanel() {
+    const p = P(); const tot = C.careerTotals(L); const ss = L.career.seasons || []; const tr = L.career.trophies || [];
+    return [
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'CAREER TOTALS'),
+        h('div', { class: 'mc-stats' }, stat('SEASONS', ss.length + (L.career.over ? 0 : 1)), stat('GAMES', tot.gp), stat('RECORD', `${tot.w}-${tot.l}`), stat('DAMAGE', fmt(tot.dmg)), stat('KO', tot.ko), stat('PLAYER OF THE WEEK', L.career.potw || 0))),
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h gold' }, `TROPHY CASE · ${tr.length}`),
+        tr.length ? h('ul', { class: 'dy-list' }, tr.map((x) => h('li', {}, h('span', { class: 'dy-num' }, `S${x.season}`), h('span', { class: 'dy-list-text' }, h('span', {}, `${TROPHY_ICON[x.kind] || '🏅'} ${x.name}`))))) : h('p', { class: 'caption muted' }, 'Empty for now. Go win something.')),
+      ss.length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'SEASON BY SEASON'),
+        h('ul', { class: 'dy-list' }, ss.map((x) => h('li', {}, crest(team(x.team), 22), h('span', { class: 'dy-list-text' }, h('span', {}, `Season ${x.career ?? '?'} · ${team(x.team).abbr} ${x.w}-${x.l}${x.champion ? ' 🏆' : ''}`),
+          h('span', { class: 'caption muted' }, `${x.stats.gp} games · ${fmt(x.stats.dmg)} dmg · ${x.stats.ko} KO · Power ${x.power}${x.standing ? ` · ${x.standing}` : ''}`)))))) : null,
+      h('p', { class: 'caption muted' }, `Drafted ${p.draftPick ? `No. ${p.draftPick} (round ${p.draftRound})` : 'undrafted'}${L.career.imported ? ' · came up from the Tower' : ''}.`),
+    ];
   }
   function teamPanel() {
     const t = C.myTeam(L);
@@ -254,11 +292,11 @@ export async function render() {
       R.standings(L).findIndex((x) => x.i === t.i) >= 12 ? h('p', { class: 'caption muted' }, `${t.name}: ${R.standings(L).findIndex((x) => x.i === t.i) + 1}th`) : null);
   }
   function drawHub() {
-    const tabs = [['week', 'THIS WEEK'], ['team', 'MY TEAM'], ['league', 'LEAGUE']];
+    const tabs = [['week', 'THIS WEEK'], ['team', 'MY TEAM'], ['league', 'LEAGUE'], ['career', 'CAREER']];
     fill(root, header(`Season ${P().career}`, () => drawFiles()), h('div', { class: 'dy-content' },
       meCard(),
       h('div', { class: 'dy-tabs', role: 'tablist' }, tabs.map(([k, l]) => h('button', { class: `dy-tab${tab === k ? ' is-on' : ''}`, role: 'tab', 'aria-selected': String(tab === k), onClick: () => { tab = k; drawHub(); } }, l))),
-      tab === 'week' ? [trainPanel(), nextPanel(), logPanel()] : tab === 'team' ? teamPanel() : leaguePanel()));
+      tab === 'week' ? [potwLine(), trainPanel(), nextPanel(), talkPanel(), logPanel()] : tab === 'team' ? teamPanel() : tab === 'career' ? careerPanel() : leaguePanel()));
   }
 
   // ---------- Fight ----------
@@ -299,7 +337,9 @@ export async function render() {
           h('p', { class: 'mc-grade' }, h('span', { class: 'caption muted' }, 'YOUR GRADE'), h('b', {}, e.grade)),
           h('p', { class: 'body-text' }, `${fmt(e.line?.[0] || 0)} damage · ${e.line?.[1] || 0} KO · ${e.line?.[2] || 0} special${(e.line?.[2] || 0) === 1 ? '' : 's'}${e.mvp ? ' · Game MVP 🏅' : ''}`),
           h('p', { class: 'caption muted' }, `Coach trust now ${e.trust} (${C.TRUST_MOVE[e.grade] + (e.won ? 1 : 0) >= 0 ? '+' : ''}${C.TRUST_MOVE[e.grade] + (e.won ? 1 : 0)}).`),
+          (() => { const q = C.coachReact(L, e); return q ? h('p', { class: 'mc-talk-last' }, h('span', { class: 'caption muted' }, `Coach ${C.myTeam(L).coachName}:`), h('span', { class: 'body-text' }, `"${q}"`)) : null; })(),
         ] : h('p', { class: 'body-text' }, P().injury > 0 ? 'You sat this one out, hurt.' : 'You watched from the bench.'),
+        e.potw ? h('p', { class: `dy-boost${e.potw.me ? ' gold' : ''}` }, e.potw.me ? '🏅 You\'re the AFL Player of the Week!' : `🏅 Player of the Week: ${e.potw.name} (${team(e.potw.team)?.abbr || ''})`) : null,
         h('button', { class: 'btn btn-primary btn-wide', onClick: () => draw() }, 'Back to the week'))));
   }
 
@@ -307,7 +347,9 @@ export async function render() {
   function drawSeasonEnd() {
     const s = L.career.over; const t = team(s.team); const p = P();
     const st = s.stats;
-    const lines = [s.champion ? '🏆 Champions: you won the Celestial Grail.' : null, s.gpt ? '👑 You are the GPT, the league\'s best player.' : null, s.roy ? `🌟 Rookie of the Year. Your growth moves up to ${['Normal', 'Star', 'Superstar'][p.dev]}.` : null, s.breakout ? '📈 Breakout jump: +3 Power and +5 to your max.' : null].filter(Boolean);
+    const lines = [s.champion ? '🏆 Champions: you won the Celestial Grail.' : null, s.gpt ? '👑 You are the GPT, the league\'s best player.' : null, s.roy ? `🌟 Rookie of the Year. Your growth moves up to ${['Normal', 'Star', 'Superstar'][p.dev]}.` : null,
+      s.role ? `🎖️ ${s.role}: the best ${p.role} in the league.` : null, s.allAfl ? '⭐ All-AFL First Team.' : null, s.awakening ? `🔥 ${R.AWARDS.awakening}: the biggest jump of any young card.` : null, s.phoenix ? `🐦‍🔥 ${R.AWARDS.phoenix}.` : null,
+      s.breakout ? '📈 Breakout jump: +3 Power and +5 to your max.' : null, s.potw ? `🏅 Player of the Week ${s.potw} time${s.potw > 1 ? 's' : ''}.` : null].filter(Boolean);
     fill(root, header(`Season ${p.career} wrap-up`, () => drawFiles()), h('div', { class: 'dy-content' },
       h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h gold' }, `SEASON ${p.career} · ${t.name.toUpperCase()} ${s.w}-${s.l}`),
         h('div', { class: 'mc-stats' }, stat('GAMES', st.gp), stat('RECORD', `${st.w}-${st.l}`), stat('DAMAGE', fmt(st.dmg)), stat('KO', st.ko), stat('SPECIALS', st.sp), stat('POWER', s.power)),

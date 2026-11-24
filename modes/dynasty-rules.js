@@ -797,6 +797,7 @@ export function endSeason(league) {
     divisions: po.seeds.slice(0, 4).sort((a, b) => league.teams[a].div - league.teams[b].div),
     field: po.seeds.slice(),
     roleAwards: roleAward, roleAwardTeams,
+    allAfl: race.slice(0, 5).map((x) => x.p.pid), // v0.39.0: the season's top five
     standings: standings(league).map((t) => ({ i: t.i, w: t.w, l: t.l })),
   };
   // Specialty awards (when we know where the season started).

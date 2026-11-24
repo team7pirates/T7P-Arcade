@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "0.39.0",
+      "date": "2026-11-23",
+      "title": "My Career part 2: the coach, playing time and awards",
+      "items": [
+        "Top-7 picks start every game of their rookie season (unless they're hurt). The team took you that high to play you now.",
+        "Your standing: Bench, Rotation, Starter, Franchise player. Coach trust has tiers too, from In the doghouse to Franchise cornerstone, and it slowly settles back toward the middle, so you have to keep earning it.",
+        "Talk to the coach every 3 weeks: ask for more starts, ask to lead off (fight first), ask what to work on (that training counts double for 3 weeks), or tell him you're all in.",
+        "The coach reacts to your big nights and your bad ones.",
+        "Player of the Week, league-wide, every week.",
+        "Season awards for you: the GPT, Rookie of the Year, best at your role, All-AFL First Team, the Awakening and Phoenix awards, breakout jumps and the title. They all go in your trophy case.",
+        "New Career tab: career totals, trophy case and season-by-season stats.",
+        "Grades are harder to get now: an A+ means a big night."
+      ]
+    },
+    {
       "version": "0.38.0",
       "date": "2026-11-23",
       "title": "My Career is here (part 1)",

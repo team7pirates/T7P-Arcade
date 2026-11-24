@@ -135,16 +135,95 @@ export function myGame(L) {
 }
 // Coach trust (0–100, starts at 50) decides how often you get the start when
 // you aren't one of the five best. Good grades and wins earn it.
-export const TRUST_MOVE = { 'A+': 8, A: 5, B: 2, C: 0, D: -2, F: -4 };
+export const TRUST_MOVE = { 'A+': 4, A: 3, B: 1, C: 0, D: -3, F: -5 };
 export const trustOf = (L) => L.career.trust ?? 50;
 // Your chance to start this week (1 if you're already in the coach's five).
+// v0.39.0: a top-7 pick starts every game of his rookie season: the team
+// took him that high to play him now.
+export const TOP_PICK = 7;
+export const topPickRookie = (L) => { const p = me(L); return p.career === 1 && p.draftPick != null && p.draftPick <= TOP_PICK && p.draftSeason === L.season - 1; };
 export function startChance(L) {
   const t = myTeam(L); const p = me(L);
   if (!t || !R.available(p)) return 0;
+  if (topPickRookie(L)) return 1;
   const five = R.aiStarters(L, t);
   if (five.some((x) => x.pid === p.pid)) return 1;
   const weakest = Math.min(...five.map((x) => R.effPower(L, x)));
-  return clamp(0.5 + (R.effPower(L, p) - weakest) / 30 + (trustOf(L) - 50) / 100, 0.35, 0.95);
+  return clamp(0.5 + (R.effPower(L, p) - weakest) / 30 + (trustOf(L) - 50) / 100 + promiseBoost(L), 0.42, 0.95);
+}
+// ---------- Your standing with the coach (v0.39.0) ----------
+export const TRUST_TIERS = [[85, 'Franchise cornerstone'], [70, 'Go-to fighter'], [50, 'Trusted'], [30, 'Unproven'], [0, 'In the doghouse']];
+export const trustLabel = (L) => TRUST_TIERS.find(([n]) => trustOf(L) >= n)[1];
+// Your role on the team right now.
+export function standing(L) {
+  const t = myTeam(L); const p = me(L);
+  if (!t) return 'Prospect';
+  if (topPickRookie(L)) return 'Day-one starter';
+  const five = R.aiStarters(L, t).some((x) => x.pid === p.pid);
+  if (five && trustOf(L) >= 85) return 'Franchise player';
+  if (five) return 'Starter';
+  return startChance(L) >= 0.6 ? 'Rotation' : 'Bench';
+}
+// Coach promises from a talk last 3 game weeks.
+const active = (L, x) => x && x.season === L.season && R.gameWeek(L) < x.until;
+export const promiseBoost = (L) => (active(L, L.career.promise) ? 0.15 : 0);
+export const leadsOff = (L) => active(L, L.career.lead);
+export const focusStat = (L) => (active(L, L.career.focus) ? L.career.focus.stat : null);
+
+// ---------- Talks with the coach: one every 3 weeks ----------
+export const TALK_EVERY = 3;
+export const canTalk = (L) => (L.phase === 'season' || L.phase === 'playoffs') && !!myTeam(L) && (!L.career.talk || L.career.talk.season !== L.season || R.gameWeek(L) - L.career.talk.week >= TALK_EVERY);
+export const nextTalkWeek = (L) => (L.career.talk && L.career.talk.season === L.season ? L.career.talk.week + TALK_EVERY : R.gameWeek(L));
+const recentGrades = (L, n = 3) => L.career.games.filter((g) => g.played && g.season === L.season).slice(0, n).map((g) => g.grade);
+const goodRun = (L) => { const gs = recentGrades(L); return gs.length >= 2 && gs.filter((g) => g === 'A+' || g === 'A' || g === 'B').length >= 2; };
+export const TALKS = {
+  starts: { label: 'Ask for more starts', line: 'Works if he trusts you or you\'ve been playing well. If not, it costs trust.' },
+  lead: { label: 'Ask to lead off', line: 'Fight first in the lineup for 3 weeks. He needs to trust you (60+).' },
+  work: { label: 'Ask what to work on', line: 'He names a stat. Training it counts double for 3 weeks.' },
+  allin: { label: 'Tell him you\'re all in', line: 'No ask. A small trust bump.' },
+};
+const say = (L, k, rand) => { const xs = COACH_LINES[k]; return xs[Math.floor(rand() * xs.length)]; };
+const COACH_LINES = {
+  startsYes: ['You\'ve earned it. You\'ll see more of the floor.', 'Keep this up and I can\'t keep you on the bench.', 'Alright. I\'m giving you more chances. Don\'t waste them.'],
+  startsNo: ['Earn it in practice first.', 'Minutes aren\'t handed out. Show me.', 'Not yet. Your grades tell me you\'re not ready.'],
+  startsAlready: ['You already start every week. Just keep winning.', 'You\'re one of my five. Nothing to ask for.'],
+  leadYes: ['You want the first fight? It\'s yours. Set the tone.', 'Lead us off. Make them feel it early.'],
+  leadNo: ['First fight goes to someone I trust. That isn\'t you yet.', 'Win me some games and we\'ll talk about leading off.'],
+  work: { power: ['Your Power. You get pushed around in there.', 'Get stronger. Power wins exchanges.'], aura: ['Aura. Your specials come too late.', 'Presence. Work on your Aura.'], clutch: ['Clutch. You fade when it matters.', 'Finish fights. Work on your Clutch.'] },
+  allin: ['That\'s what I like to hear.', 'Good. The team needs that.', 'Then show me every week.'],
+};
+export function talk(L, kind, rand = Math.random) {
+  if (!canTalk(L)) return null;
+  const p = me(L); const coach = myTeam(L).coachName;
+  const until = R.gameWeek(L) + TALK_EVERY;
+  let ok = true; let line; let effect = '';
+  if (kind === 'starts') {
+    if (startChance(L) >= 1) { line = say(L, 'startsAlready', rand); effect = 'You already start every week.'; }
+    else if (trustOf(L) >= 55 || goodRun(L)) { L.career.promise = { season: L.season, until }; line = say(L, 'startsYes', rand); effect = 'Start chance +15% for 3 weeks.'; }
+    else { ok = false; L.career.trust = clamp(trustOf(L) - 4, 0, 100); line = say(L, 'startsNo', rand); effect = 'Trust −4.'; }
+  } else if (kind === 'lead') {
+    if (trustOf(L) >= 60) { L.career.lead = { season: L.season, until }; line = say(L, 'leadYes', rand); effect = 'You fight first for 3 weeks (when you start).'; }
+    else { ok = false; L.career.trust = clamp(trustOf(L) - 2, 0, 100); line = say(L, 'leadNo', rand); effect = 'Trust −2.'; }
+  } else if (kind === 'work') {
+    const gap = { power: (R.maxOf(p) - p.power) / 2, aura: (70 - p.aura) / 4, clutch: (70 - p.clutch) / 4 };
+    const stat = Object.entries(gap).sort((a, b) => b[1] - a[1])[0][0];
+    L.career.focus = { season: L.season, until, stat };
+    L.career.trust = clamp(trustOf(L) + 1, 0, 100);
+    const xs = COACH_LINES.work[stat]; line = xs[Math.floor(rand() * xs.length)]; effect = `Training ${TRAIN[stat].label} counts double for 3 weeks. Trust +1.`;
+  } else {
+    L.career.trust = clamp(trustOf(L) + 3, 0, 100); line = say(L, 'allin', rand); effect = 'Trust +3.';
+  }
+  L.career.talk = { season: L.season, week: R.gameWeek(L), kind, ok, line, effect, coach };
+  return L.career.talk;
+}
+// What the coach says after your fight (great or bad nights only).
+export function coachReact(L, entry, rand = Math.random) {
+  if (!entry.played) return null;
+  const pick = (xs) => xs[Math.floor(rand() * xs.length)];
+  if (entry.grade === 'A+') return pick(['That\'s the one. That\'s why you\'re here.', 'Big night. Keep that up.', 'Film room is going to love that.']);
+  if (entry.grade === 'F') return pick(['That wasn\'t you out there. Fix it.', 'We need more than that.', 'Shake it off. Next week matters more.']);
+  if (entry.mvp) return pick(['Game MVP. Good work.', 'You carried us tonight.']);
+  return null;
 }
 // Decide once per week (kept in L.career.startWeek so a reload doesn't reroll).
 export function startsThisWeek(L) {
@@ -179,6 +258,8 @@ export function lineupsFor(L, g) {
     const bench = myTeam(L).roster.map((pid) => L.players[pid]).filter((x) => !mine.includes(x.pid) && R.available(x)).sort((a, b) => R.effPower(L, b) - R.effPower(L, a))[0];
     if (bench) mine[mine.indexOf(p.pid)] = bench.pid;
   }
+  // You asked to lead off and he said yes: you fight first.
+  if (leadsOff(L) && mine.includes(p.pid)) { mine.splice(mine.indexOf(p.pid), 1); mine.unshift(p.pid); }
   return out;
 }
 // Fight cards for the battle view, with your approach applied to your card.
@@ -214,6 +295,8 @@ export function finishGame(L, g, lineups, approach, res = null) {
   }
   const gr = played ? grade(L, g, p.pid) : null;
   if (played) L.career.trust = clamp(trustOf(L) + TRUST_MOVE[gr] + (won ? 1 : 0), 0, 100);
+  // Trust slowly settles back toward 60: you have to keep earning it.
+  L.career.trust = Math.round(trustOf(L) + (60 - trustOf(L)) * 0.06);
   const line = g.result.lines[p.pid] || null;
   const opp = g.home === t.i ? g.away : g.home;
   const entry = { season: L.season, week: L.phase === 'playoffs' ? null : L.week, round: L.phase === 'playoffs' ? R.roundLabel(L.playoffs, g) : null, opp, won, score: won ? [Math.max(...g.result.score), Math.min(...g.result.score)] : [Math.min(...g.result.score), Math.max(...g.result.score)], played, approach: played ? approach : null, line, grade: gr, trust: trustOf(L), mvp: g.result.mvp === p.pid };
@@ -221,12 +304,37 @@ export function finishGame(L, g, lineups, approach, res = null) {
   L.career.games = L.career.games.slice(0, 60);
   if (L.phase === 'season') {
     R.simWeek(L, false);
+    entry.potw = playerOfWeek(L);
     R.endWeek(L);
     L.career.trained = null;
   } else {
     R.simPlayoffs(L, true, t.i);
   }
   return entry;
+}
+// v0.39.0: Player of the Week, league-wide: the best line of the week
+// (damage, knockouts, specials, and a bonus for winning).
+export function playerOfWeek(L) {
+  const games = L.schedule[L.week - 1] || [];
+  let best = null;
+  for (const g of games) {
+    if (!g.result?.lines) continue;
+    for (const [pid, ln] of Object.entries(g.result.lines)) {
+      const won = (g.result.winner === g.home ? g.result.home : g.result.away).includes(Number(pid));
+      const v = ln[0] / 1000 + ln[1] * 3 + ln[2] * 1.5 + (won ? 4 : 0);
+      if (!best || v > best.v) best = { pid: Number(pid), v };
+    }
+  }
+  if (!best) return null;
+  const q = L.players[best.pid];
+  const out = { pid: q.pid, name: q.name, team: q.team, week: L.week, me: !!q.me };
+  L.career.lastPotw = out;
+  if (q.me) { L.career.potw = (L.career.potw || 0) + 1; L.career.potwSeason = (L.career.potwSeason || 0) + 1; addTrophy(L, `Player of the Week (Week ${L.week})`, 'potw'); }
+  return out;
+}
+export function addTrophy(L, name, kind) {
+  if (!L.career.trophies) L.career.trophies = [];
+  L.career.trophies.unshift({ season: L.season, name, kind });
 }
 // A letter grade for your night: your damage against your teammates', plus KOs.
 export function grade(L, g, pid) {
@@ -241,7 +349,7 @@ export function grade(L, g, pid) {
   const avgPw = side.reduce((n, x) => n + pw(x), 0) / Math.max(1, side.length);
   const handicap = Math.min(1.6, Math.max(1, (avgPw / Math.max(1, pw(pid))) ** 2));
   const score = (avg ? (mine[0] / avg) * handicap : 1) + mine[1] * 0.35 + (g.result.mvp === pid ? 0.4 : 0);
-  return score >= 1.7 ? 'A+' : score >= 1.35 ? 'A' : score >= 1.1 ? 'B' : score >= 0.85 ? 'C' : score >= 0.6 ? 'D' : 'F';
+  return score >= 2.3 ? 'A+' : score >= 1.75 ? 'A' : score >= 1.3 ? 'B' : score >= 0.9 ? 'C' : score >= 0.6 ? 'D' : 'F';
 }
 // Not in the lineup (or hurt): the week sims.
 export function simMyWeek(L) {
@@ -262,11 +370,13 @@ export function train(L, stat) {
   if (!canTrain(L)) return null;
   const p = me(L);
   let text;
+  const twice = focusStat(L) === stat;
   if (stat === 'power') {
-    L.career.powerReps = (L.career.powerReps || 0) + 1;
+    L.career.powerReps = (L.career.powerReps || 0) + (twice ? 2 : 1);
     if (L.career.powerReps % 2 === 0) { p.sp = (p.sp || 0) + 1; const n = R.spendPoints(p); text = n ? '+1 Power' : '+1 skill point (you are at your max)'; }
     else text = 'Halfway to your next Power point';
-  } else { p[stat] = Math.min(100, (p[stat] || 50) + 1); text = `+1 ${TRAIN[stat].label}`; }
+    if (twice) text += ' (coach\'s focus: double)';
+  } else { const n = twice ? 2 : 1; p[stat] = Math.min(100, (p[stat] || 50) + n); text = `+${n} ${TRAIN[stat].label}${twice ? ' (coach\'s focus: double)' : ''}`; }
   L.career.trained = trainKey(L);
   return text;
 }
@@ -280,9 +390,27 @@ export function closeSeason(L) {
   if (L.phase === 'playoffs' && L.playoffs.champion == null) R.simPlayoffs(L, false);
   const row = R.endSeason(L);
   const p = me(L);
-  const sum = { season: row.season, team: t.i, w: t.w, l: t.l, stats: { ...p.stats }, power: p.power, champion: row.champion === t.i, gpt: row.prodigy === p.pid, roy: row.roy === p.pid, breakout: (row.breakouts || []).includes(p.pid) };
+  const sum = { season: row.season, career: p.career, team: t.i, w: t.w, l: t.l, stats: { ...p.stats }, power: p.power, champion: row.champion === t.i, gpt: row.prodigy === p.pid, roy: row.roy === p.pid, breakout: (row.breakouts || []).includes(p.pid),
+    role: row.roleAwards?.[p.role] === p.pid ? R.AWARDS[p.role] : null, allAfl: (row.allAfl || []).includes(p.pid), awakening: row.awakening === p.pid, phoenix: row.phoenix === p.pid,
+    potw: L.career.potwSeason || 0, trust: trustOf(L), standing: (() => { const share = p.stats.gp / Math.max(1, t.w + t.l); return share >= 0.85 ? (trustOf(L) >= 85 ? 'Franchise player' : 'Starter') : share >= 0.35 ? 'Rotation' : 'Bench'; })() };
+  L.career.potwSeason = 0;
+  if (sum.champion) addTrophy(L, 'The Celestial Grail (champion)', 'title');
+  if (sum.gpt) addTrophy(L, R.AWARDS.prodigy, 'gpt');
+  if (sum.roy) addTrophy(L, 'Rookie of the Year', 'roy');
+  if (sum.role) addTrophy(L, `${sum.role} (best ${p.role})`, 'role');
+  if (sum.allAfl) addTrophy(L, 'All-AFL First Team', 'allafl');
+  if (sum.awakening) addTrophy(L, R.AWARDS.awakening, 'awakening');
+  if (sum.phoenix) addTrophy(L, R.AWARDS.phoenix, 'phoenix');
+  if (sum.breakout) addTrophy(L, 'Breakout jump', 'breakout');
   L.career.seasons = [sum, ...(L.career.seasons || [])];
   return sum;
+}
+// Career totals across every finished season (plus this one so far).
+export function careerTotals(L) {
+  const all = [...(L.career.seasons || []).map((x) => x.stats), (L.phase !== 'offseason' && !L.career.over) ? me(L).stats : null].filter(Boolean);
+  const t = { gp: 0, dmg: 0, ko: 0, sp: 0, w: 0, l: 0 };
+  for (const s of all) for (const k of Object.keys(t)) t[k] += s[k] || 0;
+  return t;
 }
 export function nextSeason(L) {
   O.startOffseason(L);
