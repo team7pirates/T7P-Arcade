@@ -721,14 +721,14 @@ export const roundLabel = (po, g) => {
   return 'PLAYOFFS';
 };
 export const roundGames = (po, k = roundOf(po)) => (k === 'final' ? (po.final ? [po.final] : []) : po[k] || []);
-export function playoffGameForUser(league) {
-  const po = league.playoffs; const u = league.user.team;
+export function playoffGameForUser(league, u = league.user?.team) {
+  const po = league.playoffs;
   if (!po || po.champion != null) return null;
   return roundGames(po).find((g) => !g.result && (g.home === u || g.away === u)) || null;
 }
 // Is the user still alive in the playoffs?
-export function userAlive(league) {
-  const po = league.playoffs; const u = league.user?.team;
+export function userAlive(league, u = league.user?.team) {
+  const po = league.playoffs;
   if (!po || po.champion != null || u == null) return false;
   if (!po.seeds.includes(u)) return false;
   for (const [k] of ROUNDS) for (const g of roundGames(po, k)) if (g.result && loserOf(g) === u) return false;
@@ -759,8 +759,8 @@ function advance(league) {
   }
   return true;
 }
-export function simPlayoffs(league, untilUser = true) {
-  const rand = randOf(league); const po = league.playoffs; const u = league.user?.team;
+export function simPlayoffs(league, untilUser = true, u = league.user?.team) {
+  const rand = randOf(league); const po = league.playoffs;
   for (let guard = 0; guard < 10 && po.champion == null; guard++) {
     for (const g of roundGames(po)) {
       if (g.result) continue;

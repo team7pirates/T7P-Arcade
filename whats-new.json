@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.38.0",
+      "date": "2026-11-23",
+      "title": "My Career is here (part 1)",
+      "items": [
+        "New mode: My Career. Be the player, not the coach, in the Anime Fighting League.",
+        "Make a fighter (Blue-chip, Balanced or Raw talent), or bring one in from Forbidden Fusion. Fusion fighters start over as rookies: a 99 in the Tower comes in around 74 with a high ceiling, and a deep Tower record helps your draft stock.",
+        "Draft night: watch the board pick by pick until a team calls your name.",
+        "Every week: train once (Power, Aura or Clutch), see if the coach starts you, pick your approach (Go hard, Play your game, Stay smart, Showtime) and fight. You get a grade for every fight.",
+        "Coach trust: good grades and wins earn more starts. Once you're one of your team's best five, you start every week.",
+        "Playoffs, awards night (Rookie of the Year, the GPT, breakout jumps) and an automatic off-season, then your next season.",
+        "Three save files. Coming next: minutes and coach talks, contracts and free agency, your own phone, endorsements and the Hall of Fame."
+      ]
+    },
+    {
       "version": "0.37.0",
       "date": "2026-11-23",
       "title": "New main menu: Quick Play and My Career",

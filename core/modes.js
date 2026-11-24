@@ -21,7 +21,7 @@ export const MODES = [
   },
   {
     id: 'my-career', loadingLine: 'LACING UP', name: 'My Career', sub: 'Draft · Grind · Legacy',
-    flagship: true, ready: false, soon: 'Coming next',
+    flagship: true, wave: 6, ready: true, load: loader('my-career'),
     blurb: 'Be the player, not the coach. Get drafted into the Anime Fighting League, earn your minutes and build a Hall of Fame career.',
   },
   {

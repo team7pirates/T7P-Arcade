@@ -101,7 +101,7 @@ function modeTile(m, art = null) {
   },
     art,
     h('span', { class: 'mode-tile-inner' },
-      m.flagship ? h('span', { class: 'mode-tag' }, m.ready ? 'FLAGSHIP' : 'NEW') : null,
+      m.flagship ? h('span', { class: 'mode-tag' }, m.id === 'my-career' ? 'NEW' : 'FLAGSHIP') : null,
       h('span', { class: 'mode-name' }, m.name),
       h('span', { class: 'mode-sub' }, m.sub),
       m.flagship ? h('span', { class: 'mode-blurb' }, m.blurb) : null,
@@ -130,6 +130,12 @@ async function continueInfo() {
     }
     if (mode === 'tier-target') { const g = await store.get('save:tier-target', null); return { mode: m, line: g ? `Round ${g.round} · ${Math.round(g.score).toLocaleString()} points` : 'Start a new game' }; }
     if (mode === 'blind-tier-list') { const g = await store.get('save:blind-tier-list', null); return { mode: m, line: g ? `${g.index} of 10 placed` : 'Start a new list' }; }
+    if (mode === 'my-career') {
+      const n = p.careerSlot || 1; const L = await store.get(`career:slot${n}`, null);
+      const q = L ? L.players[L.career.pid] : null;
+      if (!q) return { mode: m, line: 'Start your career' };
+      return { mode: m, line: q.team != null ? `${q.name} · ${L.teams[q.team].name} · Season ${q.career}` : `${q.name} · Draft night`, face: q.cid };
+    }
     if (mode === 'brawl') { const g = await store.get('save:brawl', null); return { mode: m, line: g ? 'Your bracket is waiting' : 'Draft a new squad' }; }
   } catch { /* fall through */ }
   return { mode: m, line: m.sub };

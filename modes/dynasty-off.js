@@ -254,7 +254,7 @@ export function nextStep(L) {
   const i = list.indexOf(o.step);
   // Leaving a step settles it for every AI team.
   if (o.step === 'legacy' && !L.complete) LG.completeDynasty(L);
-  if (o.step === 'resign') { releaseUnsigned(L, L.user.team); aiResign(L); }
+  if (o.step === 'resign') { if (L.user) releaseUnsigned(L, L.user.team); aiResign(L); }
   if (o.step === 'upgrade') aiUpgrades(L);
   if (o.step === 'draft') { finishDraft(L); }
   if (o.step === 'fa') { faCleanup(L); }
@@ -828,8 +828,8 @@ function aiTryTrade(L, rand) {
   const buyers = L.teams.filter((t) => t.stage === 'contender' && (!L.user || t.i !== L.user.team));
   if (!sellers.length || !buyers.length) return;
   const s = sellers[Math.floor(rand() * sellers.length)]; const b = buyers[Math.floor(rand() * buyers.length)];
-  const vet = roster(L, s).filter((p) => p.career >= 4 && p.injury <= 0).sort((x, y) => y.power - x.power)[0];
-  const kid = roster(L, b).filter((p) => p.career <= 2 && p.injury <= 0 && p.pid !== vet?.pid).sort((x, y) => (y.potential - y.power) - (x.potential - x.power))[0];
+  const vet = roster(L, s).filter((p) => p.career >= 4 && p.injury <= 0 && !p.me).sort((x, y) => y.power - x.power)[0];
+  const kid = roster(L, b).filter((p) => p.career <= 2 && p.injury <= 0 && !p.me && p.pid !== vet?.pid).sort((x, y) => (y.potential - y.power) - (x.potential - x.power))[0];
   if (!vet || !kid) return;
   if (seriesCount(L, b, vet.series, [kid.pid]) >= MAX_PER_SERIES || seriesCount(L, s, kid.series, [vet.pid]) >= MAX_PER_SERIES) return;
   let sGain = tradeValue(L, kid, s) - tradeValue(L, vet, s);

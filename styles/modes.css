@@ -2072,3 +2072,28 @@ body:has(.osm-page) .ph-open:not(.is-moved) { display: none; }
 .ph-streak { color: #ffb347; font-weight: 800; }
 /* v0.36.0: leave room so the floating phone button never sits on a page button */
 body:has(.ph-open:not([hidden])) .dy-wrap, body:has(.ph-open:not([hidden])) .ff-wrap { padding-bottom: 76px; }
+
+/* v0.38.0: My Career */
+.mc-files { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.mc-file { display: flex; align-items: center; gap: var(--space-3); }
+.mc-file .dy-list-text { flex: 1; min-width: 0; }
+.mc-paths { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.mc-you { display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap; }
+.mc-you .dy-field { flex: 1; min-width: 200px; }
+.mc-face { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: 0; color: inherit; cursor: pointer; }
+.mc-me-row { display: flex; align-items: center; gap: var(--space-3); }
+.mc-me-row .dy-list-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: var(--space-2); margin-top: var(--space-3); }
+.mc-stat { display: flex; flex-direction: column; align-items: center; padding: 8px; border-radius: var(--radius-md); background: rgba(255,255,255,.03); }
+.mc-stat b { font-family: var(--font-display); font-size: 1.3rem; }
+.mc-trust { display: flex; flex-direction: column; gap: 4px; margin-top: var(--space-3); }
+.mc-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+.mc-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--brand-gold), #7fe0a0); }
+.mc-vs { display: flex; align-items: center; justify-content: center; gap: var(--space-3); margin: var(--space-2) 0 var(--space-3); flex-wrap: wrap; }
+.mc-approach, .mc-train { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: var(--space-3); }
+.mc-drafted { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-2); }
+.mc-grade { display: flex; align-items: baseline; gap: 10px; }
+.mc-grade b { font-family: var(--font-display); font-size: 2.4rem; color: var(--brand-gold); }
+.mc-awards { margin: var(--space-3) 0 0; padding-left: 1.2em; }
+.mc-fight-note { text-align: center; margin: 0 0 6px; }
+.dy-list li.is-you, .dy-seeds li.is-you { background: rgba(255, 196, 0, 0.10); border-radius: 8px; }
