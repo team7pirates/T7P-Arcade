@@ -159,10 +159,10 @@ export function standing(L) {
   const t = myTeam(L); const p = me(L);
   if (!t) return 'Prospect';
   if (topPickRookie(L)) return 'Day-one starter';
-  const five = R.aiStarters(L, t).some((x) => x.pid === p.pid);
-  if (five && trustOf(L) >= 85) return 'Franchise player';
-  if (five) return 'Starter';
-  return startChance(L) >= 0.6 ? 'Rotation' : 'Bench';
+  const role = roleOn(L, t);
+  if (role === 'Starter' && trustOf(L) >= 85) return 'Franchise player';
+  if (role === 'Starter') return 'Starter';
+  return role === 'Rotation' || startChance(L) >= 0.6 ? 'Rotation' : 'Bench';
 }
 // Coach promises from a talk last 3 game weeks.
 const active = (L, x) => x && x.season === L.season && R.gameWeek(L) < x.until;
@@ -412,18 +412,138 @@ export function careerTotals(L) {
   for (const s of all) for (const k of Object.keys(t)) t[k] += s[k] || 0;
   return t;
 }
-export function nextSeason(L) {
+// ---------- The off-season (v0.40.0: your contract is yours to decide) ----------
+// L.career.off: null, or { stage: 'resign', offer } or { stage: 'fa', offers }.
+const r1 = (x) => Math.round(x * 10) / 10;
+export const contractLine = (p) => (p.contract ? `${R.capHit(p)} a season · ${p.contract.left} season${p.contract.left === 1 ? '' : 's'} left` : 'No contract');
+// Where you'd stand on a team: Starter if you'd be in their five, else Rotation or Bench.
+export function roleOn(L, t, p = me(L)) {
+  // Ask the coach's own lineup logic, with you on that roster.
+  const roster = t.roster.includes(p.pid) ? t.roster : [...t.roster, p.pid];
+  const five = R.aiStarters(L, { ...t, roster });
+  if (five.some((x) => x.pid === p.pid)) return 'Starter';
+  const weakest = Math.min(...five.map((x) => R.effPower(L, x)));
+  return R.effPower(L, p) >= weakest - 6 ? 'Rotation' : 'Bench';
+}
+// Start the off-season and stop at re-signing if your deal is up.
+export function beginOffseason(L) {
   O.startOffseason(L);
   const p = me(L);
-  // Phase 1: your team keeps you. If your deal is up, you re-sign for what you ask.
-  while (L.off.step !== 'draft') {
-    if (L.off.step === 'resign' && p.contract && p.contract.left <= 0) {
-      const per = Math.min(R.maxDeal(), Math.max(1.2, O.asking(p))); p.contract = { total: Math.round(per * 3 * 10) / 10, years: 3, left: 3 };
-    }
-    O.nextStep(L);
+  while (L.off.step !== 'resign' && L.off.step !== 'draft') O.nextStep(L);
+  if (L.off.step === 'resign' && p.contract && p.contract.left <= 0) {
+    L.career.off = { stage: 'resign', offer: teamOffer(L) };
+    return 'resign';
   }
+  finishOffseason(L);
+  return null;
+}
+// Your team's offer: your ask, scaled by how much the coach trusts you and
+// how much room they have.
+export function teamOffer(L) {
+  const p = me(L); const t = myTeam(L);
+  const ask = O.asking(p);
+  const per = r1(Math.min(R.maxDeal(), Math.max(1.2, ask * (0.82 + trustOf(L) / 400))));
+  const room = O.capCheck(L, t, per, [p.pid]).ok;
+  return { team: t.i, per: room ? per : r1(Math.max(1.2, Math.min(per, O.capRoom(L, t) + R.capHit(p)))), years: Math.min(4, O.wantYears(p)), ask: r1(ask), role: roleOn(L, t) };
+}
+export function acceptResign(L) {
+  const p = me(L); const o = L.career.off.offer;
+  p.contract = { total: r1(o.per * o.years), years: o.years, left: o.years };
+  L.career.log.unshift({ season: L.season, text: `Re-signed with ${myTeam(L).name}: ${o.per} a season for ${o.years}.` });
+  L.career.off = null;
+  finishOffseason(L);
+}
+// Test free agency: your team lets you go, the draft happens, then offers come in.
+export function testMarket(L) {
+  const p = me(L); const from = p.team;
+  const old = L.career.off.offer;
+  O.letGo(L, p.pid);
+  while (L.off.step !== 'fa') O.nextStep(L);
+  L.career.off = { stage: 'fa', offers: marketOffers(L, from, old) };
+}
+export function marketOffers(L, from, old) {
+  const p = me(L); const rand = () => R.nextRand(L);
+  const ask = O.asking(p);
+  const out = [];
+  for (const t of L.teams) {
+    const need = !t.roster.some((pid) => L.players[pid].role === p.role) ? 6 : 0;
+    const fit = (t.stage === 'contender' ? (p.power - 80) * 0.4 : t.stage === 'rebuild' ? (p.potential - p.power) * 0.4 + (p.career <= 3 ? 3 : 0) : 0) + need;
+    const per = r1(Math.min(R.maxDeal(), Math.max(1.2, ask * (0.8 + rand() * 0.35 + fit / 60))));
+    if (!O.capCheck(L, t, per).ok && O.capRoom(L, t) < 1.2) continue;
+    const pay = r1(Math.max(1.2, Math.min(per, O.capRoom(L, t))));
+    out.push({ team: t.i, per: pay, years: 1 + Math.floor(rand() * 4), role: roleOn(L, t), stage: t.stage, score: pay + fit + rand() * 4, former: t.i === from });
+  }
+  out.sort((a, b) => b.score - a.score);
+  const list = out.filter((x) => !x.former).slice(0, 4);
+  // Your old team stays in it, at their earlier offer if they still can.
+  if (from != null && old) {
+    const t = L.teams[from];
+    if (O.capRoom(L, t) >= Math.min(old.per, 1.2)) list.push({ team: from, per: r1(Math.min(old.per, Math.max(1.2, O.capRoom(L, t)))), years: old.years, role: roleOn(L, t), stage: t.stage, former: true });
+  }
+  if (!list.length) {
+    const t = L.teams.slice().sort((a, b) => O.capRoom(L, b) - O.capRoom(L, a))[0];
+    list.push({ team: t.i, per: 1.2, years: 1, role: roleOn(L, t), stage: t.stage, former: t.i === from });
+  }
+  return list;
+}
+export function signWith(L, k) {
+  const p = me(L); const o = L.career.off.offers[k]; const t = L.teams[o.team];
+  p.team = t.i; t.roster.push(p.pid);
+  p.contract = { total: r1(o.per * o.years), years: o.years, left: o.years };
+  if (o.team !== p.formerTeam) { L.career.trust = 50; L.career.talk = null; L.career.promise = null; L.career.lead = null; L.career.focus = null; }
+  L.career.log.unshift({ season: L.season, text: `Signed with ${t.name}: ${o.per} a season for ${o.years}.` });
+  L.career.moves = [...(L.career.moves || []), { season: L.season, kind: 'signed', team: t.i, per: o.per, years: o.years }];
+  L.career.off = null;
+  runFreeAgency(L);
+  startSeason(L);
+}
+// Everything after re-signing, for every team.
+export function finishOffseason(L) {
+  while (L.off.step !== 'draft') O.nextStep(L);
   O.simDraft(L, false);
   O.nextStep(L); // draft → fa
   runFreeAgency(L);
   startSeason(L);
+}
+export function nextSeason(L) { if (!beginOffseason(L)) return null; return L.career.off.stage; }
+
+// ---------- Trade requests (v0.40.0) ----------
+// Once a season, before the Week 8 deadline. Pick a team that wants you; the
+// front office says yes more often when you're not starting or the coach
+// doesn't trust you. A no costs trust.
+export const canAskTrade = (L) => L.phase === 'season' && L.week <= R.TRADE_DEADLINE && L.career.tradeAsk !== L.season && !!myTeam(L);
+export function tradeSuitors(L) {
+  const p = me(L); const mine = myTeam(L);
+  const out = [];
+  for (const t of L.teams) {
+    if (t.i === mine.i) continue;
+    // Their card of about your value, with a cap hit that works for them.
+    const back = t.roster.map((pid) => L.players[pid]).filter((x) => R.available(x) && Math.abs(x.power - p.power) <= 6 && x.series !== p.series)
+      .sort((a, b) => Math.abs(a.power - p.power) - Math.abs(b.power - p.power))[0];
+    if (!back) continue;
+    const okThem = R.payroll(L, t) - R.capHit(back) + R.capHit(p) <= R.capOf(t) + 0.5;
+    const okUs = R.payroll(L, mine) - R.capHit(p) + R.capHit(back) <= R.capOf(mine) + 0.5;
+    if (!okThem || !okUs) continue;
+    if (O.seriesCount(L, t, p.series, [back.pid]) >= R.MAX_PER_SERIES) continue;
+    out.push({ team: t.i, back: back.pid, role: roleOn(L, t), stage: t.stage, w: t.w, l: t.l });
+  }
+  const rand = () => R.nextRand(L);
+  return out.sort(() => rand() - 0.5).slice(0, 3);
+}
+export function tradeOdds(L) {
+  const st = standing(L);
+  return clamp(0.3 + (st === 'Bench' ? 0.35 : st === 'Rotation' ? 0.2 : 0) + (trustOf(L) < 50 ? 0.15 : 0) - (trustOf(L) >= 80 ? 0.15 : 0), 0.1, 0.9);
+}
+export function askTrade(L, suitor) {
+  const p = me(L); const from = myTeam(L);
+  L.career.tradeAsk = L.season;
+  if (R.nextRand(L) < tradeOdds(L)) {
+    O.doTrade(L, from.i, suitor.team, [p.pid], [suitor.back]);
+    L.career.trust = 55; L.career.talk = null; L.career.promise = null; L.career.lead = null; L.career.focus = null; L.career.startWeek = null;
+    L.career.moves = [...(L.career.moves || []), { season: L.season, kind: 'traded', from: from.i, team: suitor.team, week: L.week }];
+    L.career.log.unshift({ season: L.season, text: `Traded from ${from.name} to ${L.teams[suitor.team].name}.` });
+    return { ok: true, team: suitor.team, back: suitor.back };
+  }
+  L.career.trust = clamp(trustOf(L) - 8, 0, 100);
+  return { ok: false };
 }

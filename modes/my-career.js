@@ -39,7 +39,9 @@ const help = howToPlay('my-career', 'My Career', [
   'Awards: Player of the Week (league-wide), and at season\'s end the GPT, Rookie of the Year, best at your role, All-AFL First Team and more. They all go in your trophy case (Career tab).',
   'Growth: like every card, you bank skill points every 3 weeks. Above 90, +1 Power costs 2 points.',
   'Awards night: Rookie of the Year, the GPT, breakout jumps. Then the off-season runs and your next season starts.',
-  'Coming in later updates: contracts and free agency, trade requests, your own phone, endorsements and the Hall of Fame.',
+  'Contracts: when your deal is up, your team makes an offer (better with more coach trust). Take it, or test free agency and pick from the teams that want you.',
+  'Trade requests: once a season, before the Week 8 deadline. Pick a team that wants you; a no costs trust.',
+  'Coming in later updates: your own phone, endorsements, retirement and the Hall of Fame.',
 ]);
 
 export async function render() {
@@ -58,6 +60,8 @@ export async function render() {
 
   function draw() {
     if (!L) return drawFiles();
+    if (L.career.off?.stage === 'resign') return drawResign();
+    if (L.career.off?.stage === 'fa') return drawMarket();
     if (L.phase === 'offseason' && L.off?.step === 'draft') return drawDraft();
     if (L.career.over) return drawSeasonEnd();
     return drawHub();
@@ -193,7 +197,8 @@ export async function render() {
         h('span', { class: 'dy-list-text' },
           h('span', { class: 'heading' }, p.name),
           h('span', { class: `caption ${ROLE_CLASS(p.role)}` }, `${p.role}${p.second ? ` / ${p.second}` : ''} · Season ${p.career} · ${['Normal', 'Star', 'Superstar'][p.dev]} growth`),
-          h('span', { class: 'caption muted' }, `${t.name} · ${t.w}-${t.l}`)),
+          h('span', { class: 'caption muted' }, `${t.name} · ${t.w}-${t.l}`),
+          h('span', { class: 'caption muted' }, `💰 ${C.contractLine(p)}${p.contract?.left === 1 ? ' · CONTRACT YEAR' : ''}`)),
         crest(t, 56)),
       h('div', { class: 'mc-stats' },
         stat('POWER', `${p.power}`, `max ${R.maxOf(p)}`), stat('AURA', p.aura), stat('CLUTCH', p.clutch), stat('CHAOS', p.chaos), stat('HYPE', p.hype),
@@ -248,6 +253,25 @@ export async function render() {
       h('div', { class: 'mc-train' }, Object.entries(C.TALKS).map(([k, x]) => h('button', { class: 'dy-option dy-option-sm', onClick: async () => { const r = C.talk(L, k); sfx.play(r?.ok ? 'correct' : 'wrong'); await save(); drawHub(); } }, h('b', {}, x.label), h('span', { class: 'caption' }, x.line)))),
       lastBox);
   }
+  function tradePanel() {
+    if (!C.canAskTrade(L)) return null;
+    return h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'REQUEST A TRADE'),
+      h('p', { class: 'caption muted' }, `Once a season, before the Week ${R.TRADE_DEADLINE} deadline. The front office says yes more often when you aren't starting or the coach doesn't trust you. A no costs 8 trust. Chance right now: about ${Math.round(C.tradeOdds(L) * 100)}%.`),
+      h('button', { class: 'btn btn-secondary', onClick: () => openTrade() }, 'See who wants you'));
+  }
+  function openTrade() {
+    const list = C.tradeSuitors(L);
+    sheet({ title: 'WHO WANTS YOU', content: h('div', {},
+      list.length ? h('ul', { class: 'dy-list' }, list.map((x) => { const t = team(x.team); const b = L.players[x.back]; return h('li', {}, crest(t, 32),
+        h('span', { class: 'dy-list-text' }, h('span', {}, `${t.name} · ${t.w}-${t.l}`), h('span', { class: 'caption muted' }, `${R.STAGE_LABEL[x.stage]} · you'd be: ${x.role} · they send ${b.name} (${b.role}, ${b.power})`)),
+        h('button', { class: 'btn btn-primary btn-sm', onClick: async () => {
+          closeSheet();
+          const r = C.askTrade(L, x); await save();
+          if (r.ok) { sfx.play('correct'); toast(`Traded! You're a ${team(r.team).name} now.`); } else { sfx.play('wrong'); toast('The front office said no. Coach heard about it (trust −8).'); }
+          drawHub();
+        } }, 'Ask for this')); }))
+        : h('p', { class: 'body-text' }, 'Nobody has the cap room or the need for you right now. Try again next season.')) });
+  }
   function logPanel() {
     const gs = L.career.games.filter((x) => x.season === L.season);
     if (!gs.length) return null;
@@ -272,7 +296,7 @@ export async function render() {
       ss.length ? h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'SEASON BY SEASON'),
         h('ul', { class: 'dy-list' }, ss.map((x) => h('li', {}, crest(team(x.team), 22), h('span', { class: 'dy-list-text' }, h('span', {}, `Season ${x.career ?? '?'} · ${team(x.team).abbr} ${x.w}-${x.l}${x.champion ? ' 🏆' : ''}`),
           h('span', { class: 'caption muted' }, `${x.stats.gp} games · ${fmt(x.stats.dmg)} dmg · ${x.stats.ko} KO · Power ${x.power}${x.standing ? ` · ${x.standing}` : ''}`)))))) : null,
-      h('p', { class: 'caption muted' }, `Drafted ${p.draftPick ? `No. ${p.draftPick} (round ${p.draftRound})` : 'undrafted'}${L.career.imported ? ' · came up from the Tower' : ''}.`),
+      h('p', { class: 'caption muted' }, `Drafted ${p.draftPick ? `No. ${p.draftPick} (round ${p.draftRound})` : 'undrafted'}${L.career.imported ? ' · came up from the Tower' : ''}.${(L.career.moves || []).map((m) => (m.kind === 'traded' ? ` Traded to ${team(m.team).abbr} (season ${m.season}).` : ` Signed with ${team(m.team).abbr} (before season ${m.season + 1}).`)).join('')}`),
     ];
   }
   function teamPanel() {
@@ -296,7 +320,7 @@ export async function render() {
     fill(root, header(`Season ${P().career}`, () => drawFiles()), h('div', { class: 'dy-content' },
       meCard(),
       h('div', { class: 'dy-tabs', role: 'tablist' }, tabs.map(([k, l]) => h('button', { class: `dy-tab${tab === k ? ' is-on' : ''}`, role: 'tab', 'aria-selected': String(tab === k), onClick: () => { tab = k; drawHub(); } }, l))),
-      tab === 'week' ? [potwLine(), trainPanel(), nextPanel(), talkPanel(), logPanel()] : tab === 'team' ? teamPanel() : tab === 'career' ? careerPanel() : leaguePanel()));
+      tab === 'week' ? [potwLine(), trainPanel(), nextPanel(), talkPanel(), tradePanel(), logPanel()] : tab === 'team' ? teamPanel() : tab === 'career' ? careerPanel() : leaguePanel()));
   }
 
   // ---------- Fight ----------
@@ -343,6 +367,40 @@ export async function render() {
         h('button', { class: 'btn btn-primary btn-wide', onClick: () => draw() }, 'Back to the week'))));
   }
 
+  // ---------- Contract time (v0.40.0) ----------
+  function offerRow(o, onPick, label = 'Sign') {
+    const t = team(o.team);
+    return h('li', { class: o.former ? 'is-you' : '' }, crest(t, 36),
+      h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, `${t.name}${o.former ? ' (your team)' : ''}`),
+        h('span', { class: 'caption' }, `${o.per} a season × ${o.years} = ${Math.round(o.per * o.years * 10) / 10}`),
+        h('span', { class: 'caption muted' }, `${R.STAGE_LABEL[o.stage || t.stage]} · last season ${t.lastW ?? t.w}-${t.lastL ?? t.l} · you'd be: ${o.role}`)),
+      h('button', { class: 'btn btn-primary btn-sm', onClick: onPick }, label));
+  }
+  function drawResign() {
+    const p = P(); const o = L.career.off.offer; const t = team(o.team);
+    fill(root, header('Contract time', () => drawFiles()), h('div', { class: 'dy-content' },
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h gold' }, 'YOUR CONTRACT IS UP'),
+        h('div', { class: 'mc-me-row' }, face(p, 'lg'), h('span', { class: 'dy-list-text' }, h('span', { class: 'heading' }, p.name), h('span', { class: 'caption muted' }, `Power ${p.power} · Hype ${p.hype} · you're asking about ${o.ask} a season`))),
+        h('p', { class: 'body-text' }, `${t.name} want you back. Coach trust (${C.trustOf(L)}) shapes their number: higher trust, better offer.`),
+        h('ul', { class: 'dy-list' }, offerRow({ ...o, stage: t.stage, former: true }, async () => { C.acceptResign(L); await save(); sfx.play('correct'); toast(`Re-signed with ${t.name}.`); draw(); }, 'Re-sign'))),
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h' }, 'OR TEST FREE AGENCY'),
+        h('p', { class: 'body-text' }, `Walk away and hear what the other teams offer after the draft. ${t.name} can still bid, but only if they have room left.`),
+        h('button', { class: 'btn btn-secondary btn-wide', onClick: async () => {
+          if (!(await confirmSheet({ title: 'TEST FREE AGENCY?', message: `You leave ${t.name}'s offer on the table. They may not have room for you later.`, confirmLabel: 'Test the market' }))) return;
+          C.testMarket(L); await save(); draw();
+        } }, 'Test the market'))));
+  }
+  function drawMarket() {
+    const p = P(); const offers = L.career.off.offers;
+    fill(root, header('Free agency', () => drawFiles()), h('div', { class: 'dy-content' },
+      h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h gold' }, 'YOUR OFFERS'),
+        h('p', { class: 'body-text' }, `${p.name} · Power ${p.power} · ${p.role}. Pick where you play next. "You'd be" is where you'd rank on that roster right now.`),
+        h('ul', { class: 'dy-list mc-offers' }, offers.map((o, k) => offerRow(o, async () => {
+          if (!(await confirmSheet({ title: `SIGN WITH ${team(o.team).name.toUpperCase()}?`, message: `${o.per} a season for ${o.years} season${o.years === 1 ? '' : 's'}.${o.former ? '' : ' New team, new coach: trust starts at 50.'}`, confirmLabel: 'Sign' }))) return;
+          C.signWith(L, k); await save(); sfx.play('correct'); toast(`You're a ${team(o.team).name} now.`); tab = 'week'; draw();
+        }))))));
+  }
+
   // ---------- Season's end ----------
   function drawSeasonEnd() {
     const s = L.career.over; const t = team(s.team); const p = P();
@@ -354,8 +412,8 @@ export async function render() {
       h('section', { class: 'dy-panel' }, h('h2', { class: 'dy-h gold' }, `SEASON ${p.career} · ${t.name.toUpperCase()} ${s.w}-${s.l}`),
         h('div', { class: 'mc-stats' }, stat('GAMES', st.gp), stat('RECORD', `${st.w}-${st.l}`), stat('DAMAGE', fmt(st.dmg)), stat('KO', st.ko), stat('SPECIALS', st.sp), stat('POWER', s.power)),
         lines.length ? h('ul', { class: 'mc-awards' }, lines.map((x) => h('li', { class: 'body-text' }, x))) : h('p', { class: 'body-text' }, 'No hardware this year. Back to work.')),
-      h('section', { class: 'dy-panel' }, h('p', { class: 'body-text' }, 'The off-season runs on its own for now: retirements, the draft, free agency. Your team keeps you, and if your deal is up you re-sign.'),
-        h('button', { class: 'btn btn-primary btn-wide', onClick: async (e) => { e.target.disabled = true; e.target.textContent = 'Running the off-season…'; await new Promise((r) => setTimeout(r, 30)); C.nextSeason(L); L.career.over = null; await save(); tab = 'week'; sfx.play('correct'); draw(); } }, `Start season ${p.career + 1}`))));
+      h('section', { class: 'dy-panel' }, h('p', { class: 'body-text' }, p.contract && p.contract.left <= 1 ? `Your contract is up. ${team(s.team).name} will make you an offer, or you can test free agency.` : `Retirements, the draft and free agency run on their own. You're signed through ${p.contract ? `${p.contract.left - 1} more season${p.contract.left - 1 === 1 ? '' : 's'}` : 'next season'}.`),
+        h('button', { class: 'btn btn-primary btn-wide', onClick: async (e) => { e.target.disabled = true; e.target.textContent = 'Running the off-season…'; await new Promise((r) => setTimeout(r, 30)); C.beginOffseason(L); L.career.over = null; await save(); tab = 'week'; sfx.play('correct'); draw(); } }, p.contract && p.contract.left <= 1 ? 'Start the off-season (your contract is up)' : `Start season ${p.career + 1}`))));
   }
 
   draw();

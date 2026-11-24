@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "0.40.0",
+      "date": "2026-11-23",
+      "title": "My Career part 3: contracts, free agency and trades",
+      "items": [
+        "Your contract shows on your card, with a CONTRACT YEAR tag in the last season.",
+        "When your deal is up, your team makes an offer. More coach trust means a better number. Re-sign, or test free agency.",
+        "Free agency: after the draft, teams with room make you offers. See the money, the years, the team's stage and whether you'd start, come off the bench or rotate there. Your old team can still bid if they have room.",
+        "New team, new coach: trust starts over at 50.",
+        "Trade requests: once a season, before the Week 8 deadline. See which teams want you and who they'd send back, then ask. The front office says yes more often when you aren't starting or the coach doesn't trust you. A no costs 8 trust.",
+        "The Career tab shows your draft spot, signings and trades."
+      ]
+    },
+    {
       "version": "0.39.0",
       "date": "2026-11-23",
       "title": "My Career part 2: the coach, playing time and awards",

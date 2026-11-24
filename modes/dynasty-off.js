@@ -555,7 +555,8 @@ export function addNewcomers(L, n) {
 }
 
 // ---------- 6. Free agency: 3 rounds with an interest meter ----------
-export const faPool = (L) => Object.values(L.players).filter((p) => p.team == null && !p.retired && !p.prospect);
+// v0.40.0: a My Career fighter (p.me) picks his own team; AI teams don't bid on him.
+export const faPool = (L) => Object.values(L.players).filter((p) => p.team == null && !p.retired && !p.prospect && !p.me);
 export const emergencyPool = (L) => faPool(L).filter((p) => p.power <= EMERGENCY_MAX_POWER);
 
 // How much a player wants to join team t with this offer (0–100).
